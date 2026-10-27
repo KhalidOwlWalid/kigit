@@ -569,15 +569,26 @@ bool is_power_pin(const SchSymbol& s, const SchPin& p) {
 // pins on ordinary parts after the pin name.
 std::string power_net(const SchSymbol& s, const SchPin& p) { return s.power ? s.value : p.name; }
 
+// KiCad escapes "/" in names it builds net names from ("/" separates sheet
+// paths in net names).
+std::string escape_slash(const std::string& s) {
+    std::string out;
+    for (char c : s) {
+        if (c == '/') out += "{slash}";
+        else out += c;
+    }
+    return out;
+}
+
 // A pin name that says something: not empty, not "~", not just the number again.
 bool has_real_name(const SchPin& p) { return !p.name.empty() && p.name != "~" && p.name != p.number; }
 
 std::string pin_label(const SchSymbol& s, const SchPin& p) {
-    if (!has_real_name(p)) return "Pad" + p.number;
+    if (!has_real_name(p)) return "Pad" + escape_slash(p.number);
     // A name shared by several pins doesn't identify one; add the number.
     int same = 0;
     for (const SchPin& q : s.pins) same += q.name == p.name;
-    return same > 1 ? p.name + "-Pad" + p.number : p.name;
+    return escape_slash(same > 1 ? p.name + "-Pad" + p.number : p.name);
 }
 
 void connect(Schematic& sch, const std::unordered_map<size_t, bool>& local_power) {
@@ -703,7 +714,8 @@ void connect(Schematic& sch, const std::unordered_map<size_t, bool>& local_power
                 const SchPin& p = s.pins[node.pin];
                 std::string name;
                 if (lonely) {
-                    name = "unconnected-(" + s.ref + "-" + (has_real_name(p) ? p.name + "-" : "") + "Pad" + p.number + ")";
+                    name = "unconnected-(" + s.ref + "-" + (has_real_name(p) ? escape_slash(p.name) + "-" : "") + "Pad" +
+                           escape_slash(p.number) + ")";
                 } else {
                     name = "Net-(" + s.ref + "-" + pin_label(s, p) + ")";
                 }

@@ -127,8 +127,19 @@ void read_outline(const Node& n, std::vector<std::string>& out) {
         Point a = read_xy(n.child("start")), b = read_xy(n.child("end"));
         out.push_back("M" + pt(a) + "L" + pt({b.x, a.y}) + "L" + pt(b) + "L" + pt({a.x, b.y}) + "Z");
     } else if (kind == "gr_arc") {
-        out.push_back(arc_path(read_xy(n.child("start")), read_xy(n.child("mid")),
-                               read_xy(n.child("end"))));
+        if (n.child("mid")) {
+            out.push_back(arc_path(read_xy(n.child("start")), read_xy(n.child("mid")), read_xy(n.child("end"))));
+        } else if (const Node* angle = n.child("angle")) {
+            // KiCad 5: (start) is the centre, (end) the arc's first point, and
+            // (angle) how far it sweeps.
+            Point c = read_xy(n.child("start")), p0 = read_xy(n.child("end"));
+            double a = angle->num(0);
+            auto around = [&](double deg) {
+                Point r = rotate({p0.x - c.x, p0.y - c.y}, -deg);
+                return Point{c.x + r.x, c.y + r.y};
+            };
+            out.push_back(arc_path(p0, around(a / 2), around(a)));
+        }
     } else if (kind == "gr_circle") {
         Point c = read_xy(n.child("center")), e = read_xy(n.child("end"));
         double r = std::hypot(e.x - c.x, e.y - c.y);
@@ -184,11 +195,14 @@ void read_footprint(const Node& fp, const Ctx& ctx, std::vector<Item>& items) {
 
 void read_zone(const Node& z, const Ctx& ctx, std::vector<Item>& items) {
     std::string net = net_of(z, ctx);
+    // KiCad 5 zones are single-layer and give the layer on the zone itself.
+    const Node* zone_layer = z.child("layer");
     std::unordered_map<std::string, size_t> by_layer; // layer -> item index
     z.each("filled_polygon", [&](const Node& fpoly) {
         const Node* layer = fpoly.child("layer");
+        if (!layer) layer = zone_layer;
         if (!layer) return;
-        std::string lname(layer->arg(0));
+        std::string lname = sexpr::unescape(layer->arg(0));
         auto [iter, inserted] = by_layer.try_emplace(lname, items.size());
         if (inserted) {
             Item it;
