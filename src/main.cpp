@@ -5,6 +5,7 @@
 #include "html.hpp"
 
 #include <algorithm>
+#include <cctype>
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
@@ -24,6 +25,7 @@ void usage() {
 
 USAGE
     kigit [OPTIONS] [OLD..NEW | OLD NEW | REV] [BOARD.kicad_pcb]
+    kigit [OPTIONS] --files OLD.kicad_pcb NEW.kicad_pcb      (no git needed)
 
 REVISIONS
     (none)          HEAD vs the working tree (LOCAL)
@@ -40,7 +42,13 @@ BOARD
     in subfolders too if the folder itself has none). A relative BOARD is
     resolved against the project folder.
 
+WITHOUT GIT
+    --files OLD NEW compares two board files directly, e.g. two copies of
+    the same project saved at different times. Passing two .kicad_pcb (or
+    .kicad_pro) files as arguments does the same. OLD comes first.
+
 OPTIONS
+    -f, --files OLD NEW Compare two board files instead of git revisions
     -C, --kicad-repo DIR
                         KiCad project folder or git repo to use instead of
                         the current directory, so kigit can run from anywhere
@@ -57,7 +65,39 @@ OPTIONS
 }
 
 bool is_board_arg(const std::string& a) {
-    return a.size() > 10 && a.ends_with(".kicad_pcb");
+    return a.ends_with(".kicad_pcb") || a.ends_with(".kicad_pro");
+}
+
+std::string expand_home(std::string p) {
+    if (p == "~" || p.starts_with("~/")) {
+        const char* home = std::getenv("HOME");
+        p = std::string(home ? home : "") + p.substr(1);
+    }
+    return p;
+}
+
+// Board path from a user argument: ~ expanded, relative to `base`,
+// and a .kicad_pro swapped for its .kicad_pcb.
+fs::path board_from_arg(const std::string& arg, const fs::path& base) {
+    fs::path p = expand_home(arg);
+    if (p.is_relative()) p = base / p;
+    if (p.extension() == ".kicad_pro") p.replace_extension(".kicad_pcb");
+    return p.lexically_normal();
+}
+
+// Short names for two board files shown in the viewer: file names if they
+// differ, else their folder names, else "old"/"new".
+std::pair<std::string, std::string> file_labels(const fs::path& a, const fs::path& b) {
+    if (a.stem() != b.stem()) return {a.stem().string(), b.stem().string()};
+    std::string pa = a.parent_path().filename().string(), pb = b.parent_path().filename().string();
+    if (!pa.empty() && !pb.empty() && pa != pb) return {pa, pb};
+    return {"old", "new"};
+}
+
+std::string safe_filename(std::string s) {
+    for (char& c : s)
+        if (!std::isalnum(static_cast<unsigned char>(c)) && c != '-' && c != '_' && c != '.') c = '_';
+    return s;
 }
 
 bool is_board_file(const fs::directory_entry& e) {
@@ -107,7 +147,7 @@ fs::path default_output(const fs::path& board_dir, const std::string& board, con
     // Ignore the folder's contents without touching the project's .gitignore.
     fs::path ignore = dir / ".gitignore";
     if (!fs::exists(ignore)) std::ofstream(ignore) << "*\n";
-    return dir / (board + "-" + a.short_hash + "-" + b.short_hash + ".html");
+    return dir / safe_filename(board + "-" + a.short_hash + "-" + b.short_hash + ".html");
 }
 
 std::string pad_right(std::string s, size_t n) {
@@ -159,7 +199,9 @@ void print_summary(const Diff& d, bool all) {
 
 int main(int argc, char** argv) {
     std::vector<std::string> revs;
-    std::string board_arg, output, project_arg;
+    std::string output, project_arg;
+    std::vector<std::string> board_args;
+    bool files_mode = false;
     bool open = true, all_stats = false, swap = true, quiet = false;
 
     for (int i = 1; i < argc; ++i) {
@@ -176,6 +218,14 @@ int main(int argc, char** argv) {
                 return 2;
             }
             output = argv[i];
+        } else if (a == "-f" || a == "--files") {
+            if (i + 2 >= argc) {
+                std::cerr << "kigit: " << a << " needs two board files: OLD NEW\n";
+                return 2;
+            }
+            files_mode = true;
+            board_args.push_back(argv[++i]);
+            board_args.push_back(argv[++i]);
         } else if (a == "-C" || a == "--kicad-repo") {
             if (++i >= argc) {
                 std::cerr << "kigit: " << a << " needs a folder\n";
@@ -196,7 +246,7 @@ int main(int argc, char** argv) {
             std::cerr << "kigit: unknown option " << a << " (see --help)\n";
             return 2;
         } else if (is_board_arg(a)) {
-            board_arg = a;
+            board_args.push_back(a);
         } else if (auto dots = a.find(".."); dots != std::string::npos) {
             revs.push_back(dots == 0 ? "HEAD" : a.substr(0, dots));
             std::string rhs = a.substr(dots + 2);
@@ -209,23 +259,27 @@ int main(int argc, char** argv) {
         std::cerr << "kigit: too many revisions (see --help)\n";
         return 2;
     }
-    if (revs.empty()) revs.push_back("HEAD");
-    if (revs.size() == 1) revs.push_back("LOCAL");
+    if (board_args.size() > 2) {
+        std::cerr << "kigit: too many board files, give at most two (OLD NEW)\n";
+        return 2;
+    }
+    if (board_args.size() == 2) files_mode = true;
+    if (files_mode && !revs.empty()) {
+        std::cerr << "kigit: --files compares two files directly; drop the git revisions\n";
+        return 2;
+    }
+    if (!files_mode) {
+        if (revs.empty()) revs.push_back("HEAD");
+        if (revs.size() == 1) revs.push_back("LOCAL");
+    }
 
     try {
         fs::path project = fs::current_path();
         if (!project_arg.empty()) {
-            std::string p = project_arg;
-            if (p == "~" || p.starts_with("~/")) {
-                const char* home = std::getenv("HOME");
-                p = std::string(home ? home : "") + p.substr(1);
-            }
-            project = fs::absolute(p);
+            project = fs::absolute(expand_home(project_arg));
             // Pointing straight at a .kicad_pcb / .kicad_pro also works.
             if (fs::is_regular_file(project)) {
-                if (board_arg.empty() && project.extension() == ".kicad_pcb") board_arg = project.string();
-                else if (board_arg.empty() && project.extension() == ".kicad_pro")
-                    board_arg = fs::path(project).replace_extension(".kicad_pcb").string();
+                if (board_args.empty() && is_board_arg(project.string())) board_args.push_back(project.string());
                 project = project.parent_path();
             }
             if (!fs::is_directory(project))
@@ -233,18 +287,35 @@ int main(int argc, char** argv) {
         }
 
         fs::path board_path;
-        if (board_arg.empty()) {
-            board_path = find_board(project);
-        } else {
-            board_path = fs::path(board_arg).is_absolute() ? fs::path(board_arg) : project / board_arg;
-        }
-        board_path = board_path.lexically_normal();
-        std::string dir = board_path.parent_path().string();
-        std::string file = board_path.filename().string();
+        git::Revision old_rev, new_rev;
+        std::string dir, file;
 
-        git::Revision old_rev = git::resolve(dir, revs[0]);
-        git::Revision new_rev = git::resolve(dir, revs[1]);
-        if (swap && old_rev.hash != new_rev.hash && git::is_ancestor(dir, new_rev, old_rev)) {
+        if (files_mode) {
+            // Two files on disk, no git. Paths are relative to the current
+            // directory, or to --kicad-repo if given.
+            fs::path old_path = board_from_arg(board_args[0], project);
+            fs::path new_path = board_from_arg(board_args[1], project);
+            for (const auto& p : {old_path, new_path})
+                if (!fs::is_regular_file(p)) throw std::runtime_error("no such board file: " + p.string());
+            auto [old_label, new_label] = file_labels(old_path, new_path);
+            old_rev = git::from_file(old_path.string(), old_label);
+            new_rev = git::from_file(new_path.string(), new_label);
+            board_path = new_path;
+        } else {
+            board_path = board_args.empty() ? find_board(project) : board_from_arg(board_args[0], project);
+        }
+        dir = board_path.parent_path().string();
+        file = board_path.filename().string();
+
+        if (!files_mode) {
+            if (!git::is_repo(dir))
+                throw std::runtime_error(dir + " is not in a git repository.\n"
+                                         "       To compare two board files without git:\n"
+                                         "       kigit --files OLD.kicad_pcb NEW.kicad_pcb");
+            old_rev = git::resolve(dir, revs[0]);
+            new_rev = git::resolve(dir, revs[1]);
+        }
+        if (!files_mode && swap && old_rev.hash != new_rev.hash && git::is_ancestor(dir, new_rev, old_rev)) {
             std::swap(old_rev, new_rev);
             if (!quiet)
                 std::printf("note: %s is older than %s, comparing %s -> %s\n", old_rev.short_hash.c_str(),
@@ -280,7 +351,7 @@ int main(int argc, char** argv) {
             };
             std::printf("kigit: %s  %s -> %s\n", file.c_str(), old_rev.short_hash.c_str(),
                         new_rev.short_hash.c_str());
-            std::printf("  git %.0f ms, parse %.1f ms, diff %.1f ms, html %.1f ms  (%zu + %zu items)\n",
+            std::printf("  read %.0f ms, parse %.1f ms, diff %.1f ms, html %.1f ms  (%zu + %zu items)\n",
                         ms(t0, t1), ms(t1, t2), ms(t2, t3), ms(t3, t4), old_board.items.size(),
                         new_board.items.size());
             print_summary(diff, all_stats);

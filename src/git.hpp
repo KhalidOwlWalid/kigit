@@ -13,7 +13,14 @@ struct Revision {
     std::string short_hash; // "LOCAL" for the working tree
     std::string subject;    // commit message first line
     std::string date;       // commit date, ISO-ish
+    std::string path;       // set in --files mode: read this file, no git involved
 };
+
+// A revision that is just a file on disk (no git). `label` is shown in the viewer.
+Revision from_file(const std::string& path, const std::string& label);
+
+// True if `dir` is inside a git work tree.
+bool is_repo(const std::string& dir);
 
 // Resolves `spec` in the repository containing `dir`. Throws on failure.
 Revision resolve(const std::string& dir, const std::string& spec);

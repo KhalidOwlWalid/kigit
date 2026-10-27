@@ -39,6 +39,19 @@ kigit -C ~/Documents/Kicad/owl HEAD~1          # finds the board in subfolders
 kigit -C path/to/board.kicad_pro HEAD~1        # a .kicad_pro/.kicad_pcb works too
 ```
 
+### Without git
+
+Compare two copies of a board directly, e.g. two saved versions of the same
+project. No git repository needed; the older file goes first:
+
+```sh
+kigit --files owl_v1_old/owl_v1.kicad_pcb owl_v1/owl_v1.kicad_pcb
+kigit old.kicad_pcb new.kicad_pcb              # two board files = --files
+```
+
+The viewer labels them by file name, or by folder name when both files have
+the same name.
+
 If you give the newer revision first, kigit swaps them so "added" always
 means "added in the newer revision".
 
