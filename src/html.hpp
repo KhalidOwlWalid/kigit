@@ -5,6 +5,8 @@
 #include "diff.hpp"
 #include "git.hpp"
 
+#include <nlohmann/json_fwd.hpp>
+
 #include <string>
 #include <vector>
 
@@ -16,8 +18,16 @@ struct ReportInfo {
     std::vector<std::string> warnings; // shown in the viewer, e.g. board moved
 };
 
-// Returns the full HTML page for the diff.
-std::string render_html(const Board& old_board, const Board& new_board, const Diff& diff,
-                        const ReportInfo& info);
+struct Schematic;
+
+// Everything the viewer needs about the PCB diff, as JSON.
+nlohmann::json report_data(const Board& old_board, const Board& new_board, const Diff& diff,
+                           const ReportInfo& info);
+
+// One revision's schematic: sheets, parts and computed nets.
+nlohmann::json schematic_json(const Schematic& sch);
+
+// The full HTML page with `data` embedded.
+std::string render_html(const nlohmann::json& data);
 
 } // namespace kigit

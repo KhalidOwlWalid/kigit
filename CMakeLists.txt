@@ -34,6 +34,8 @@ add_executable(kigit
   src/diff.cpp
   src/html.cpp
   src/locate.cpp
+  src/schematic.cpp
+  src/netcheck.cpp
 )
 target_include_directories(kigit PRIVATE src ${CMAKE_CURRENT_BINARY_DIR}/generated)
 target_compile_definitions(kigit PRIVATE KIGIT_VERSION="${PROJECT_VERSION}")

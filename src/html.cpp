@@ -1,6 +1,7 @@
 #include "html.hpp"
 
 #include "viewer_template.hpp"
+#include "schematic.hpp"
 
 #include <nlohmann/json.hpp>
 
@@ -24,8 +25,8 @@ json rev_json(const git::Revision& r) {
 
 } // namespace
 
-std::string render_html(const Board& old_board, const Board& new_board, const Diff& diff,
-                        const ReportInfo& info) {
+nlohmann::json report_data(const Board& old_board, const Board& new_board, const Diff& diff,
+                           const ReportInfo& info) {
     // Copper layers: the new board's stackup, plus any only the old one had.
     std::vector<Layer> layers = new_board.layers;
     for (const Layer& l : old_board.layers) {
@@ -136,6 +137,44 @@ std::string render_html(const Board& old_board, const Board& new_board, const Di
         {"zones", jzones},
     };
 
+    return data;
+}
+
+nlohmann::json schematic_json(const Schematic& sch) {
+    json sheets = json::array();
+    for (const auto& sh : sch.sheets)
+        sheets.push_back({{"name", sh.name}, {"file", sh.file}, {"path", sh.path}, {"parent", sh.parent}});
+    json symbols = json::array();
+    for (const auto& s : sch.symbols) {
+        if (s.power) continue;
+        symbols.push_back({{"ref", s.ref},
+                           {"value", s.value},
+                           {"footprint", s.footprint},
+                           {"lib_id", s.lib_id},
+                           {"unit", s.unit},
+                           {"uuid", s.uuid},
+                           {"sheet", s.sheet}});
+    }
+    json nets = json::array();
+    for (const auto& n : sch.nets) {
+        if (n.nodes.empty()) continue;
+        json nodes = json::array();
+        for (const auto& node : n.nodes) {
+            const auto& s = sch.symbols[node.symbol];
+            const auto& p = s.pins[node.pin];
+            nodes.push_back({{"ref", s.ref}, {"pin", p.number}, {"name", p.name}, {"type", p.type}});
+        }
+        nets.push_back({{"name", n.name}, {"nodes", nodes}});
+    }
+    int wires = static_cast<int>(sch.wires.size());
+    return {{"sheets", sheets},
+            {"symbols", symbols},
+            {"nets", nets},
+            {"wire_count", wires},
+            {"warnings", sch.warnings}};
+}
+
+std::string render_html(const nlohmann::json& data) {
     // Keep the JSON from closing the <script> tag early.
     std::string payload = data.dump();
     std::string safe;

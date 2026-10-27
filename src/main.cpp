@@ -4,6 +4,10 @@
 #include "git.hpp"
 #include "html.hpp"
 #include "locate.hpp"
+#include "netcheck.hpp"
+#include "schematic.hpp"
+
+#include <nlohmann/json.hpp>
 
 #include <algorithm>
 #include <cctype>
@@ -63,6 +67,12 @@ OPTIONS
     -s, --stats         Print every changed net, not just the top 15
         --no-swap       Keep the revision order as given
     -q, --quiet         Only print errors and the output path
+        --json          Write the data (PCB diff + both schematics' nets) as
+                        JSON instead of the HTML viewer
+        --check-netlist FILE
+                        Compare kigit's schematic nets for the NEW revision
+                        with a netlist exported by KiCad
+                        (kicad-cli sch export netlist -o FILE root.kicad_sch)
     -h, --help          Show this help
     -v, --version       Show version
 )";
@@ -210,7 +220,8 @@ int main(int argc, char** argv) {
     std::string output, project_arg;
     std::vector<std::string> board_args;
     bool files_mode = false;
-    bool open = true, all_stats = false, swap = true, quiet = false;
+    bool open = true, all_stats = false, swap = true, quiet = false, json_out = false;
+    std::string netlist_file;
 
     for (int i = 1; i < argc; ++i) {
         std::string a = argv[i];
@@ -248,6 +259,14 @@ int main(int argc, char** argv) {
             all_stats = true;
         } else if (a == "--no-swap") {
             swap = false;
+        } else if (a == "--json") {
+            json_out = true;
+        } else if (a == "--check-netlist") {
+            if (++i >= argc) {
+                std::cerr << "kigit: " << a << " needs a netlist file\n";
+                return 2;
+            }
+            netlist_file = argv[i];
         } else if (a == "-q" || a == "--quiet") {
             quiet = true;
         } else if (a.starts_with("-") && a.size() > 1) {
@@ -276,8 +295,10 @@ int main(int argc, char** argv) {
         std::cerr << "kigit: --files compares two files directly; drop the git revisions\n";
         return 2;
     }
+    // --check-netlist looks at one revision: the one given, or the working tree.
+    if (!netlist_file.empty() && revs.size() == 1) revs.push_back(revs[0]);
     if (!files_mode) {
-        if (revs.empty()) revs.push_back("HEAD");
+        if (revs.empty()) revs.push_back(netlist_file.empty() ? "HEAD" : "LOCAL");
         if (revs.size() == 1) revs.push_back("LOCAL");
     }
 
@@ -296,7 +317,7 @@ int main(int argc, char** argv) {
 
         fs::path board_path;
         git::Revision old_rev, new_rev;
-        std::string file, old_text, new_text;
+        std::string file, old_text, new_text, repo_root;
         std::vector<std::string> warnings;
         auto t0 = std::chrono::steady_clock::now();
 
@@ -324,6 +345,7 @@ int main(int argc, char** argv) {
                                          "       To compare two board files without git:\n"
                                          "       kigit --files OLD.kicad_pcb NEW.kicad_pcb");
             std::string root = git::toplevel(existing.string());
+            repo_root = root;
             std::string rel =
                 fs::weakly_canonical(board_path).lexically_relative(fs::weakly_canonical(root)).generic_string();
             if (rel.empty() || rel.starts_with(".."))
@@ -385,6 +407,31 @@ int main(int argc, char** argv) {
         }
         for (const auto& w : warnings) warn(w);
 
+        // The root schematic sits next to the board with the same name.
+        auto schematic_for = [&](const git::Revision& rev) -> std::optional<Schematic> {
+            fs::path board_file = files_mode ? fs::path(rev.path) : fs::path(rev.board_rel);
+            fs::path sch_file = fs::path(board_file).replace_extension(".kicad_sch");
+            fs::path sch_dir = sch_file.parent_path();
+            FileReader reader = [&, sch_dir](const std::string& rel) -> std::optional<std::string> {
+                fs::path p = sch_dir / rel;
+                if (files_mode) return read_disk(p);
+                return read_board_at(repo_root, p.generic_string(), rev);
+            };
+            if (!reader(sch_file.filename().string())) return std::nullopt;
+            Schematic sch = load_schematic(sch_file.filename().string(), reader);
+            return sch;
+        };
+
+        if (!netlist_file.empty()) {
+            std::optional<Schematic> sch = schematic_for(new_rev);
+            if (!sch) throw std::runtime_error("no schematic next to " + file + " at " + new_rev.short_hash);
+            std::optional<std::string> text = read_disk(netlist_file);
+            if (!text) throw std::runtime_error("cannot read " + netlist_file);
+            std::printf("kigit: checking %s schematic nets at %s against %s\n\n",
+                        fs::path(file).stem().string().c_str(), new_rev.short_hash.c_str(), netlist_file.c_str());
+            return check_netlist(*sch, *text, false) ? 0 : 1;
+        }
+
         auto t1 = std::chrono::steady_clock::now();
         Board old_board = load_board(old_text);
         Board new_board = load_board(new_text);
@@ -393,16 +440,38 @@ int main(int argc, char** argv) {
         auto t3 = std::chrono::steady_clock::now();
 
         ReportInfo info{file, old_rev, new_rev, warnings};
-        std::string html = render_html(old_board, new_board, diff, info);
+        nlohmann::json data = report_data(old_board, new_board, diff, info);
+        std::string body;
+        double sch_ms = 0;
+        if (json_out) {
+            auto s0 = std::chrono::steady_clock::now();
+            nlohmann::json sch = nlohmann::json::object();
+            for (auto [side, rev] : {std::pair{"old", &old_rev}, std::pair{"new", &new_rev}}) {
+                std::optional<Schematic> s = schematic_for(*rev);
+                if (s) {
+                    sch[side] = schematic_json(*s);
+                    for (const auto& w : s->warnings) warn(std::string(side) + " schematic: " + w);
+                } else {
+                    sch[side] = nullptr;
+                    warn("no schematic next to the board at " + rev->short_hash);
+                }
+            }
+            sch_ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - s0).count();
+            data["schematic"] = sch;
+            body = data.dump();
+        } else {
+            body = render_html(data);
+        }
         auto t4 = std::chrono::steady_clock::now();
 
         fs::path out_dir = fs::is_directory(board_path.parent_path()) ? board_path.parent_path() : project;
         fs::path out = output.empty()
                            ? default_output(out_dir, fs::path(file).stem().string(), old_rev, new_rev)
                            : fs::absolute(output);
+        if (json_out && output.empty()) out.replace_extension(".json");
         std::ofstream f(out, std::ios::binary);
         if (!f) throw std::runtime_error("cannot write " + out.string());
-        f << html;
+        f << body;
         f.close();
 
         if (!quiet) {
@@ -411,16 +480,17 @@ int main(int argc, char** argv) {
             };
             std::printf("kigit: %s  %s -> %s\n", file.c_str(), old_rev.short_hash.c_str(),
                         new_rev.short_hash.c_str());
-            std::printf("  read %.0f ms, parse %.1f ms, diff %.1f ms, html %.1f ms  (%zu + %zu items)\n",
-                        ms(t0, t1), ms(t1, t2), ms(t2, t3), ms(t3, t4), old_board.items.size(),
-                        new_board.items.size());
+            std::printf("  read %.0f ms, parse %.1f ms, diff %.1f ms, %s %.1f ms  (%zu + %zu items)\n",
+                        ms(t0, t1), ms(t1, t2), ms(t2, t3), json_out ? "json" : "html", ms(t3, t4),
+                        old_board.items.size(), new_board.items.size());
+            if (json_out) std::printf("  schematics (both revisions) %.1f ms\n", sch_ms);
             print_summary(diff, all_stats);
             std::printf("\n");
         }
         std::printf("%s\n", out.string().c_str());
-        if (!open && !quiet) std::printf("open it with: xdg-open '%s'\n", out.string().c_str());
+        if (!open && !quiet && !json_out) std::printf("open it with: xdg-open '%s'\n", out.string().c_str());
 
-        if (open) {
+        if (open && !json_out) {
             std::string cmd = "xdg-open '" + out.string() + "' >/dev/null 2>&1 &";
             if (std::system(cmd.c_str()) != 0 && !quiet)
                 std::fprintf(stderr, "kigit: could not open a browser, open the file above\n");

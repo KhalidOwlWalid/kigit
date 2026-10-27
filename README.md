@@ -85,6 +85,28 @@ browser. In the viewer:
 
 The terminal also gets a summary of the most-changed nets.
 
+## Schematic nets (work in progress)
+
+kigit also reads the schematic next to the board (all sheets, including
+KiCad 10's multiple top-level sheets from the `.kicad_pro`) and works out its
+nets itself: which pins each wire, label and power symbol connects. There's
+no schematic view yet; for now it's available as data:
+
+```sh
+kigit --json c46da63..HEAD            # PCB diff + both revisions' schematic nets
+```
+
+To verify the connectivity against KiCad's own netlist:
+
+```sh
+kicad-cli sch export netlist -o owl.net owl_v1.kicad_sch
+kigit --check-netlist owl.net         # LOCAL; or add a revision: ... owl.net c46da63
+```
+
+It prints any net whose pins or name differ. On the owl_v1 history (25
+schematic commits) every net matches KiCad exactly. Buses aren't supported
+yet.
+
 ## How matching works
 
 Items are matched by kind, net, layer and geometry (rounded to 1 nm). An item
