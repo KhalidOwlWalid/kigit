@@ -19,6 +19,7 @@ struct ReportInfo {
 };
 
 struct Schematic;
+struct SchDiff;
 
 // Everything the viewer needs about the PCB diff, as JSON.
 nlohmann::json report_data(const Board& old_board, const Board& new_board, const Diff& diff,
@@ -26,6 +27,13 @@ nlohmann::json report_data(const Board& old_board, const Board& new_board, const
 
 // One revision's schematic: sheets, parts and computed nets.
 nlohmann::json schematic_json(const Schematic& sch);
+
+// What changed between two schematics (only the changed parts and nets).
+nlohmann::json schematic_diff_json(const SchDiff& d);
+
+// Everything the schematic view draws: per sheet, wires/labels/parts with
+// their change status and net, plus symbol drawings, nets and parts.
+nlohmann::json schematic_view_json(const Schematic& old_sch, const Schematic& new_sch, const SchDiff& d);
 
 // The full HTML page with `data` embedded.
 std::string render_html(const nlohmann::json& data);

@@ -5,6 +5,7 @@
 #include "html.hpp"
 #include "locate.hpp"
 #include "netcheck.hpp"
+#include "sch_diff.hpp"
 #include "schematic.hpp"
 
 #include <nlohmann/json.hpp>
@@ -18,7 +19,9 @@
 #include <fstream>
 #include <iostream>
 #include <optional>
+#include <set>
 #include <sstream>
+#include <tuple>
 #include <unistd.h>
 #include <string>
 #include <vector>
@@ -178,6 +181,104 @@ std::string signed_counts(int add, int rem) {
     if (add) s += "+" + std::to_string(add);
     if (rem) s += (s.empty() ? "-" : " -") + std::to_string(rem);
     return s.empty() ? "." : s;
+}
+
+std::string join_list(const std::vector<std::string>& v, size_t limit = 6) {
+    std::string out;
+    for (size_t i = 0; i < v.size() && i < limit; ++i) out += (i ? ", " : "") + v[i];
+    if (v.size() > limit) out += ", +" + std::to_string(v.size() - limit) + " more";
+    return out;
+}
+
+// Terminal summary of the schematic diff. Cosmetic changes (moves, redrawn
+// wires) only with --stats.
+void print_sch_summary(const SchDiff& d, const Schematic& a, const Schematic& b, bool all) {
+    int added = 0, removed = 0, electrical = 0, fields = 0, cosmetic_parts = 0, nets_changed = 0, nets_renamed = 0,
+        nets_cosmetic = 0;
+    for (const auto& s : d.symbols) {
+        if (s.status == SchStatus::Added) ++added;
+        else if (s.status == SchStatus::Removed) ++removed;
+        else if (s.status == SchStatus::Changed && s.electrical()) ++electrical;
+        else if (s.fields_only()) ++fields;
+        else if (s.status == SchStatus::Changed) ++cosmetic_parts;
+    }
+    for (const auto& n : d.nets) {
+        if (n.status == SchStatus::Changed && !n.electrical()) ++nets_renamed;
+        else if (n.status != SchStatus::Same) ++nets_changed;
+        else if (n.cosmetic_only()) ++nets_cosmetic;
+    }
+    std::printf("\n  schematic: parts +%d -%d, %d changed electrically, %d fields only, %d only moved;"
+                " %d nets changed, %d renamed, %d only redrawn\n",
+                added, removed, electrical, fields, cosmetic_parts, nets_changed, nets_renamed, nets_cosmetic);
+
+    auto part_line = [&](const SymbolDiff& s) {
+        if (s.status == SchStatus::Added || s.status == SchStatus::Removed) {
+            const Schematic& sch = s.status == SchStatus::Added ? b : a;
+            const SchSymbol& sym = sch.symbols[s.status == SchStatus::Added ? s.new_index : s.old_index];
+            std::set<std::string> nets;
+            for (const auto& p : sym.pins)
+                if (p.net >= 0 && sch.nets[p.net].nodes.size() > 1) nets.insert(sch.nets[p.net].name);
+            std::string on = join_list({nets.begin(), nets.end()});
+            std::printf("    %s %-6s %-10s %s%s%s\n", s.status == SchStatus::Added ? "+" : "-", sym.ref.c_str(),
+                        sym.value.c_str(), sch.sheets[sym.sheet].name.empty() ? "" : ("[" + sch.sheets[sym.sheet].name + "] ").c_str(),
+                        on.empty() ? "(not connected)" : "on ", on.c_str());
+            return;
+        }
+        std::vector<std::string> what;
+        if (s.ref_before != s.ref_after) what.push_back("renamed from " + s.ref_before);
+        for (const auto& f : s.fields)
+            what.push_back(f.field + " " + (f.before.empty() ? "(none)" : f.before) + " -> " + (f.after.empty() ? "(none)" : f.after));
+        for (const auto& p : s.pins)
+            what.push_back(p.pin.text() + ": " + (p.net_before.empty() ? "(none)" : p.net_before) + " -> " +
+                           (p.net_after.empty() ? "(none)" : p.net_after));
+        if (s.moved) what.push_back("moved");
+        std::printf("    ~ %-6s %s\n", s.ref_after.c_str(), join_list(what, 4).c_str());
+    };
+    // Electrical changes first, then field edits, then (with --stats) moves.
+    std::vector<const SymbolDiff*> parts;
+    for (const auto& s : d.symbols)
+        if (s.status != SchStatus::Same && (all || s.electrical() || s.fields_only())) parts.push_back(&s);
+    std::stable_sort(parts.begin(), parts.end(), [](const SymbolDiff* x, const SymbolDiff* y) {
+        auto rank = [](const SymbolDiff* s) { return s->electrical() ? 0 : s->fields_only() ? 1 : 2; };
+        return rank(x) < rank(y);
+    });
+    int shown = 0;
+    for (const SymbolDiff* sp : parts) {
+        const SymbolDiff& s = *sp;
+        if (!all && ++shown > 20) {
+            std::printf("    ... more parts (use --stats)\n");
+            break;
+        }
+        part_line(s);
+    }
+
+    shown = 0;
+    for (const auto& n : d.nets) {
+        if (n.status == SchStatus::Same && !(all && n.cosmetic_only())) continue;
+        if (!all && ++shown > 20) {
+            std::printf("    ... more nets (use --stats)\n");
+            break;
+        }
+        std::vector<std::string> joined, left;
+        for (const auto& p : n.joined) joined.push_back(p.text());
+        for (const auto& p : n.left) left.push_back(p.text());
+        std::string name = n.status == SchStatus::Removed ? n.name_before : n.name_after;
+        if (n.status == SchStatus::Same) {
+            std::printf("    = net %-24s wiring redrawn, connections unchanged (wires +%d -%d)\n", name.c_str(),
+                        n.wires_added, n.wires_removed);
+            continue;
+        }
+        const char* mark = n.status == SchStatus::Added ? "+" : n.status == SchStatus::Removed ? "-" : "~";
+        std::string line;
+        if (n.status == SchStatus::Changed && n.name_before != n.name_after) line += "renamed from " + n.name_before + "  ";
+        if (!n.merged_into.empty()) {
+            std::printf("    - net %-24s merged into %s\n", name.c_str(), n.merged_into.c_str());
+            continue;
+        }
+        if (!joined.empty()) line += "joined: " + join_list(joined) + "  ";
+        if (!left.empty()) line += "left: " + join_list(left);
+        std::printf("    %s net %-24s %s\n", mark, name.c_str(), line.c_str());
+    }
 }
 
 void print_summary(const Diff& d, bool all) {
@@ -442,24 +543,28 @@ int main(int argc, char** argv) {
         ReportInfo info{file, old_rev, new_rev, warnings};
         nlohmann::json data = report_data(old_board, new_board, diff, info);
         std::string body;
-        double sch_ms = 0;
+
+        // Schematics of both revisions, and their diff.
+        auto s0 = std::chrono::steady_clock::now();
+        std::optional<Schematic> old_sch = schematic_for(old_rev), new_sch = schematic_for(new_rev);
+        for (auto [side, sch, rev] : {std::tuple{"old", &old_sch, &old_rev}, std::tuple{"new", &new_sch, &new_rev}}) {
+            if (!*sch) warn(std::string("no schematic next to the board at ") + rev->short_hash);
+            else
+                for (const auto& w : (*sch)->warnings) warn(std::string(side) + " schematic: " + w);
+        }
+        std::optional<SchDiff> sch_diff;
+        if (old_sch && new_sch) sch_diff = diff_schematics(*old_sch, *new_sch);
+        double sch_ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - s0).count();
+
         if (json_out) {
-            auto s0 = std::chrono::steady_clock::now();
             nlohmann::json sch = nlohmann::json::object();
-            for (auto [side, rev] : {std::pair{"old", &old_rev}, std::pair{"new", &new_rev}}) {
-                std::optional<Schematic> s = schematic_for(*rev);
-                if (s) {
-                    sch[side] = schematic_json(*s);
-                    for (const auto& w : s->warnings) warn(std::string(side) + " schematic: " + w);
-                } else {
-                    sch[side] = nullptr;
-                    warn("no schematic next to the board at " + rev->short_hash);
-                }
-            }
-            sch_ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - s0).count();
+            sch["old"] = old_sch ? schematic_json(*old_sch) : nlohmann::json(nullptr);
+            sch["new"] = new_sch ? schematic_json(*new_sch) : nlohmann::json(nullptr);
             data["schematic"] = sch;
+            data["schematic_diff"] = sch_diff ? schematic_diff_json(*sch_diff) : nlohmann::json(nullptr);
             body = data.dump();
         } else {
+            if (sch_diff) data["sch"] = schematic_view_json(*old_sch, *new_sch, *sch_diff);
             body = render_html(data);
         }
         auto t4 = std::chrono::steady_clock::now();
@@ -483,8 +588,9 @@ int main(int argc, char** argv) {
             std::printf("  read %.0f ms, parse %.1f ms, diff %.1f ms, %s %.1f ms  (%zu + %zu items)\n",
                         ms(t0, t1), ms(t1, t2), ms(t2, t3), json_out ? "json" : "html", ms(t3, t4),
                         old_board.items.size(), new_board.items.size());
-            if (json_out) std::printf("  schematics (both revisions) %.1f ms\n", sch_ms);
+            std::printf("  schematics (both revisions, read + nets + diff) %.1f ms\n", sch_ms);
             print_summary(diff, all_stats);
+            if (sch_diff) print_sch_summary(*sch_diff, *old_sch, *new_sch, all_stats);
             std::printf("\n");
         }
         std::printf("%s\n", out.string().c_str());

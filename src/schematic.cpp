@@ -8,6 +8,7 @@
 #include <cmath>
 #include <map>
 #include <numeric>
+#include <set>
 #include <stdexcept>
 #include <unordered_map>
 
@@ -22,9 +23,16 @@ namespace {
 struct LibPin {
     std::string number, name, type;
     Point at;       // library coordinates (y points up)
+    double angle = 0, length = 2.54;
+    double name_size = 1.27, number_size = 1.27;
     bool hidden = false;
     int unit = 0;   // 0 = shared by all units
     int style = 0;  // body style (De Morgan), 0 = shared
+};
+
+struct LibGraphic {
+    int unit = 0, style = 0;
+    SymbolGraphic g;
 };
 
 struct LibSymbol {
@@ -32,6 +40,10 @@ struct LibSymbol {
     bool local_power = false; // (power local): net is local to the sheet
     std::string extends;
     std::vector<LibPin> pins;
+    std::vector<LibGraphic> graphics;
+    double name_offset = 0.508;
+    bool hide_names = false, hide_numbers = false;
+    int unit_count = 1;
 };
 
 using LibMap = std::unordered_map<std::string, LibSymbol>;
@@ -47,6 +59,93 @@ bool has_flag(const Node& n, std::string_view flag) {
         if (c.is_list && c.name() == flag) return c.arg_count() == 0 || c.arg(0) == "yes";
     }
     return false;
+}
+
+// Font size, justification and visibility from (effects ...), plus a
+// (hide yes) directly on the item (newer files).
+void read_style(const Node& n, SchText& t) {
+    if (has_flag(n, "hide")) t.hidden = true;
+    const Node* e = n.child("effects");
+    if (!e) return;
+    if (const Node* f = e->child("font"))
+        if (const Node* sz = f->child("size")) t.size = sz->num(0, 1.27);
+    if (const Node* j = e->child("justify")) {
+        for (size_t i = 0; i < j->arg_count(); ++i) {
+            std::string_view a = j->arg(i);
+            if (a == "left") t.h = -1;
+            else if (a == "right") t.h = 1;
+            else if (a == "top") t.v = -1;
+            else if (a == "bottom") t.v = 1;
+        }
+    }
+    if (has_flag(*e, "hide")) t.hidden = true;
+}
+
+double text_size(const Node* n, double fallback = 1.27) {
+    SchText t;
+    t.size = fallback;
+    if (n) read_style(*n, t);
+    return t.size;
+}
+
+// SVG path for a graphic item (rectangle, polyline, circle, arc), flipping y
+// if `flip_y` (library coordinates point up).
+std::string graphic_path(const Node& g, bool flip_y) {
+    auto pt = [&](const Node* n) {
+        Point p = xy(n);
+        if (flip_y) p.y = -p.y;
+        return p;
+    };
+    auto str = [](Point p) { return svg_num(p.x) + " " + svg_num(p.y); };
+    std::string_view kind = g.name();
+    if (kind == "rectangle") {
+        Point a = pt(g.child("start")), b = pt(g.child("end"));
+        return "M" + str(a) + "H" + svg_num(b.x) + "V" + svg_num(b.y) + "H" + svg_num(a.x) + "Z";
+    }
+    if (kind == "polyline" || kind == "bezier") {
+        std::string d;
+        if (const Node* pts = g.child("pts"))
+            pts->each("xy", [&](const Node& q) { d += (d.empty() ? "M" : "L") + str(pt(&q)); });
+        return d;
+    }
+    if (kind == "circle") {
+        Point c = pt(g.child("center"));
+        double r = g.child("radius") ? g.child("radius")->num(0) : 0;
+        std::string rs = svg_num(r) + " " + svg_num(r) + " 0 1 1 ";
+        return "M" + str({c.x - r, c.y}) + "A" + rs + str({c.x + r, c.y}) + "A" + rs + str({c.x - r, c.y}) + "Z";
+    }
+    if (kind == "arc") return svg_arc_path(pt(g.child("start")), pt(g.child("mid")), pt(g.child("end")));
+    return {};
+}
+
+int fill_of(const Node& g) {
+    const Node* f = g.child("fill");
+    if (!f) return 0;
+    std::string_view t = f->child("type") ? f->child("type")->arg(0) : f->arg(0);
+    return t == "outline" ? 1 : t == "background" ? 2 : 0;
+}
+
+bool is_graphic(std::string_view k) {
+    return k == "rectangle" || k == "polyline" || k == "circle" || k == "arc" || k == "bezier";
+}
+
+Point paper_size(const Node* paper) {
+    if (!paper) return {297, 210};
+    std::string_view name = paper->arg(0);
+    static const std::map<std::string_view, Point> sizes = {
+        {"A5", {210, 148}},     {"A4", {297, 210}},     {"A3", {420, 297}},     {"A2", {594, 420}},
+        {"A1", {841, 594}},     {"A0", {1189, 841}},    {"A", {279.4, 215.9}},  {"B", {431.8, 279.4}},
+        {"C", {558.8, 431.8}},  {"D", {863.6, 558.8}},  {"E", {1117.6, 863.6}}, {"USLetter", {279.4, 215.9}},
+        {"USLegal", {355.6, 215.9}}, {"USLedger", {431.8, 279.4}}};
+    Point p{297, 210};
+    if (name == "User") {
+        p = {paper->num(1, 297), paper->num(2, 210)};
+    } else if (auto f = sizes.find(name); f != sizes.end()) {
+        p = f->second;
+    }
+    for (size_t i = 0; i < paper->arg_count(); ++i)
+        if (paper->arg(i) == "portrait") std::swap(p.x, p.y);
+    return p;
 }
 
 std::string property(const Node& n, std::string_view key) {
@@ -84,21 +183,47 @@ LibMap read_lib_symbols(const Node& sheet) {
             ls.local_power = p->arg(0) == "local";
         }
         if (const Node* e = s.child("extends")) ls.extends = sexpr::unescape(e->arg(0));
+        if (const Node* pn = s.child("pin_names")) {
+            if (const Node* off = pn->child("offset")) ls.name_offset = off->num(0, 0.508);
+            ls.hide_names = has_flag(*pn, "hide");
+        }
+        if (const Node* pn = s.child("pin_numbers")) ls.hide_numbers = has_flag(*pn, "hide");
+        std::set<int> units;
         s.each("symbol", [&](const Node& u) {
             int unit, style;
             unit_and_style(sexpr::unescape(u.arg(0)), unit, style);
+            if (unit > 0) units.insert(unit);
+            for (const Node& g : u.children) {
+                if (!g.is_list || !is_graphic(g.name())) continue;
+                std::string d = graphic_path(g, true);
+                double width = 0;
+                if (const Node* st = g.child("stroke"))
+                    if (const Node* w = st->child("width")) width = w->num(0);
+                if (!d.empty()) ls.graphics.push_back({unit, style, {d, fill_of(g), width}});
+            }
             u.each("pin", [&](const Node& p) {
                 LibPin lp;
                 lp.type = std::string(p.arg(0));
-                lp.at = xy(p.child("at"));
+                if (const Node* at = p.child("at")) {
+                    lp.at = xy(at);
+                    lp.angle = at->num(2);
+                }
+                if (const Node* len = p.child("length")) lp.length = len->num(0, 2.54);
                 lp.hidden = has_flag(p, "hide");
-                if (const Node* n = p.child("name")) lp.name = sexpr::unescape(n->arg(0));
-                if (const Node* n = p.child("number")) lp.number = sexpr::unescape(n->arg(0));
+                if (const Node* n = p.child("name")) {
+                    lp.name = sexpr::unescape(n->arg(0));
+                    lp.name_size = text_size(n);
+                }
+                if (const Node* n = p.child("number")) {
+                    lp.number = sexpr::unescape(n->arg(0));
+                    lp.number_size = text_size(n);
+                }
                 lp.unit = unit;
                 lp.style = style;
                 ls.pins.push_back(std::move(lp));
             });
         });
+        ls.unit_count = std::max<int>(1, static_cast<int>(units.size()));
         lib[sexpr::unescape(s.arg(0))] = std::move(ls);
     });
     // Derived symbols take their pins from the parent.
@@ -109,7 +234,11 @@ LibMap read_lib_symbols(const Node& sheet) {
             auto colon = name.find(':');
             if (colon != std::string::npos) parent = lib.find(name.substr(0, colon + 1) + sym.extends);
         }
-        if (parent != lib.end()) sym.pins = parent->second.pins;
+        if (parent != lib.end()) {
+            sym.pins = parent->second.pins;
+            sym.graphics = parent->second.graphics;
+            sym.unit_count = parent->second.unit_count;
+        }
     }
     return lib;
 }
@@ -167,6 +296,7 @@ private:
             if (const Node* u = top->child("uuid")) root.uuid_path = "/" + sexpr::unescape(u->arg(0));
         }
 
+        sch_.sheets[index].paper = paper_size(top->child("paper"));
         const SheetInstance sheet = sch_.sheets[index]; // copy: the vector grows below
         LibMap lib = read_lib_symbols(*top);
         std::vector<std::pair<int, std::string>> children; // (instance, file)
@@ -184,6 +314,20 @@ private:
                 if (p.size() == 2) sch_.wires.push_back({index, p[0], p[1], -1});
             } else if (kind == "junction") {
                 sch_.junctions.emplace_back(index, xy(n.child("at")));
+            } else if (kind == "no_connect") {
+                sch_.no_connects.emplace_back(index, xy(n.child("at")));
+            } else if (kind == "text") {
+                SchText t;
+                t.text = sexpr::unescape(n.arg(0));
+                if (const Node* at = n.child("at")) {
+                    t.at = xy(at);
+                    t.angle = at->num(2);
+                }
+                read_style(n, t);
+                sch_.texts.emplace_back(index, std::move(t));
+            } else if (is_graphic(kind)) {
+                std::string d = graphic_path(n, false);
+                if (!d.empty()) sch_.drawings.emplace_back(index, std::move(d));
             } else if (kind == "label" || kind == "global_label" || kind == "hierarchical_label") {
                 SchLabel l;
                 l.sheet = index;
@@ -191,7 +335,12 @@ private:
                          : kind == "global_label" ? LabelKind::Global
                                                   : LabelKind::Hierarchical;
                 l.text = sexpr::unescape(n.arg(0));
-                l.at = xy(n.child("at"));
+                if (const Node* at = n.child("at")) {
+                    l.at = xy(at);
+                    l.angle = at->num(2);
+                }
+                if (const Node* sh = n.child("shape")) l.shape = std::string(sh->arg(0));
+                l.size = text_size(&n);
                 sch_.labels.push_back(std::move(l));
             } else if (kind == "sheet") {
                 SheetInstance child;
@@ -204,12 +353,38 @@ private:
                 child.uuid_path = sheet.uuid_path + "/" + uuid;
                 int child_index = static_cast<int>(sch_.sheets.size());
                 sch_.sheets.push_back(child);
+
+                SchSheetBox box;
+                box.sheet = index;
+                box.child = child_index;
+                box.at = xy(n.child("at"));
+                box.size = xy(n.child("size"));
+                n.each("property", [&](const Node& p) {
+                    std::string key = sexpr::unescape(p.arg(0));
+                    if (key != "Sheetname" && key != "Sheetfile" && key != "Sheet name" && key != "Sheet file") return;
+                    SchText t;
+                    t.text = sexpr::unescape(p.arg(1));
+                    if (const Node* at = p.child("at")) {
+                        t.at = xy(at);
+                        t.angle = at->num(2);
+                    }
+                    read_style(p, t);
+                    (key == "Sheetname" || key == "Sheet name" ? box.name : box.file) = std::move(t);
+                });
+                if (box.file.text.empty()) box.file.text = child.file;
+                sch_.sheet_boxes.push_back(std::move(box));
+
                 n.each("pin", [&](const Node& p) {
                     SchLabel l;
                     l.sheet = index;
                     l.kind = LabelKind::SheetPin;
                     l.text = sexpr::unescape(p.arg(0));
-                    l.at = xy(p.child("at"));
+                    if (const Node* at = p.child("at")) {
+                        l.at = xy(at);
+                        l.angle = at->num(2);
+                    }
+                    l.shape = std::string(p.arg(1));
+                    l.size = text_size(&p);
                     l.child = child_index;
                     sch_.labels.push_back(std::move(l));
                 });
@@ -256,6 +431,11 @@ private:
         s.ref = property(n, "Reference");
         s.value = property(n, "Value");
         s.footprint = property(n, "Footprint");
+        n.each("property", [&](const Node& p) {
+            std::string key = sexpr::unescape(p.arg(0));
+            if (key != "Reference" && key != "Value" && key != "Footprint")
+                s.fields[key] = sexpr::unescape(p.arg(1));
+        });
 
         // The reference and unit for this sheet instance live in (instances).
         if (const Node* inst = n.child("instances")) {
@@ -272,9 +452,20 @@ private:
         if (found == lib.end()) {
             sch_.warnings.push_back("symbol " + s.ref + " (" + lib_key + ") has no library definition");
         } else {
-            s.power = found->second.power;
-            local_power_[sch_.symbols.size()] = found->second.local_power;
-            for (const LibPin& lp : found->second.pins) {
+            const LibSymbol& ls = found->second;
+            s.power = ls.power;
+            local_power_[sch_.symbols.size()] = ls.local_power;
+            s.def = lib_key + "|" + std::to_string(s.unit) + "|" + std::to_string(style);
+            bool new_def = !sch_.defs.count(s.def);
+            SymbolDef& def = sch_.defs[s.def];
+            if (new_def) {
+                def.name_offset = ls.name_offset;
+                def.hide_names = ls.hide_names;
+                def.hide_numbers = ls.hide_numbers;
+                for (const auto& g : ls.graphics)
+                    if ((g.unit == 0 || g.unit == s.unit) && (g.style == 0 || g.style == style)) def.graphics.push_back(g.g);
+            }
+            for (const LibPin& lp : ls.pins) {
                 if (lp.unit != 0 && lp.unit != s.unit) continue;
                 if (lp.style != 0 && lp.style != style) continue;
                 SchPin pin;
@@ -284,7 +475,24 @@ private:
                 pin.hidden = lp.hidden;
                 pin.pos = place_pin(lp.at, s);
                 s.pins.push_back(std::move(pin));
+                if (new_def)
+                    def.pins.push_back({{lp.at.x, -lp.at.y}, lp.angle, lp.length, lp.number, lp.name,
+                                        lp.number_size, lp.name_size, lp.hidden});
             }
+            // Multi-unit parts show their unit letter: U1A, U1B.
+            std::string shown_ref = s.ref;
+            if (ls.unit_count > 1 && s.unit >= 1 && s.unit <= 26) shown_ref += static_cast<char>('A' + s.unit - 1);
+            n.each("property", [&](const Node& p) {
+                SchText t;
+                std::string key = sexpr::unescape(p.arg(0));
+                t.text = key == "Reference" ? shown_ref : sexpr::unescape(p.arg(1));
+                if (const Node* at = p.child("at")) {
+                    t.at = xy(at);
+                    t.angle = at->num(2);
+                }
+                read_style(p, t);
+                if (!t.hidden && !t.text.empty()) s.visible_fields.push_back(std::move(t));
+            });
         }
         sch_.symbols.push_back(std::move(s));
     }

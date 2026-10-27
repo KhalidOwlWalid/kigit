@@ -19,10 +19,17 @@ if(NOT nlohmann_json_FOUND)
   FetchContent_MakeAvailable(json)
 endif()
 
-# Embed the HTML viewer template into the binary.
-set(VIEWER_SRC ${CMAKE_CURRENT_SOURCE_DIR}/resources/viewer.html)
-set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${VIEWER_SRC})
-file(READ ${VIEWER_SRC} KIGIT_VIEWER_HTML)
+# Embed the HTML viewer into the binary: the page shell plus its scripts,
+# combined into one self-contained file.
+set(VIEWER_DIR ${CMAKE_CURRENT_SOURCE_DIR}/resources)
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+  ${VIEWER_DIR}/viewer.html ${VIEWER_DIR}/pcb.js ${VIEWER_DIR}/sch.js ${VIEWER_DIR}/shell.js)
+file(READ ${VIEWER_DIR}/viewer.html KIGIT_VIEWER_HTML)
+foreach(part PCB SCH SHELL)
+  string(TOLOWER ${part} name)
+  file(READ ${VIEWER_DIR}/${name}.js script)
+  string(REPLACE "/*@KIGIT_${part}_JS@*/" "${script}" KIGIT_VIEWER_HTML "${KIGIT_VIEWER_HTML}")
+endforeach()
 configure_file(src/viewer_template.hpp.in
                ${CMAKE_CURRENT_BINARY_DIR}/generated/viewer_template.hpp @ONLY)
 
@@ -35,6 +42,7 @@ add_executable(kigit
   src/html.cpp
   src/locate.cpp
   src/schematic.cpp
+  src/sch_diff.cpp
   src/netcheck.cpp
 )
 target_include_directories(kigit PRIVATE src ${CMAKE_CURRENT_BINARY_DIR}/generated)
