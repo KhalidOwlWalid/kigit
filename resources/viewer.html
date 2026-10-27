@@ -36,6 +36,11 @@ aside h3 { margin: 0 0 8px; font-size: 11px; font-weight: 600; letter-spacing: .
 .rev code { color: var(--text); }
 .rev .subj { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
+.warn { margin-top: 10px; padding: 8px 10px; border-radius: 8px; font-size: 12px;
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent); color: var(--text); }
+.warn b { color: var(--accent); display: block; margin-bottom: 2px; }
+.warn p { margin: 4px 0 0; overflow-wrap: anywhere; }
 .chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .chip { display: inline-flex; align-items: center; gap: 6px; padding: 3px 9px; border-radius: 999px;
   border: 1px solid var(--line); background: var(--panel2); cursor: pointer; user-select: none; }
@@ -139,6 +144,7 @@ main { position: relative; min-width: 0; min-height: 0; overflow: hidden; }
       <div class="brand"><span class="logo">kigit</span><span class="board" id="boardName"></span></div>
       <div class="rev"><span class="tag old">OLD</span><code id="oldHash"></code><span class="subj" id="oldSubj"></span></div>
       <div class="rev"><span class="tag new">NEW</span><code id="newHash"></code><span class="subj" id="newSubj"></span></div>
+      <div id="warnings"></div>
     </section>
     <section>
       <h3>Show</h3>
@@ -209,6 +215,12 @@ const DATA = /*KIGIT_DATA*/null;
   $("#newSubj").textContent = meta.new.subject;
   $("#oldSubj").title = meta.old.subject + (meta.old.date ? "\n" + meta.old.date : "");
   $("#newSubj").title = meta.new.subject + (meta.new.date ? "\n" + meta.new.date : "");
+  $("#oldHash").title = meta.old.path || "";
+  $("#newHash").title = meta.new.path || "";
+  if (meta.warnings && meta.warnings.length) {
+    $("#warnings").innerHTML = `<div class="warn"><b>⚠ Board file location changed</b>` +
+      meta.warnings.map((w) => `<p>${esc(w)}</p>`).join("") + `</div>`;
+  }
 
   // ---------- draw ----------
   const perLayer = layers.map(() => ({ zones: "", pads: ["", "", ""], tracks: ["", "", ""], hits: "" }));

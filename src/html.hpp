@@ -6,12 +6,14 @@
 #include "git.hpp"
 
 #include <string>
+#include <vector>
 
 namespace kigit {
 
 struct ReportInfo {
     std::string board_name;
     git::Revision old_rev, new_rev;
+    std::vector<std::string> warnings; // shown in the viewer, e.g. board moved
 };
 
 // Returns the full HTML page for the diff.

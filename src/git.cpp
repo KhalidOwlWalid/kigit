@@ -1,6 +1,8 @@
 #include "git.hpp"
 
 #include <array>
+#include <optional>
+#include <vector>
 #include <cstdio>
 #include <ctime>
 #include <sys/stat.h>
@@ -99,6 +101,36 @@ std::string read_file(const std::string& dir, const std::string& file, const Rev
     std::string text = git(dir, "show " + quote(rev.hash + ":./" + file), ok);
     if (!ok) throw std::runtime_error(file + " does not exist at " + rev.short_hash);
     return text;
+}
+
+std::string toplevel(const std::string& dir) {
+    bool ok;
+    std::string out = git(dir, "rev-parse --show-toplevel", ok);
+    while (!out.empty() && (out.back() == '\n' || out.back() == '\r')) out.pop_back();
+    if (!ok || out.empty()) throw std::runtime_error(dir + " is not in a git repository");
+    return out;
+}
+
+std::optional<std::string> show(const std::string& root, const std::string& rel, const Revision& rev) {
+    bool ok;
+    std::string text = git(root, "show " + quote(rev.hash + ":" + rel), ok);
+    if (!ok) return std::nullopt;
+    return text;
+}
+
+std::vector<std::string> list_files(const std::string& root, const Revision& rev) {
+    bool ok;
+    std::string out = git(root, "ls-tree -r -z --name-only --full-tree " + quote(rev.hash), ok);
+    std::vector<std::string> files;
+    if (!ok) return files;
+    size_t start = 0;
+    for (size_t i = 0; i < out.size(); ++i) {
+        if (out[i] == '\0') {
+            if (i > start) files.push_back(out.substr(start, i - start));
+            start = i + 1;
+        }
+    }
+    return files;
 }
 
 bool is_ancestor(const std::string& dir, const Revision& ancestor, const Revision& descendant) {

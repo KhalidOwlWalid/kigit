@@ -3,6 +3,7 @@
 #include "diff.hpp"
 #include "git.hpp"
 #include "html.hpp"
+#include "locate.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -12,6 +13,9 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <optional>
+#include <sstream>
+#include <unistd.h>
 #include <string>
 #include <vector>
 
@@ -101,16 +105,20 @@ std::string safe_filename(std::string s) {
 }
 
 bool is_board_file(const fs::directory_entry& e) {
-    std::string name = e.path().filename().string();
-    return e.is_regular_file() && name.ends_with(".kicad_pcb") && !name.starts_with("~") &&
-           !name.starts_with("_autosave");
+    return e.is_regular_file() && is_board_name(e.path().filename().string());
 }
 
-// Skips git internals, tool output (.kiri, .kigit), KiCad backups and build dirs.
-bool skip_dir(const fs::path& p) {
-    std::string name = p.filename().string();
-    return name.starts_with(".") || name.starts_with("_restore") || name.ends_with("-backups") ||
-           name == "build" || name == "node_modules";
+void warn(const std::string& msg) {
+    bool color = isatty(2);
+    std::fprintf(stderr, "%swarning:%s %s\n", color ? "\033[1;33m" : "", color ? "\033[0m" : "", msg.c_str());
+}
+
+std::optional<std::string> read_disk(const fs::path& p) {
+    std::ifstream f(p, std::ios::binary);
+    if (!f) return std::nullopt;
+    std::ostringstream ss;
+    ss << f.rdbuf();
+    return ss.str();
 }
 
 // Finds the board in `dir`: the only .kicad_pcb at the top level, or else the
@@ -123,7 +131,7 @@ fs::path find_board(const fs::path& dir) {
     if (found.empty()) {
         auto it = fs::recursive_directory_iterator(dir, fs::directory_options::skip_permission_denied);
         for (; it != fs::recursive_directory_iterator(); ++it) {
-            if (it->is_directory() && skip_dir(it->path())) {
+            if (it->is_directory() && is_skipped_dir(it->path().filename().string())) {
                 it.disable_recursion_pending();
                 continue;
             }
@@ -288,7 +296,9 @@ int main(int argc, char** argv) {
 
         fs::path board_path;
         git::Revision old_rev, new_rev;
-        std::string dir, file;
+        std::string file, old_text, new_text;
+        std::vector<std::string> warnings;
+        auto t0 = std::chrono::steady_clock::now();
 
         if (files_mode) {
             // Two files on disk, no git. Paths are relative to the current
@@ -301,31 +311,80 @@ int main(int argc, char** argv) {
             old_rev = git::from_file(old_path.string(), old_label);
             new_rev = git::from_file(new_path.string(), new_label);
             board_path = new_path;
+            file = board_path.filename().string();
+            t0 = std::chrono::steady_clock::now();
+            old_text = git::read_file("", "", old_rev);
+            new_text = git::read_file("", "", new_rev);
         } else {
             board_path = board_args.empty() ? find_board(project) : board_from_arg(board_args[0], project);
-        }
-        dir = board_path.parent_path().string();
-        file = board_path.filename().string();
-
-        if (!files_mode) {
-            if (!git::is_repo(dir))
-                throw std::runtime_error(dir + " is not in a git repository.\n"
+            // The board's folder may not exist (moved, or a path from an old commit).
+            fs::path existing = fs::is_directory(board_path.parent_path()) ? board_path.parent_path() : project;
+            if (!git::is_repo(existing.string()))
+                throw std::runtime_error(existing.string() + " is not in a git repository.\n"
                                          "       To compare two board files without git:\n"
                                          "       kigit --files OLD.kicad_pcb NEW.kicad_pcb");
-            old_rev = git::resolve(dir, revs[0]);
-            new_rev = git::resolve(dir, revs[1]);
-        }
-        if (!files_mode && swap && old_rev.hash != new_rev.hash && git::is_ancestor(dir, new_rev, old_rev)) {
-            std::swap(old_rev, new_rev);
-            if (!quiet)
-                std::printf("note: %s is older than %s, comparing %s -> %s\n", old_rev.short_hash.c_str(),
-                            new_rev.short_hash.c_str(), old_rev.short_hash.c_str(),
-                            new_rev.short_hash.c_str());
-        }
+            std::string root = git::toplevel(existing.string());
+            std::string rel =
+                fs::weakly_canonical(board_path).lexically_relative(fs::weakly_canonical(root)).generic_string();
+            if (rel.empty() || rel.starts_with(".."))
+                throw std::runtime_error(board_path.string() + " is outside the git repository " + root);
 
-        auto t0 = std::chrono::steady_clock::now();
-        std::string old_text = git::read_file(dir, file, old_rev);
-        std::string new_text = git::read_file(dir, file, new_rev);
+            old_rev = git::resolve(root, revs[0]);
+            new_rev = git::resolve(root, revs[1]);
+            if (swap && old_rev.hash != new_rev.hash && git::is_ancestor(root, new_rev, old_rev)) {
+                std::swap(old_rev, new_rev);
+                if (!quiet)
+                    std::printf("note: %s is older than %s, comparing %s -> %s\n", old_rev.short_hash.c_str(),
+                                new_rev.short_hash.c_str(), old_rev.short_hash.c_str(),
+                                new_rev.short_hash.c_str());
+            }
+
+            t0 = std::chrono::steady_clock::now();
+            std::optional<std::string> old_exact = read_board_at(root, rel, old_rev);
+            std::optional<std::string> new_exact = read_board_at(root, rel, new_rev);
+
+            // If the board isn't at `rel` in a revision (moved or renamed),
+            // look for the board there that best matches the latest version:
+            // the file on disk, else whichever revision does have it.
+            std::optional<Board> reference;
+            auto get_reference = [&]() -> const Board& {
+                if (!reference) {
+                    std::optional<std::string> latest = read_disk(board_path);
+                    if (!latest) latest = new_exact ? new_exact : old_exact;
+                    if (!latest)
+                        throw std::runtime_error(rel + " doesn't exist on disk, at " + old_rev.short_hash +
+                                                 " or at " + new_rev.short_hash +
+                                                 ". Check the path, or point --kicad-repo at the project.");
+                    reference = load_board(*latest);
+                }
+                return *reference;
+            };
+            auto take = [&](std::optional<std::string>& exact, git::Revision& rev) -> std::string {
+                if (exact) {
+                    rev.board_rel = rel;
+                    return *exact; // copy: it may still be needed as the reference
+                }
+                BoardSource src = find_similar_board(root, rel, rev, get_reference());
+                char match[160];
+                std::snprintf(match, sizeof match,
+                              "%.0f%% match: %d of %d footprints and %d of %d nets are the same as the latest board",
+                              src.score * 100, src.refs_common, src.refs_total, src.nets_common, src.nets_total);
+                warnings.push_back(rel + " doesn't exist in " +
+                                   (rev.local ? std::string("the working tree") : rev.short_hash) + ", using " +
+                                   src.rel + " instead (" + match + ")");
+                rev.board_rel = src.rel;
+                return std::move(src.text);
+            };
+            old_text = take(old_exact, old_rev);
+            new_text = take(new_exact, new_rev);
+
+            if (old_rev.board_rel != new_rev.board_rel)
+                warnings.push_back("the board was moved or renamed: " + old_rev.board_rel + " (" + old_rev.short_hash +
+                                   ") -> " + new_rev.board_rel + " (" + new_rev.short_hash + ")");
+            file = fs::path(new_rev.board_rel).filename().string();
+        }
+        for (const auto& w : warnings) warn(w);
+
         auto t1 = std::chrono::steady_clock::now();
         Board old_board = load_board(old_text);
         Board new_board = load_board(new_text);
@@ -333,12 +392,13 @@ int main(int argc, char** argv) {
         Diff diff = diff_boards(old_board, new_board);
         auto t3 = std::chrono::steady_clock::now();
 
-        ReportInfo info{file, old_rev, new_rev};
+        ReportInfo info{file, old_rev, new_rev, warnings};
         std::string html = render_html(old_board, new_board, diff, info);
         auto t4 = std::chrono::steady_clock::now();
 
+        fs::path out_dir = fs::is_directory(board_path.parent_path()) ? board_path.parent_path() : project;
         fs::path out = output.empty()
-                           ? default_output(board_path.parent_path(), board_path.stem().string(), old_rev, new_rev)
+                           ? default_output(out_dir, fs::path(file).stem().string(), old_rev, new_rev)
                            : fs::absolute(output);
         std::ofstream f(out, std::ios::binary);
         if (!f) throw std::runtime_error("cannot write " + out.string());

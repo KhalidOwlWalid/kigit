@@ -1,7 +1,9 @@
 // Thin wrapper around the git command line.
 #pragma once
 
+#include <optional>
 #include <string>
+#include <vector>
 
 namespace kigit::git {
 
@@ -14,6 +16,7 @@ struct Revision {
     std::string subject;    // commit message first line
     std::string date;       // commit date, ISO-ish
     std::string path;       // set in --files mode: read this file, no git involved
+    std::string board_rel;  // where the board was found, from the repo root
 };
 
 // A revision that is just a file on disk (no git). `label` is shown in the viewer.
@@ -27,6 +30,16 @@ Revision resolve(const std::string& dir, const std::string& spec);
 
 // Contents of `file` (relative to `dir`) at `rev`. Throws on failure.
 std::string read_file(const std::string& dir, const std::string& file, const Revision& rev);
+
+// Absolute path of the repository root containing `dir`. Throws if none.
+std::string toplevel(const std::string& dir);
+
+// Contents of `rel` (path from the repo root) at commit `rev`, or nullopt if
+// the file doesn't exist in that commit.
+std::optional<std::string> show(const std::string& root, const std::string& rel, const Revision& rev);
+
+// Every file path (from the repo root) in commit `rev`.
+std::vector<std::string> list_files(const std::string& root, const Revision& rev);
 
 // True if commit `ancestor` is an ancestor of `descendant`.
 bool is_ancestor(const std::string& dir, const Revision& ancestor, const Revision& descendant);

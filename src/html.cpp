@@ -19,7 +19,7 @@ double r4(double v) { return std::round(v * 1e4) / 1e4; }
 
 json rev_json(const git::Revision& r) {
     return {{"spec", r.spec}, {"short", r.short_hash}, {"subject", r.subject}, {"date", r.date},
-            {"local", r.local}};
+            {"local", r.local}, {"path", r.board_rel.empty() ? r.path : r.board_rel}};
 }
 
 } // namespace
@@ -127,7 +127,8 @@ std::string render_html(const Board& old_board, const Board& new_board, const Di
           {"version", KIGIT_VERSION},
           {"board", info.board_name},
           {"old", rev_json(info.old_rev)},
-          {"new", rev_json(info.new_rev)}}},
+          {"new", rev_json(info.new_rev)},
+          {"warnings", info.warnings}}},
         {"layers", jlayers},
         {"nets", jnets},
         {"outline", outline_src.outline},
