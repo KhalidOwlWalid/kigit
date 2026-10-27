@@ -203,13 +203,26 @@ schematic: parts +1 -0, 8 changed electrically, 1 fields only, 0 only moved; 3 n
 
 ## How matching works
 
-Items are matched by kind, net, layer and geometry (rounded to 1 nm). An item
-that exists in both revisions is "unchanged"; anything else is "added" or
-"removed". Moving a footprint therefore shows its pads as removed + added,
-and changing a track's width shows it as replaced.
+**PCB.** Tracks, arcs, vias and pads are matched in two passes:
+
+1. **By KiCad's ID** (the `uuid`/`tstamp` KiCad gives every item and keeps
+   when you move it; a pad uses its footprint's ID plus its pad number).
+   Same ID and same place: unchanged. Same ID and same copper (net, layers,
+   width/size, length) at a new place or angle: **moved**, shown in blue,
+   with an optional ghost at the old position. Same ID but edited (a dragged
+   track end, a new width or net): removed + added.
+2. **By geometry** for everything else (files without IDs, or copper KiCad
+   gave new IDs, e.g. after re-routing): same kind, net, layers and
+   coordinates (to 1 nm) means unchanged.
+
+So moving a footprint or the whole layout shows as moved, not as everything
+removed and re-added, while re-routing still shows the new and old copper.
 
 Zones (copper pours) are drawn from the newer revision only and aren't
 diffed, because refilling a pour changes its shape every time.
+
+**Schematic.** Parts are matched by KiCad ID (then reference), nets by label
+name or shared pins, wires and labels by position; see "Schematic diff".
 
 ## Layout
 

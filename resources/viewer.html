@@ -9,7 +9,7 @@
   --bg: #0f1115; --panel: #161a20; --panel2: #1c2128; --line: #29303a;
   --text: #d9dee6; --muted: #8b95a4; --faint: #5d6672;
   --accent: #e8b84d;
-  --added: #3ddc8a; --removed: #ff5b6f; --same: #6f7783; --same-pad: #8a919c;
+  --added: #3ddc8a; --removed: #ff5b6f; --same: #6f7783; --same-pad: #8a919c; --moved: #6aa7e8;
   --board: #0a0c0f; --edge: #e2cf4a; --via: #b9bfc8;
 }
 * { box-sizing: border-box; }
@@ -82,6 +82,12 @@ main { position: relative; min-width: 0; min-height: 0; overflow: hidden; }
 .trk.st0 { stroke: var(--same); } .trk.st1 { stroke: var(--added); } .trk.st2 { stroke: var(--removed); }
 .pad.st0 { fill: var(--same-pad); } .pad.st1 { fill: var(--added); } .pad.st2 { fill: var(--removed); }
 .via.st0 { fill: var(--via); } .via.st1 { fill: var(--added); } .via.st2 { fill: var(--removed); }
+/* Moved: same copper at a new place. Old position: a faint dashed ghost. */
+.trk.st3 { stroke: var(--moved); } .pad.st3, .via.st3 { fill: var(--moved); }
+.it.st3 { opacity: .7; }
+.trk.st4 { stroke: var(--moved); stroke-dasharray: .4 .3; } .pad.st4, .via.st4 { fill: none; stroke: var(--moved); stroke-width: .08; }
+.it.st4 { opacity: .35; pointer-events: none; }
+#board.hide-moved .st3, #board.hide-ghost .st4 { display: none; }
 .by-layer .trk.st0 { stroke: var(--lc); } .by-layer .pad.st0 { fill: var(--lc); }
 .it.st0 { opacity: .6; }
 .it.st2 { opacity: .9; }
@@ -246,6 +252,8 @@ body[data-tab="pcb"] [data-pane="sch"], body[data-tab="sch"] [data-pane="pcb"] {
         <label class="chip"><input type="checkbox" data-hide="hide-added" checked><span class="dot" style="background:var(--added)"></span>Added <span class="n" id="nAdded"></span></label>
         <label class="chip"><input type="checkbox" data-hide="hide-removed" checked><span class="dot" style="background:var(--removed)"></span>Removed <span class="n" id="nRemoved"></span></label>
         <label class="chip"><input type="checkbox" data-hide="hide-same" checked><span class="dot" style="background:var(--same)"></span>Unchanged</label>
+        <label class="chip"><input type="checkbox" data-hide="hide-moved" checked><span class="dot" style="background:var(--moved)"></span>Moved <span class="n" id="nMoved"></span></label>
+        <label class="chip"><input type="checkbox" data-hide="hide-ghost"><span class="dot" style="background:var(--faint)"></span>Old positions</label>
         <label class="chip"><input type="checkbox" data-hide="hide-pads" checked>Pads</label>
         <label class="chip"><input type="checkbox" data-hide="hide-vias" checked>Vias</label>
         <label class="chip"><input type="checkbox" data-hide="hide-zones">Zones</label>
@@ -296,6 +304,7 @@ body[data-tab="pcb"] [data-pane="sch"], body[data-tab="sch"] [data-pane="pcb"] {
       <div class="legend">
         <span style="--c:var(--added)">Added</span>
         <span style="--c:var(--removed)">Removed</span>
+        <span style="--c:var(--moved)">Moved</span>
         <span style="--c:var(--same)">Unchanged</span>
       </div>
       <div class="hint">Scroll to zoom · drag to pan · click to pin a net · F to fit · Esc to clear</div>

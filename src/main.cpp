@@ -310,8 +310,10 @@ void print_summary(const Diff& d, bool all) {
         return x.second.added + x.second.removed > y.second.added + y.second.removed;
     });
 
-    std::printf("  %zu of %zu nets changed  (tracks +%d -%d, vias +%d -%d)\n", changed.size(),
-                d.nets.size(), add, rem, vadd, vrem);
+    std::printf("  %zu of %zu nets changed  (tracks +%d -%d, vias +%d -%d)", changed.size(), d.nets.size(), add,
+                rem, vadd, vrem);
+    if (d.moved) std::printf("; %d items only moved", d.moved);
+    std::printf("\n");
     if (changed.empty()) return;
 
     size_t limit = all ? changed.size() : std::min<size_t>(changed.size(), 15);

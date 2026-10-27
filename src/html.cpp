@@ -55,6 +55,7 @@ nlohmann::json report_data(const Board& old_board, const Board& new_board, const
                          {"vRem", s.vias_removed},
                          {"pAdd", s.pads_added},
                          {"pRem", s.pads_removed},
+                         {"moved", s.moved},
                          {"lenOld", r4(s.length_old)},
                          {"lenNew", r4(s.length_new)}});
     }

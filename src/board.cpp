@@ -71,6 +71,13 @@ struct Ctx {
     std::vector<std::string> copper;    // copper layer names in order
 };
 
+// KiCad's ID for an item: (uuid ...) in KiCad 8+, (tstamp ...) before.
+std::string id_of(const Node& n) {
+    if (const Node* u = n.child("uuid")) return sexpr::unescape(u->arg(0));
+    if (const Node* t = n.child("tstamp")) return sexpr::unescape(t->arg(0));
+    return {};
+}
+
 std::string net_of(const Node& item, const Ctx& ctx) {
     if (const Node* nn = item.child("net_name")) return sexpr::unescape(nn->arg(0)); // old zones
     const Node* n = item.child("net");
@@ -160,6 +167,7 @@ void read_footprint(const Node& fp, const Ctx& ctx, std::vector<Item>& items) {
     double fp_angle = at ? at->num(2) : 0;
 
     std::string ref;
+    std::string fp_id = id_of(fp);
     fp.each("property", [&](const Node& p) {
         if (p.arg(0) == "Reference") ref = sexpr::unescape(p.arg(1));
     });
@@ -172,6 +180,7 @@ void read_footprint(const Node& fp, const Ctx& ctx, std::vector<Item>& items) {
         Item it;
         it.kind = ItemKind::Pad;
         it.pad_number = sexpr::unescape(pad.arg(0));
+        if (!fp_id.empty()) it.id = fp_id + "/" + it.pad_number;
         it.shape = std::string(pad.arg(2));
         it.ref = ref;
         it.net = net_of(pad, ctx);
@@ -334,6 +343,7 @@ Board load_board(std::string_view text) {
             it.b = read_xy(n.child("end"));
             it.mid = read_xy(n.child("mid"));
             if (const Node* w = n.child("width")) it.width = w->num(0);
+            it.id = id_of(n);
             board.items.push_back(std::move(it));
         } else if (kind == "via") {
             Item it;
@@ -343,6 +353,7 @@ Board load_board(std::string_view text) {
             if (const Node* s = n.child("size")) it.width = s->num(0);
             if (const Node* d = n.child("drill")) it.drill = d->num(0);
             it.layers = via_span(n.child("layers"), ctx);
+            it.id = id_of(n);
             board.items.push_back(std::move(it));
         } else if (kind == "footprint" || kind == "module") {
             read_footprint(n, ctx, board.items);

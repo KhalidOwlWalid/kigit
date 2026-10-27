@@ -4,7 +4,9 @@
   const $ = (s) => document.querySelector(s);
   const { meta, layers, nets, items, zones, outline } = DATA;
   const svg = $("#board");
-  const STATUS = ["unchanged", "added", "removed"];
+  // Status codes from the backend (diff.hpp): 3 = only moved, 4 = where it used to be.
+  const STATUS = ["unchanged", "added", "removed", "moved", "old position"];
+  const BADGE = [0, 1, 2, 5, 6]; // badge colour classes shared with the schematic view
   const INNER_COLORS = ["#d9a03f", "#5cb86e", "#b673e0", "#48c2c6", "#e07ab8", "#9eab4c", "#7f8fe8", "#e0865a"];
 
   const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -33,7 +35,7 @@
   }
 
   // ---------- draw ----------
-  const perLayer = layers.map(() => ({ zones: "", pads: ["", "", ""], tracks: ["", "", ""], hits: "" }));
+  const perLayer = layers.map(() => ({ zones: "", pads: ["", "", "", "", ""], tracks: ["", "", "", "", ""], hits: "" }));
   let vias = "", holes = "";
 
   function padSvg(it, i) {
@@ -66,7 +68,8 @@
   });
 
   // Unchanged first, then removed, then added on top.
-  const ORDER = [0, 2, 1];
+  // Old positions underneath, then unchanged, moved, removed, and added on top.
+  const ORDER = [4, 0, 3, 2, 1];
   const layerOrder = layers.map((_, i) => i).reverse(); // bottom layer drawn first
   svg.innerHTML =
     `<g id="world">` +
@@ -205,7 +208,7 @@
     setHover(it.n);
     const s = nets[it.n];
     tip.innerHTML =
-      `<div class="t">${esc(netName(it.n))}<span class="badge st${it.s}">${STATUS[it.s].toUpperCase()}</span></div>` +
+      `<div class="t">${esc(netName(it.n))}<span class="badge st${BADGE[it.s]}">${STATUS[it.s].toUpperCase()}</span></div>` +
       `<div class="m">${esc(describe(it))}</div><div class="m" style="margin-top:4px">${netSummary(s)}</div>`;
     tip.style.display = "block";
     const host = svg.getBoundingClientRect();
@@ -240,6 +243,7 @@
       `<div class="t">${esc(netName(pinned))}</div>` +
       `<dl><dt>Tracks</dt><dd>${pm(s.add, s.rem)} <span style="color:var(--faint)">· ${s.same} unchanged</span></dd>` +
       `<dt>Vias</dt><dd>${pm(s.vAdd, s.vRem)}</dd><dt>Pads</dt><dd>${pm(s.pAdd, s.pRem)}</dd>` +
+      (s.moved ? `<dt>Moved</dt><dd>${s.moved} <span style="color:var(--faint)">· same copper, new place</span></dd>` : "") +
       `<dt>Length</dt><dd>${mm(s.lenOld)} → ${mm(s.lenNew)} mm${Math.abs(d) >= 0.005 ? ` <span style="color:${d > 0 ? "var(--added)" : "var(--removed)"}">(${d > 0 ? "+" : ""}${mm(d)})</span>` : ""}</dd></dl>` +
       `<div class="row"><button id="zoomNet">Zoom to net</button><button id="clearNet">Clear</button></div>`;
     card.style.display = "block";
@@ -258,6 +262,7 @@
   let totalAdd = 0, totalRem = 0;
   nets.forEach((s) => { totalAdd += s.add + s.vAdd + s.pAdd; totalRem += s.rem + s.vRem + s.pRem; });
   $("#nAdded").textContent = totalAdd;
+  $("#nMoved").textContent = nets.reduce((a, s) => a + (s.moved || 0), 0);
   $("#nRemoved").textContent = totalRem;
 
   // ---------- layers ----------

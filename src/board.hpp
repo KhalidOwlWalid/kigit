@@ -39,6 +39,10 @@ struct Item {
     std::string ref;                 // footprint reference, e.g. "R18"
     std::string pad_number;
 
+    // KiCad's permanent ID for the item, kept when it's moved ("" if none).
+    // Pads use their footprint's ID plus the pad number.
+    std::string id;
+
     // Zone: filled polygons, each closed.
     std::vector<std::vector<Point>> polygons;
 
