@@ -19,6 +19,39 @@ cmake --build build -j
 cmake --install build --prefix ~/.local
 ```
 
+## GUI
+
+```sh
+kigit gui                  # the project in the current folder
+kigit gui ~/path/to/board  # or any project folder
+```
+
+Opens a window in your browser with the project's commits (and your
+uncommitted changes as LOCAL). Pick two commits and press **Compare**, or
+pick one to see what that commit changed; the PCB and schematic viewer
+opens on the right.
+
+The GUI is a small Python app ([NiceGUI](https://nicegui.io)) in `gui/`
+that drives the `kigit` command line, so it needs
+[uv](https://docs.astral.sh/uv/), which sets up its Python environment on
+first run. `kigit gui` finds it next to the binary (`<repo>/gui` from a
+build folder, `<prefix>/share/kigit/gui` when installed) or via
+`KIGIT_GUI_DIR`. Options: `--port N`, `--no-browser`.
+
+What the GUI uses from the CLI, if you want to script it yourself:
+
+```sh
+kigit --log [--max N]           # commits touching the board/schematic, as JSON
+kigit -n -o - A..B              # the viewer page on stdout
+kigit -n --json -o - A..B       # the data on stdout
+```
+
+GUI tests (simulated user, no browser):
+
+```sh
+cd gui && KIGIT_BIN=../build/kigit KIGIT_PROJECT=~/path/to/board uv run pytest
+```
+
 ## Usage
 
 Run it inside a KiCad project folder:

@@ -1,0 +1,22 @@
+[project]
+name = "kigit-gui"
+version = "0.1.0"
+description = "Desktop GUI for kigit: pick two commits, see the PCB and schematic diff"
+requires-python = ">=3.10"
+dependencies = ["nicegui>=2.10,<3"]
+
+[project.scripts]
+kigit-gui = "kigit_gui.app:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["kigit_gui"]
+
+[dependency-groups]
+dev = ["pytest>=8", "pytest-asyncio>=0.23"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"

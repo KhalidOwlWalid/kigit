@@ -41,6 +41,18 @@ std::optional<std::string> show(const std::string& root, const std::string& rel,
 // Every file path (from the repo root) in commit `rev`.
 std::vector<std::string> list_files(const std::string& root, const Revision& rev);
 
+// A commit that touched the project, newest first.
+struct Commit {
+    std::string hash, short_hash, date, author, subject;
+    std::vector<std::string> files; // changed paths (from the repo root)
+};
+
+// Commits touching `pathspec` (a folder or file, from the repo root).
+std::vector<Commit> log(const std::string& root, const std::string& pathspec, int max_count);
+
+// Uncommitted changed/untracked paths under `pathspec`.
+std::vector<std::string> changed_files(const std::string& root, const std::string& pathspec);
+
 // True if commit `ancestor` is an ancestor of `descendant`.
 bool is_ancestor(const std::string& dir, const Revision& ancestor, const Revision& descendant);
 

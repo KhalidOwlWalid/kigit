@@ -36,6 +36,7 @@ void usage() {
 
 USAGE
     kigit [OPTIONS] [OLD..NEW | OLD NEW | REV] [BOARD.kicad_pcb]
+    kigit gui [PROJECT_DIR]                                  (desktop app)
     kigit [OPTIONS] --files OLD.kicad_pcb NEW.kicad_pcb      (no git needed)
 
 REVISIONS
@@ -63,13 +64,17 @@ OPTIONS
     -C, --kicad-repo DIR
                         KiCad project folder or git repo to use instead of
                         the current directory, so kigit can run from anywhere
-    -o, --output FILE   Where to write the HTML
+    -o, --output FILE   Where to write the HTML ("-" = standard output)
                         (default: <board folder>/.kigit/<board>-<old>-<new>.html)
                         This is a web page: open it in a browser, don't run it.
     -n, --no-open       Don't open the result in a browser
     -s, --stats         Print every changed net, not just the top 15
         --no-swap       Keep the revision order as given
     -q, --quiet         Only print errors and the output path
+        --log           Print the commits that changed the board or schematic
+                        (JSON), newest first; with "local" if there are
+                        uncommitted changes. Used by the GUI.
+        --max N         With --log: at most N commits (default 500)
         --json          Write the data (PCB diff + both schematics' nets) as
                         JSON instead of the HTML viewer
         --check-netlist FILE
@@ -155,7 +160,8 @@ fs::path find_board(const fs::path& dir) {
     if (found.size() == 1) return found[0];
     if (found.empty()) throw std::runtime_error("no .kicad_pcb found in " + dir.string() + "; pass one");
     std::string list;
-    for (const auto& p : found) list += "\n    " + fs::relative(p, dir).string();
+    for (size_t i = 0; i < found.size() && i < 10; ++i) list += "\n    " + fs::relative(found[i], dir).string();
+    if (found.size() > 10) list += "\n    ... and " + std::to_string(found.size() - 10) + " more";
     throw std::runtime_error("several boards in " + dir.string() + ", pick one:" + list);
 }
 
@@ -316,12 +322,98 @@ void print_summary(const Diff& d, bool all) {
 
 } // namespace
 
+// `kigit --log`: commits that touched the board's project folder, as JSON.
+void print_log(const std::string& root, const std::string& board_rel, int max_count) {
+    std::string dir = fs::path(board_rel).parent_path().generic_string();
+    std::string pathspec = dir.empty() ? "." : dir;
+    auto kind = [](const std::string& f, bool& pcb, bool& sch) {
+        if (f.ends_with(".kicad_pcb")) pcb = true;
+        if (f.ends_with(".kicad_sch")) sch = true;
+    };
+    nlohmann::json commits = nlohmann::json::array();
+    for (const auto& c : git::log(root, pathspec, max_count)) {
+        bool pcb = false, sch = false;
+        for (const auto& f : c.files) kind(f, pcb, sch);
+        commits.push_back({{"hash", c.hash}, {"short", c.short_hash}, {"date", c.date}, {"author", c.author},
+                           {"subject", c.subject}, {"pcb", pcb}, {"sch", sch}});
+    }
+    bool pcb = false, sch = false;
+    for (const auto& f : git::changed_files(root, pathspec)) kind(f, pcb, sch);
+    nlohmann::json out = {{"repo", root},
+                          {"board", board_rel},
+                          {"commits", commits},
+                          {"local", (pcb || sch) ? nlohmann::json{{"pcb", pcb}, {"sch", sch}} : nlohmann::json(nullptr)}};
+    std::printf("%s\n", out.dump().c_str());
+}
+
+// Path of this executable (so the GUI can call the same kigit back).
+fs::path self_path(const char* argv0) {
+    std::error_code ec;
+    fs::path p = fs::read_symlink("/proc/self/exe", ec);
+    if (!ec) return p;
+    return fs::absolute(argv0);
+}
+
+bool on_path(const std::string& prog) {
+    const char* path = std::getenv("PATH");
+    if (!path) return false;
+    std::string s = path;
+    size_t start = 0;
+    while (start <= s.size()) {
+        size_t end = s.find(':', start);
+        fs::path cand = fs::path(s.substr(start, end == std::string::npos ? std::string::npos : end - start)) / prog;
+        if (::access(cand.c_str(), X_OK) == 0) return true;
+        if (end == std::string::npos) break;
+        start = end + 1;
+    }
+    return false;
+}
+
+// `kigit gui [args]`: starts the NiceGUI app. It lives next to the binary:
+// <repo>/gui when run from the build folder, <prefix>/share/kigit/gui when
+// installed, or wherever KIGIT_GUI_DIR points.
+int run_gui(const char* argv0, int argc, char** argv) {
+    fs::path exe = self_path(argv0);
+    std::vector<fs::path> candidates;
+    if (const char* env = std::getenv("KIGIT_GUI_DIR")) candidates.emplace_back(env);
+    candidates.push_back(exe.parent_path().parent_path() / "gui");
+    candidates.push_back(exe.parent_path().parent_path() / "share" / "kigit" / "gui");
+    fs::path gui;
+    for (const auto& c : candidates)
+        if (fs::exists(c / "pyproject.toml")) {
+            gui = c;
+            break;
+        }
+    if (gui.empty()) {
+        std::cerr << "kigit: can't find the GUI (looked in";
+        for (const auto& c : candidates) std::cerr << " " << c.string();
+        std::cerr << "). Set KIGIT_GUI_DIR to the kigit/gui folder.\n";
+        return 1;
+    }
+    if (!on_path("uv")) {
+        std::cerr << "kigit: the GUI needs uv (https://docs.astral.sh/uv/) to run its Python environment.\n";
+        return 1;
+    }
+    ::setenv("KIGIT_BIN", exe.c_str(), 1);
+    std::vector<std::string> args = {"uv", "run", "--quiet", "--project", gui.string(), "kigit-gui"};
+    for (int i = 0; i < argc; ++i) args.emplace_back(argv[i]);
+    std::vector<char*> cargs;
+    for (auto& a : args) cargs.push_back(a.data());
+    cargs.push_back(nullptr);
+    ::execvp("uv", cargs.data());
+    std::perror("kigit: failed to start uv");
+    return 1;
+}
+
 int main(int argc, char** argv) {
+    if (argc >= 2 && std::string(argv[1]) == "gui") return run_gui(argv[0], argc - 2, argv + 2);
+
     std::vector<std::string> revs;
     std::string output, project_arg;
     std::vector<std::string> board_args;
     bool files_mode = false;
-    bool open = true, all_stats = false, swap = true, quiet = false, json_out = false;
+    bool open = true, all_stats = false, swap = true, quiet = false, json_out = false, log_mode = false;
+    int log_max = 500;
     std::string netlist_file;
 
     for (int i = 1; i < argc; ++i) {
@@ -360,6 +452,14 @@ int main(int argc, char** argv) {
             all_stats = true;
         } else if (a == "--no-swap") {
             swap = false;
+        } else if (a == "--log") {
+            log_mode = true;
+        } else if (a == "--max") {
+            if (++i >= argc) {
+                std::cerr << "kigit: --max needs a number\n";
+                return 2;
+            }
+            log_max = std::max(1, std::atoi(argv[i]));
         } else if (a == "--json") {
             json_out = true;
         } else if (a == "--check-netlist") {
@@ -451,6 +551,11 @@ int main(int argc, char** argv) {
                 fs::weakly_canonical(board_path).lexically_relative(fs::weakly_canonical(root)).generic_string();
             if (rel.empty() || rel.starts_with(".."))
                 throw std::runtime_error(board_path.string() + " is outside the git repository " + root);
+
+            if (log_mode) {
+                print_log(root, rel, log_max);
+                return 0;
+            }
 
             old_rev = git::resolve(root, revs[0]);
             new_rev = git::resolve(root, revs[1]);
@@ -574,6 +679,11 @@ int main(int argc, char** argv) {
                            ? default_output(out_dir, fs::path(file).stem().string(), old_rev, new_rev)
                            : fs::absolute(output);
         if (json_out && output.empty()) out.replace_extension(".json");
+        if (output == "-") {
+            // For other programs (the GUI): just the data, nothing else on stdout.
+            std::fwrite(body.data(), 1, body.size(), stdout);
+            return 0;
+        }
         std::ofstream f(out, std::ios::binary);
         if (!f) throw std::runtime_error("cannot write " + out.string());
         f << body;

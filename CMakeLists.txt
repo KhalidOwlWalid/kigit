@@ -54,3 +54,6 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
 endif()
 
 install(TARGETS kigit RUNTIME DESTINATION bin)
+# The Python GUI (kigit gui) is found at <prefix>/share/kigit/gui.
+install(DIRECTORY gui/ DESTINATION share/kigit/gui
+        PATTERN ".venv" EXCLUDE PATTERN "__pycache__" EXCLUDE PATTERN "uv.lock" EXCLUDE)

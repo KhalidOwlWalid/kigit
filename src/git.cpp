@@ -2,6 +2,7 @@
 
 #include <array>
 #include <optional>
+#include <sstream>
 #include <vector>
 #include <cstdio>
 #include <ctime>
@@ -129,6 +130,56 @@ std::vector<std::string> list_files(const std::string& root, const Revision& rev
             if (i > start) files.push_back(out.substr(start, i - start));
             start = i + 1;
         }
+    }
+    return files;
+}
+
+std::vector<Commit> log(const std::string& root, const std::string& pathspec, int max_count) {
+    // One record per commit: header fields separated by \x1f, then its files.
+    bool ok;
+    std::string out = git(root, "log -n " + std::to_string(max_count) +
+                                    " --format=%x1e%H%x1f%h%x1f%ci%x1f%an%x1f%s --name-only -- " + quote(pathspec),
+                          ok);
+    std::vector<Commit> commits;
+    if (!ok) return commits;
+    size_t pos = 0;
+    while ((pos = out.find('\x1e', pos)) != std::string::npos) {
+        size_t end = out.find('\x1e', pos + 1);
+        std::string rec = out.substr(pos + 1, end == std::string::npos ? std::string::npos : end - pos - 1);
+        pos = end == std::string::npos ? out.size() : end;
+        std::istringstream in(rec);
+        std::string header, line;
+        std::getline(in, header);
+        Commit c;
+        std::vector<std::string*> fields{&c.hash, &c.short_hash, &c.date, &c.author, &c.subject};
+        size_t start = 0;
+        for (size_t i = 0; i < fields.size(); ++i) {
+            size_t sep = i + 1 < fields.size() ? header.find('\x1f', start) : std::string::npos;
+            *fields[i] = header.substr(start, sep == std::string::npos ? std::string::npos : sep - start);
+            if (sep == std::string::npos) break;
+            start = sep + 1;
+        }
+        while (std::getline(in, line))
+            if (!line.empty()) c.files.push_back(line);
+        commits.push_back(std::move(c));
+    }
+    return commits;
+}
+
+std::vector<std::string> changed_files(const std::string& root, const std::string& pathspec) {
+    bool ok;
+    std::string out = git(root, "status --porcelain -z -- " + quote(pathspec), ok);
+    std::vector<std::string> files;
+    if (!ok) return files;
+    // Entries are "XY path\0"; renames add "\0old path".
+    size_t i = 0;
+    while (i + 3 < out.size()) {
+        size_t end = out.find('\0', i);
+        if (end == std::string::npos) break;
+        char x = out[i];
+        files.push_back(out.substr(i + 3, end - i - 3));
+        i = end + 1;
+        if (x == 'R' || x == 'C') i = out.find('\0', i) + 1;
     }
     return files;
 }
