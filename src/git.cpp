@@ -1,6 +1,8 @@
 #include "git.hpp"
 
+#include <algorithm>
 #include <array>
+#include <cstdlib>
 #include <optional>
 #include <sstream>
 #include <vector>
@@ -134,13 +136,51 @@ std::vector<std::string> list_files(const std::string& root, const Revision& rev
     return files;
 }
 
-std::vector<Commit> log(const std::string& root, const std::string& pathspec, int max_count) {
+namespace {
+
+std::string query_args(const LogQuery& q) {
+    std::string a;
+    if (q.max_count > 0) a += " -n " + std::to_string(q.max_count);
+    if (!q.since.empty()) a += " --since=" + quote(q.since);
+    if (!q.until.empty()) a += " --until=" + quote(q.until);
+    return a;
+}
+
+std::string path_args(const LogQuery& q) {
+    if (q.paths.empty()) return {};
+    std::string a = " --";
+    for (const auto& p : q.paths) a += " " + quote(p);
+    return a;
+}
+
+} // namespace
+
+int count(const std::string& root, const LogQuery& q) {
+    LogQuery all = q;
+    all.max_count = 0;
+    bool ok;
+    std::string out = git(root, "rev-list --count HEAD" + query_args(all) + path_args(all), ok);
+    return ok ? std::atoi(out.c_str()) : 0;
+}
+
+std::vector<std::string> past_paths(const std::string& root, const std::string& file) {
+    bool ok;
+    std::string out = git(root, "log --follow --format= --name-only -- " + quote(file), ok);
+    std::vector<std::string> paths;
+    std::istringstream in(out);
+    std::string line;
+    while (std::getline(in, line))
+        if (!line.empty() && std::find(paths.begin(), paths.end(), line) == paths.end()) paths.push_back(line);
+    return paths;
+}
+
+std::vector<Commit> log(const std::string& root, const LogQuery& q) {
     // One record per commit: \x1e starts it, header fields are separated by
     // \x1f, \x1d ends the message, then the changed files one per line.
     bool ok;
-    std::string out = git(root, "log -n " + std::to_string(max_count) +
-                                    " --format=%x1e%H%x1f%h%x1f%ci%x1f%an%x1f%s%x1f%b%x1d --name-only" +
-                                    (pathspec.empty() ? std::string() : " -- " + quote(pathspec)),
+    std::string out = git(root, "log" + query_args(q) +
+                                    " --format=%x1e%H%x1f%h%x1f%ci%x1f%an%x1f%s%x1f%b%x1d --name-only --diff-merges=first-parent" +
+                                    path_args(q),
                           ok);
     std::vector<Commit> commits;
     if (!ok) return commits;

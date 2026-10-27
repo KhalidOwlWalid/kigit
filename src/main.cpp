@@ -74,7 +74,13 @@ OPTIONS
         --log           Print HEAD's history as JSON, newest first, each commit
                         flagged if it changed the board or schematic, plus
                         the uncommitted changes ("local"). Used by the GUI.
-        --max N         With --log: at most N commits (default 2000)
+        --max N         With --log: at most N commits (default 2000, 0 = all)
+        --since DATE, --until DATE
+                        With --log: only commits in this date range
+                        (anything git accepts: 2025-01-31, "2 weeks ago")
+        --kicad-only    With --log: only commits that changed the board or a
+                        schematic, searched through the whole history and
+                        following the project across folder renames
         --projects      Print the KiCad projects in the folder (and below,
                         see --depth) as JSON. Used by the GUI.
         --depth N       With --projects: search N levels down (default 2)
@@ -326,29 +332,69 @@ void print_summary(const Diff& d, bool all) {
 } // namespace
 
 // `kigit --log`: HEAD's history as JSON, newest first, each commit flagged
-// with whether it changed this project's board / schematic. "local" says
-// whether there are uncommitted changes in the project folder.
-void print_log(const std::string& root, const std::string& board_rel, int max_count) {
-    std::string dir = fs::path(board_rel).parent_path().generic_string();
-    std::string prefix = dir.empty() ? "" : dir + "/";
+// with whether it changed this project's board / schematic. The project may
+// have lived in other folders before (renamed or moved), so those count too.
+// With `kicad_only`, only such commits are listed, searched through the whole
+// history. "local" describes the uncommitted changes in the project folder.
+void print_log(const std::string& root, const std::string& board_rel, git::LogQuery q, bool kicad_only) {
+    std::vector<std::string> boards = git::past_paths(root, board_rel);
+    if (std::find(boards.begin(), boards.end(), board_rel) == boards.end()) boards.insert(boards.begin(), board_rel);
+    std::set<std::string> dirs; // every folder the project has been in
+    for (const auto& b : boards) {
+        std::string d = fs::path(b).parent_path().generic_string();
+        dirs.insert(d.empty() ? "" : d + "/");
+    }
+    // In one of the project's folders (or below), but not in tool/backup folders.
+    auto in_project = [&](const std::string& f) {
+        for (const auto& d : dirs) {
+            if (!f.starts_with(d)) continue;
+            bool skipped = false;
+            for (const auto& part : fs::path(f.substr(d.size())).parent_path())
+                if (is_skipped_dir(part.string())) skipped = true;
+            if (!skipped) return true;
+        }
+        return false;
+    };
     auto kind = [&](const std::string& f, bool& pcb, bool& sch) {
-        if (!f.starts_with(prefix)) return;
+        if (!in_project(f)) return;
         if (f.ends_with(".kicad_pcb")) pcb = true;
         if (f.ends_with(".kicad_sch")) sch = true;
     };
+
+    if (kicad_only)
+        for (const auto& d : dirs) {
+            q.paths.push_back(":(glob)" + d + "**/*.kicad_pcb");
+            q.paths.push_back(":(glob)" + d + "**/*.kicad_sch");
+        }
+    int total = git::count(root, q);
+
     nlohmann::json commits = nlohmann::json::array();
-    for (const auto& c : git::log(root, "", max_count)) {
+    for (const auto& c : git::log(root, q)) {
         bool pcb = false, sch = false;
         for (const auto& f : c.files) kind(f, pcb, sch);
         commits.push_back({{"hash", c.hash}, {"short", c.short_hash}, {"date", c.date}, {"author", c.author},
                            {"subject", c.subject}, {"body", c.body}, {"pcb", pcb}, {"sch", sch}});
     }
+
+    // Uncommitted changes, ignoring tool folders like KiCad's .history backups.
+    std::string here = fs::path(board_rel).parent_path().generic_string();
     bool pcb = false, sch = false;
-    std::vector<std::string> changed = git::changed_files(root, dir.empty() ? "." : dir);
-    for (const auto& f : changed) kind(f, pcb, sch);
+    std::vector<std::string> changed;
+    for (const auto& f : git::changed_files(root, here.empty() ? "." : here)) {
+        bool skipped = false;
+        for (const auto& part : fs::path(f).parent_path())
+            if (is_skipped_dir(part.string())) skipped = true;
+        if (skipped) continue;
+        changed.push_back(f);
+        kind(f, pcb, sch);
+    }
+    nlohmann::json past = nlohmann::json::array();
+    for (const auto& d : dirs) past.push_back(d.empty() ? "." : d.substr(0, d.size() - 1));
     nlohmann::json out = {
         {"repo", root},
         {"board", board_rel},
+        {"folders", past},
+        {"total", total},
         {"commits", commits},
         {"local", nlohmann::json{{"dirty", !changed.empty()}, {"pcb", pcb}, {"sch", sch}, {"files", changed}}}};
     std::printf("%s\n", out.dump().c_str());
@@ -475,7 +521,9 @@ int main(int argc, char** argv) {
     std::vector<std::string> board_args;
     bool files_mode = false;
     bool open = true, all_stats = false, swap = true, quiet = false, json_out = false, log_mode = false;
-    int log_max = 2000;
+    git::LogQuery log_query;
+    log_query.max_count = 2000;
+    bool log_kicad_only = false;
     bool projects_mode = false;
     int projects_depth = 2;
     std::string netlist_file;
@@ -531,7 +579,21 @@ int main(int argc, char** argv) {
                 std::cerr << "kigit: --max needs a number\n";
                 return 2;
             }
-            log_max = std::max(1, std::atoi(argv[i]));
+            log_query.max_count = std::max(0, std::atoi(argv[i]));
+        } else if (a == "--since" || a == "--until") {
+            if (++i >= argc) {
+                std::cerr << "kigit: " << a << " needs a date\n";
+                return 2;
+            }
+            // A bare date means the whole day; git alone would read it as that
+            // date at the current time of day.
+            std::string d = argv[i];
+            bool plain_date = d.size() == 10 && d[4] == '-' && d[7] == '-' &&
+                              std::all_of(d.begin(), d.end(), [](char c) { return std::isdigit(c) || c == '-'; });
+            if (plain_date) d += a == "--since" ? " 00:00:00" : " 23:59:59";
+            (a == "--since" ? log_query.since : log_query.until) = d;
+        } else if (a == "--kicad-only") {
+            log_kicad_only = true;
         } else if (a == "--json") {
             json_out = true;
         } else if (a == "--check-netlist") {
@@ -629,7 +691,7 @@ int main(int argc, char** argv) {
                 throw std::runtime_error(board_path.string() + " is outside the git repository " + root);
 
             if (log_mode) {
-                print_log(root, rel, log_max);
+                print_log(root, rel, log_query, log_kicad_only);
                 return 0;
             }
 

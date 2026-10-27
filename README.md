@@ -35,6 +35,15 @@ kigit gui ~/path/to/board  # or any folder
    SCH when they changed the board or schematic. The top entry is your
    working tree: HEAD plus any uncommitted changes. Hover a message to read
    all of it. Nothing is rendered yet.
+
+   **Filter commits** (then **Find**): how many to list (last 100 ... all),
+   a date range, and "only commits that changed the board or schematic",
+   which searches the whole history. If the project folder was renamed or
+   moved, its history is followed through the old folders too.
+
+   **Diff commits manually** (collapsed under Compare): type any two
+   revisions git understands (hash, `HEAD~3`, branch, tag, or `LOCAL`) and
+   press **Find manually**, for when the commit you want isn't in the list.
 3. **Compare.** kigit diffs the two and the viewer opens on the schematic
    (the PCB is one tab away).
 
@@ -49,7 +58,8 @@ What the GUI uses from the CLI, if you want to script it yourself:
 
 ```sh
 kigit --projects [--depth N]    # KiCad projects in the folder and below, as JSON
-kigit --log [--max N]           # all commits (+ uncommitted changes), as JSON
+kigit --log [--max N] [--since DATE] [--until DATE] [--kicad-only]
+                                # commits (+ uncommitted changes), as JSON
 kigit -n -o - A..B              # the viewer page on stdout
 kigit -n --json -o - A..B       # the data on stdout
 ```

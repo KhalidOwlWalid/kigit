@@ -48,9 +48,21 @@ struct Commit {
     std::vector<std::string> files; // changed paths (from the repo root)
 };
 
-// Commits in HEAD's history, newest first. With a pathspec, only commits
-// touching it; empty = every commit.
-std::vector<Commit> log(const std::string& root, const std::string& pathspec, int max_count);
+// Which commits log() returns.
+struct LogQuery {
+    std::vector<std::string> paths; // only commits touching these (git pathspecs); empty = all
+    int max_count = 0;              // 0 = no limit
+    std::string since, until;       // dates git understands ("2025-01-31", "2 weeks ago"); "" = open
+};
+
+// Commits in HEAD's history, newest first.
+std::vector<Commit> log(const std::string& root, const LogQuery& q);
+
+// How many commits log() would return without max_count.
+int count(const std::string& root, const LogQuery& q);
+
+// Every path `file` has had in HEAD's history, following renames (newest first).
+std::vector<std::string> past_paths(const std::string& root, const std::string& file);
 
 // Uncommitted changed/untracked paths under `pathspec`.
 std::vector<std::string> changed_files(const std::string& root, const std::string& pathspec);

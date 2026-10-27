@@ -105,3 +105,57 @@ async def test_several_projects_ask_which(user: User, monkeypatch, tmp_path: Pat
         (tmp_path / name / f"{name}.kicad_pcb").write_text("(kicad_pcb)")
     await open_at(user, monkeypatch, str(tmp_path))
     await user.should_see("2 KiCad projects found", retries=50)
+
+
+async def test_find_only_board_or_schematic_commits(user: User, monkeypatch) -> None:
+    await open_at(user, monkeypatch, PROJECT)
+    await user.should_see("Pick two commits on the left", retries=50)
+    user.find("Only commits that changed the board or schematic").click()
+    user.find("Find").click()
+    await user.should_see("commits changed the board or schematic", retries=50)
+    rows = commit_table(user).rows[1:]  # skip the working tree
+    assert rows and all(r["pcb"] or r["sch"] for r in rows)
+
+
+async def test_history_limit_and_dates() -> None:
+    """The CLI wrapper: limit, total and date range."""
+    from kigit_gui import kigit
+
+    h = await kigit.history(PROJECT, max_count=5)
+    assert len(h.commits) == min(5, h.total) and h.total >= len(h.commits)
+    everything = await kigit.history(PROJECT, max_count=0)
+    assert len(everything.commits) == everything.total
+    newest = everything.commits[0].date[:10]
+    recent = await kigit.history(PROJECT, max_count=0, since=newest)
+    assert 1 <= len(recent.commits) <= everything.total
+    assert all(c.date[:10] >= newest for c in recent.commits)
+
+
+async def test_diff_commits_manually(user: User, monkeypatch) -> None:
+    await open_at(user, monkeypatch, PROJECT)
+    await user.should_see("Pick two commits on the left", retries=50)
+    user.find("Diff commits manually").click()
+    user.find("Old").type("HEAD~1")
+    user.find("New").type("LOCAL")
+    user.find("Find manually").click()
+    await user.should_see(marker="viewer", retries=100)
+    assert user.find(marker="viewer").elements.pop().props["src"].endswith("#sch")
+
+
+async def test_diff_manually_reports_bad_commit(user: User, monkeypatch) -> None:
+    await open_at(user, monkeypatch, PROJECT)
+    await user.should_see("Pick two commits on the left", retries=50)
+    user.find("Diff commits manually").click()
+    user.find("Old").type("no-such-commit")
+    user.find("New").type("HEAD")
+    user.find("Find manually").click()
+    await user.should_see("unknown revision", retries=50)
+
+
+async def test_diff_manually_needs_both(user: User, monkeypatch) -> None:
+    await open_at(user, monkeypatch, PROJECT)
+    await user.should_see("Pick two commits on the left", retries=50)
+    user.find("Diff commits manually").click()
+    user.find("Old").type("HEAD")
+    user.find("Find manually").click()
+    await user.should_see("Enter both an old and a new commit")

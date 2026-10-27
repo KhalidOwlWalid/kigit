@@ -61,6 +61,8 @@ class Local:
 class History:
     repo: str
     board: str
+    folders: list[str]    # every folder the project has lived in (renames followed)
+    total: int            # commits matching the filters, before the limit
     commits: list[Commit]
     local: Local
 
@@ -84,13 +86,28 @@ async def projects(folder: str, depth: int = 2) -> list[Project]:
     return [Project(**p) for p in json.loads(out)["projects"]]
 
 
-async def history(project: str, max_count: int = 2000) -> History:
-    """All commits of the project's repository (newest first) plus the uncommitted changes."""
-    out, _ = await _run("-C", project, "--log", "--max", str(max_count))
+async def history(project: str, max_count: int = 200, since: str = "", until: str = "",
+                  kicad_only: bool = False) -> History:
+    """The repository's commits, newest first, plus the uncommitted changes.
+
+    max_count: at most this many (0 = all). since/until: date range ("" = open).
+    kicad_only: only commits that changed the board or a schematic, searched
+    through the whole history (following the project across folder renames).
+    """
+    args = ["-C", project, "--log", "--max", str(max_count)]
+    if since:
+        args += ["--since", since]
+    if until:
+        args += ["--until", until]
+    if kicad_only:
+        args.append("--kicad-only")
+    out, _ = await _run(*args)
     data = json.loads(out)
     return History(
         repo=data["repo"],
         board=data["board"],
+        folders=data["folders"],
+        total=data["total"],
         commits=[Commit(**c) for c in data["commits"]],
         local=Local(**data["local"]),
     )

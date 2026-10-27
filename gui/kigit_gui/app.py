@@ -58,6 +58,18 @@ TAGS_CELL = r"""
 """
 
 
+def date_input(label: str) -> ui.input:
+    """A YYYY-MM-DD text box with a calendar popup."""
+    with ui.input(placeholder=label).props("dense dark outlined clearable").classes("w-36") as box:
+        with ui.menu().props("no-parent-event") as menu:
+            with ui.date(mask="YYYY-MM-DD").bind_value(box).props("dark"):
+                with ui.row().classes("justify-end"):
+                    ui.button("Close", on_click=menu.close).props("flat dense")
+        with box.add_slot("append"):
+            ui.icon("event").on("click", menu.open).classes("cursor-pointer text-gray-400")
+    return box
+
+
 def page_name(project: str, old: str, new: str) -> str:
     key = hashlib.sha1(f"{project}|{old}|{new}".encode()).hexdigest()[:12]
     return f"{key}.html"
@@ -92,8 +104,41 @@ def build(start_folder: str):
             with ui.row().classes("w-full gap-2 items-center no-wrap"):
                 compare_btn = ui.button("Compare", on_click=lambda: compare()).props("unelevated dense color=amber-8")
                 picked = ui.label("").classes("text-xs text-gray-300 truncate")
-            only = ui.switch("Only commits that changed the board or schematic", value=False,
-                             on_change=lambda: fill()).props("dense dark").classes("text-xs")
+            # For when the list doesn't show the commit you're after: type any
+            # two revisions git understands.
+            with ui.expansion("Diff commits manually", icon="edit", value=False).props(
+                    "dense dense-toggle header-class=text-xs").classes("w-full bg-[#1c2128] rounded"):
+                with ui.column().classes("w-full gap-2 p-2"):
+                    ui.label("Any two revisions: a commit hash (short or full), HEAD~3, a branch, a tag, "
+                             "or LOCAL for the working tree.").classes("text-xs text-gray-400")
+                    with ui.row().classes("w-full gap-2 items-center no-wrap"):
+                        old_rev = ui.input("Old", placeholder="e.g. a1b2c3d").props(
+                            "dense dark outlined clearable").classes("flex-grow")
+                        new_rev = ui.input("New", placeholder="e.g. HEAD").props(
+                            "dense dark outlined clearable").classes("flex-grow")
+                    with ui.row().classes("w-full justify-end"):
+                        manual_btn = ui.button("Find manually", icon="compare_arrows",
+                                               on_click=lambda: compare_manually()).props(
+                            "unelevated dense color=blue-grey-8")
+                    new_rev.on("keydown.enter", lambda: compare_manually())
+            # Which commits to list. Find re-asks kigit, so "board/schematic only"
+            # searches the whole history, not just the commits already shown.
+            with ui.expansion("Filter commits", icon="filter_list", value=True).props(
+                    "dense dense-toggle header-class=text-xs").classes("w-full bg-[#1c2128] rounded"):
+                with ui.column().classes("w-full gap-2 p-2"):
+                    with ui.row().classes("w-full gap-2 items-center no-wrap"):
+                        limit = ui.select({100: "Last 100", 200: "Last 200", 500: "Last 500", 1000: "Last 1000",
+                                           0: "All commits"}, value=200).props("dense dark outlined").classes(
+                            "w-36")
+                        since = date_input("Since")
+                        until = date_input("Until")
+                    with ui.row().classes("w-full gap-2 items-center no-wrap"):
+                        only = ui.checkbox("Only commits that changed the board or schematic").props(
+                            "dense dark").classes("text-xs")
+                        ui.space()
+                        ui.button("Find", icon="search", on_click=lambda: find()).props(
+                            "unelevated dense color=blue-grey-8")
+            count = ui.label("").classes("text-xs text-gray-400")
             columns = [
                 {"name": "short", "label": "Commit", "field": "short", "align": "left"},
                 {"name": "tags", "label": "", "field": "tags", "align": "left"},
@@ -103,7 +148,7 @@ def build(start_folder: str):
             table = ui.table(columns=columns, rows=[], row_key="hash", selection="multiple",
                              on_select=lambda e: on_select()).props(
                 "dense flat dark virtual-scroll hide-bottom :rows-per-page-options=[0]").classes(
-                "w-full h-[calc(100vh-200px)]")
+                "w-full h-[calc(100vh-250px)]")
             table.add_slot("body-cell-subject", MESSAGE_CELL)
             table.add_slot("body-cell-short", COMMIT_CELL)
             table.add_slot("body-cell-tags", TAGS_CELL)
@@ -138,6 +183,7 @@ def build(start_folder: str):
         table.selected = []
         table.update()
         project_label.text = ""
+        count.text = ""
         on_select()
 
     async def open_folder(folder: str) -> None:
@@ -207,21 +253,58 @@ def build(start_folder: str):
                 ui.button("Cancel", on_click=lambda: dialog.submit(None)).props("flat")
         return await dialog
 
+    def filtered() -> bool:
+        return bool(only.value or since.value or until.value)
+
+    async def query(board: str) -> kigit.History | None:
+        try:
+            return await kigit.history(board, max_count=limit.value or 0, since=since.value or "",
+                                       until=until.value or "", kicad_only=only.value)
+        except kigit.KigitError as e:
+            ui.notify(str(e), type="negative", multi_line=True, close_button=True)
+            return None
+
+    def show_count(h: kigit.History) -> None:
+        what = "commits changed the board or schematic" if only.value else "commits"
+        when = ""
+        if since.value or until.value:
+            when = f" between {since.value or 'the start'} and {until.value or 'now'}"
+        shown = len(h.commits)
+        count.text = (f"{h.total} {what}{when}" if shown == h.total
+                      else f"Showing the latest {shown} of {h.total} {what}{when}")
+        here = os.path.dirname(h.board) or "."
+        moved = [f for f in h.folders if f != here]
+        if moved:
+            count.text += f" · project was also in: {', '.join(moved)}"
+
     async def load_history(project: kigit.Project) -> None:
         status.text = f"Reading {project.name} history..."
-        try:
-            h = await kigit.history(project.board)
-        except kigit.KigitError as e:
+        h = await query(project.board)
+        if h is None:
             status.text = ""
-            show_message("error_outline", "Couldn't read the history.", str(e), "text-red-400")
+            show_message("error_outline", "Couldn't read the history.", tone="text-red-400")
             return
-        state["board"], state["history"] = project.board, h
+        state["board"], state["history"], state["name"] = project.board, h, project.name
         folder_input.value = project.dir
-        project_label.text = f"{project.name}  ·  {len(h.commits)} commits"
+        project_label.text = project.name
         status.text = h.repo
+        show_count(h)
         fill()
         show_message("compare_arrows", "Pick two commits on the left, then press Compare.",
                      "The newest entry is your working tree: HEAD plus any uncommitted changes.")
+
+    async def find() -> None:
+        if not state["board"]:
+            ui.notify("Open a project first", type="warning")
+            return
+        status.text = "Searching history..."
+        h = await query(state["board"])
+        status.text = state["history"].repo if state["history"] else ""
+        if h is None:
+            return
+        state["history"] = h
+        show_count(h)
+        fill()
 
     # ------------------------------------------------------------ commit rows
     def fill() -> None:
@@ -240,13 +323,11 @@ def build(start_folder: str):
         else:
             subject = "HEAD (no uncommitted changes)"
             tip = "Your working tree, which matches HEAD."
-        if head:
+        if head and not filtered():  # with filters the first row needn't be HEAD
             tip += f"\n\nHEAD is {head.short}: {head.subject}"
         rows.append({"hash": LOCAL, "short": "HEAD*" if local.dirty else "HEAD", "pcb": local.pcb,
                      "sch": local.sch, "date": "now", "subject": subject, "tip": tip})
         for c in h.commits:
-            if only.value and not (c.pcb or c.sch):
-                continue
             message = c.subject + (f"\n\n{c.body}" if c.body else "")
             tip = f"{message}\n\n{c.author} · {c.date}\n{c.hash}"
             rows.append({"hash": c.hash, "short": c.short, "pcb": c.pcb, "sch": c.sch, "date": c.date[:16],
@@ -271,18 +352,35 @@ def build(start_folder: str):
 
     # ---------------------------------------------------------------- compare
     async def compare() -> None:
-        if len(table.selected) != 2 or not state["board"]:
+        if len(table.selected) != 2:
             return
         a, b = (r["hash"] for r in table.selected)
-        # kigit orders them by history (older first); LOCAL is always newest.
+        await run_diff(a, b, compare_btn)
+
+    async def compare_manually() -> None:
+        a, b = (old_rev.value or "").strip(), (new_rev.value or "").strip()
+        if not a or not b:
+            ui.notify("Enter both an old and a new commit", type="warning")
+            return
+        await run_diff(a, b, manual_btn)
+
+    async def run_diff(a: str, b: str, button: ui.button) -> None:
+        """Diffs two revisions and shows the viewer. kigit orders them by
+        history (older first); LOCAL is always the newest."""
         board = state["board"]
+        if not board:
+            ui.notify("Open a project first", type="warning")
+            return
         name = page_name(board, a, b)
         out = CACHE / name
-        compare_btn.props("loading")
+        # Only full hashes always mean the same commit; names like HEAD~1 or
+        # a branch can move, and LOCAL changes as you edit, so re-diff those.
+        cacheable = all(len(r) == 40 and all(c in "0123456789abcdef" for c in r) for r in (a, b))
+        button.props("loading")
         status.text = "Comparing..."
         started = time.monotonic()
         try:
-            if LOCAL in (a, b) or not out.exists():
+            if not (cacheable and out.exists()):
                 for w in await kigit.diff_html(board, a, b, out):
                     ui.notify(w, type="warning", multi_line=True, close_button=True)
         except kigit.KigitError as e:
@@ -290,9 +388,9 @@ def build(start_folder: str):
             ui.notify(str(e), type="negative", multi_line=True, close_button=True)
             return
         finally:
-            compare_btn.props(remove="loading")
+            button.props(remove="loading")
         status.text = f"{short_rev(a)} ↔ {short_rev(b)} · {time.monotonic() - started:.1f} s"
-        # Open on the schematic; the cache-buster makes a regenerated LOCAL page reload.
+        # Open on the schematic; the cache-buster makes a regenerated page reload.
         frame.props(f'src="/diffs/{name}?t={int(time.time())}#sch"')
         placeholder.set_visibility(False)
         frame.set_visibility(True)
