@@ -43,8 +43,18 @@ class Commit:
     date: str
     author: str
     subject: str
+    body: str
+    pcb: bool  # changed the board
+    sch: bool  # changed the schematic
+
+
+@dataclass
+class Local:
+    """Uncommitted changes in the project folder."""
+    dirty: bool
     pcb: bool
     sch: bool
+    files: list[str]
 
 
 @dataclass
@@ -52,17 +62,37 @@ class History:
     repo: str
     board: str
     commits: list[Commit]
-    local: dict | None  # {"pcb": bool, "sch": bool} if there are uncommitted changes
+    local: Local
 
 
-async def history(project: str, max_count: int = 500) -> History:
+@dataclass
+class Project:
+    name: str
+    dir: str
+    level: int   # 0 = the folder itself, 1-2 = below it
+    pro: bool
+    pcb: bool
+    sch: bool
+    board: str   # path to the .kicad_pcb, "" if none
+    git: bool
+    repo: str
+
+
+async def projects(folder: str, depth: int = 2) -> list[Project]:
+    """KiCad projects in folder and up to `depth` levels below it."""
+    out, _ = await _run("-C", folder, "--projects", "--depth", str(depth))
+    return [Project(**p) for p in json.loads(out)["projects"]]
+
+
+async def history(project: str, max_count: int = 2000) -> History:
+    """All commits of the project's repository (newest first) plus the uncommitted changes."""
     out, _ = await _run("-C", project, "--log", "--max", str(max_count))
     data = json.loads(out)
     return History(
         repo=data["repo"],
         board=data["board"],
         commits=[Commit(**c) for c in data["commits"]],
-        local=data["local"],
+        local=Local(**data["local"]),
     )
 
 

@@ -22,14 +22,21 @@ cmake --install build --prefix ~/.local
 ## GUI
 
 ```sh
-kigit gui                  # the project in the current folder
-kigit gui ~/path/to/board  # or any project folder
+kigit gui                  # start in the current folder
+kigit gui ~/path/to/board  # or any folder
 ```
 
-Opens a window in your browser with the project's commits (and your
-uncommitted changes as LOCAL). Pick two commits and press **Compare**, or
-pick one to see what that commit changed; the PCB and schematic viewer
-opens on the right.
+1. **Open a project.** Type a folder or press **Browse** (folders holding
+   KiCad files are marked). kigit looks for a project in that folder and up
+   to two levels below. It tells you if it finds none, if the project has no
+   `.kicad_pcb`, or if it isn't in a git repository; if it finds several, it
+   asks which one.
+2. **Pick two commits.** All commits are listed, newest first, tagged PCB /
+   SCH when they changed the board or schematic. The top entry is your
+   working tree: HEAD plus any uncommitted changes. Hover a message to read
+   all of it. Nothing is rendered yet.
+3. **Compare.** kigit diffs the two and the viewer opens on the schematic
+   (the PCB is one tab away).
 
 The GUI is a small Python app ([NiceGUI](https://nicegui.io)) in `gui/`
 that drives the `kigit` command line, so it needs
@@ -41,7 +48,8 @@ build folder, `<prefix>/share/kigit/gui` when installed) or via
 What the GUI uses from the CLI, if you want to script it yourself:
 
 ```sh
-kigit --log [--max N]           # commits touching the board/schematic, as JSON
+kigit --projects [--depth N]    # KiCad projects in the folder and below, as JSON
+kigit --log [--max N]           # all commits (+ uncommitted changes), as JSON
 kigit -n -o - A..B              # the viewer page on stdout
 kigit -n --json -o - A..B       # the data on stdout
 ```

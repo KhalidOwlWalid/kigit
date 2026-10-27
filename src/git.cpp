@@ -135,10 +135,12 @@ std::vector<std::string> list_files(const std::string& root, const Revision& rev
 }
 
 std::vector<Commit> log(const std::string& root, const std::string& pathspec, int max_count) {
-    // One record per commit: header fields separated by \x1f, then its files.
+    // One record per commit: \x1e starts it, header fields are separated by
+    // \x1f, \x1d ends the message, then the changed files one per line.
     bool ok;
     std::string out = git(root, "log -n " + std::to_string(max_count) +
-                                    " --format=%x1e%H%x1f%h%x1f%ci%x1f%an%x1f%s --name-only -- " + quote(pathspec),
+                                    " --format=%x1e%H%x1f%h%x1f%ci%x1f%an%x1f%s%x1f%b%x1d --name-only" +
+                                    (pathspec.empty() ? std::string() : " -- " + quote(pathspec)),
                           ok);
     std::vector<Commit> commits;
     if (!ok) return commits;
@@ -147,11 +149,10 @@ std::vector<Commit> log(const std::string& root, const std::string& pathspec, in
         size_t end = out.find('\x1e', pos + 1);
         std::string rec = out.substr(pos + 1, end == std::string::npos ? std::string::npos : end - pos - 1);
         pos = end == std::string::npos ? out.size() : end;
-        std::istringstream in(rec);
-        std::string header, line;
-        std::getline(in, header);
+        size_t msg_end = rec.find('\x1d');
+        std::string header = rec.substr(0, msg_end);
         Commit c;
-        std::vector<std::string*> fields{&c.hash, &c.short_hash, &c.date, &c.author, &c.subject};
+        std::vector<std::string*> fields{&c.hash, &c.short_hash, &c.date, &c.author, &c.subject, &c.body};
         size_t start = 0;
         for (size_t i = 0; i < fields.size(); ++i) {
             size_t sep = i + 1 < fields.size() ? header.find('\x1f', start) : std::string::npos;
@@ -159,8 +160,13 @@ std::vector<Commit> log(const std::string& root, const std::string& pathspec, in
             if (sep == std::string::npos) break;
             start = sep + 1;
         }
-        while (std::getline(in, line))
-            if (!line.empty()) c.files.push_back(line);
+        while (!c.body.empty() && (c.body.back() == '\n' || c.body.back() == ' ')) c.body.pop_back();
+        if (msg_end != std::string::npos) {
+            std::istringstream in(rec.substr(msg_end + 1));
+            std::string line;
+            while (std::getline(in, line))
+                if (!line.empty()) c.files.push_back(line);
+        }
         commits.push_back(std::move(c));
     }
     return commits;

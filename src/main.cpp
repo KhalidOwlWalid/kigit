@@ -71,10 +71,13 @@ OPTIONS
     -s, --stats         Print every changed net, not just the top 15
         --no-swap       Keep the revision order as given
     -q, --quiet         Only print errors and the output path
-        --log           Print the commits that changed the board or schematic
-                        (JSON), newest first; with "local" if there are
-                        uncommitted changes. Used by the GUI.
-        --max N         With --log: at most N commits (default 500)
+        --log           Print HEAD's history as JSON, newest first, each commit
+                        flagged if it changed the board or schematic, plus
+                        the uncommitted changes ("local"). Used by the GUI.
+        --max N         With --log: at most N commits (default 2000)
+        --projects      Print the KiCad projects in the folder (and below,
+                        see --depth) as JSON. Used by the GUI.
+        --depth N       With --projects: search N levels down (default 2)
         --json          Write the data (PCB diff + both schematics' nets) as
                         JSON instead of the HTML viewer
         --check-netlist FILE
@@ -322,27 +325,86 @@ void print_summary(const Diff& d, bool all) {
 
 } // namespace
 
-// `kigit --log`: commits that touched the board's project folder, as JSON.
+// `kigit --log`: HEAD's history as JSON, newest first, each commit flagged
+// with whether it changed this project's board / schematic. "local" says
+// whether there are uncommitted changes in the project folder.
 void print_log(const std::string& root, const std::string& board_rel, int max_count) {
     std::string dir = fs::path(board_rel).parent_path().generic_string();
-    std::string pathspec = dir.empty() ? "." : dir;
-    auto kind = [](const std::string& f, bool& pcb, bool& sch) {
+    std::string prefix = dir.empty() ? "" : dir + "/";
+    auto kind = [&](const std::string& f, bool& pcb, bool& sch) {
+        if (!f.starts_with(prefix)) return;
         if (f.ends_with(".kicad_pcb")) pcb = true;
         if (f.ends_with(".kicad_sch")) sch = true;
     };
     nlohmann::json commits = nlohmann::json::array();
-    for (const auto& c : git::log(root, pathspec, max_count)) {
+    for (const auto& c : git::log(root, "", max_count)) {
         bool pcb = false, sch = false;
         for (const auto& f : c.files) kind(f, pcb, sch);
         commits.push_back({{"hash", c.hash}, {"short", c.short_hash}, {"date", c.date}, {"author", c.author},
-                           {"subject", c.subject}, {"pcb", pcb}, {"sch", sch}});
+                           {"subject", c.subject}, {"body", c.body}, {"pcb", pcb}, {"sch", sch}});
     }
     bool pcb = false, sch = false;
-    for (const auto& f : git::changed_files(root, pathspec)) kind(f, pcb, sch);
-    nlohmann::json out = {{"repo", root},
-                          {"board", board_rel},
-                          {"commits", commits},
-                          {"local", (pcb || sch) ? nlohmann::json{{"pcb", pcb}, {"sch", sch}} : nlohmann::json(nullptr)}};
+    std::vector<std::string> changed = git::changed_files(root, dir.empty() ? "." : dir);
+    for (const auto& f : changed) kind(f, pcb, sch);
+    nlohmann::json out = {
+        {"repo", root},
+        {"board", board_rel},
+        {"commits", commits},
+        {"local", nlohmann::json{{"dirty", !changed.empty()}, {"pcb", pcb}, {"sch", sch}, {"files", changed}}}};
+    std::printf("%s\n", out.dump().c_str());
+}
+
+// `kigit --projects`: KiCad projects in `dir` and up to `depth` levels below
+// it, as JSON. A project is a .kicad_pro / .kicad_pcb / .kicad_sch sharing a
+// folder and name; kigit needs its .kicad_pcb.
+void print_projects(const fs::path& dir, int depth) {
+    struct Found {
+        bool pro = false, pcb = false, sch = false;
+        int level = 0;
+    };
+    std::map<std::pair<std::string, std::string>, Found> found; // (folder, name)
+    auto note = [&](const fs::path& p, int level) {
+        std::string name = p.filename().string();
+        if (name.starts_with("~") || name.starts_with("_autosave")) return;
+        std::string ext = p.extension().string();
+        if (ext != ".kicad_pro" && ext != ".kicad_pcb" && ext != ".kicad_sch") return;
+        Found& f = found[{p.parent_path().string(), p.stem().string()}];
+        f.level = level;
+        if (ext == ".kicad_pro") f.pro = true;
+        else if (ext == ".kicad_pcb") f.pcb = true;
+        else f.sch = true;
+    };
+    std::error_code ec;
+    auto it = fs::recursive_directory_iterator(dir, fs::directory_options::skip_permission_denied, ec);
+    for (; !ec && it != fs::recursive_directory_iterator(); it.increment(ec)) {
+        const auto& e = *it;
+        if (e.is_directory(ec)) {
+            if (is_skipped_dir(e.path().filename().string()) || it.depth() >= depth) it.disable_recursion_pending();
+            continue;
+        }
+        if (e.is_regular_file(ec)) note(e.path(), it.depth());
+    }
+
+    // Sub-sheets (a .kicad_sch with no project of its own) aren't projects.
+    nlohmann::json projects = nlohmann::json::array();
+    for (const auto& [key, f] : found) {
+        if (!f.pro && !f.pcb) continue;
+        const auto& [folder, name] = key;
+        bool in_git = git::is_repo(folder);
+        projects.push_back({{"name", name},
+                            {"dir", folder},
+                            {"level", f.level},
+                            {"pro", f.pro},
+                            {"pcb", f.pcb},
+                            {"sch", f.sch},
+                            {"board", f.pcb ? (fs::path(folder) / (name + ".kicad_pcb")).string() : ""},
+                            {"git", in_git},
+                            {"repo", in_git ? git::toplevel(folder) : ""}});
+    }
+    std::sort(projects.begin(), projects.end(), [](const auto& a, const auto& b) {
+        return std::tie(a["level"], a["dir"], a["name"]) < std::tie(b["level"], b["dir"], b["name"]);
+    });
+    nlohmann::json out = {{"dir", fs::absolute(dir).lexically_normal().string()}, {"depth", depth}, {"projects", projects}};
     std::printf("%s\n", out.dump().c_str());
 }
 
@@ -413,7 +475,9 @@ int main(int argc, char** argv) {
     std::vector<std::string> board_args;
     bool files_mode = false;
     bool open = true, all_stats = false, swap = true, quiet = false, json_out = false, log_mode = false;
-    int log_max = 500;
+    int log_max = 2000;
+    bool projects_mode = false;
+    int projects_depth = 2;
     std::string netlist_file;
 
     for (int i = 1; i < argc; ++i) {
@@ -454,6 +518,14 @@ int main(int argc, char** argv) {
             swap = false;
         } else if (a == "--log") {
             log_mode = true;
+        } else if (a == "--projects") {
+            projects_mode = true;
+        } else if (a == "--depth") {
+            if (++i >= argc) {
+                std::cerr << "kigit: --depth needs a number\n";
+                return 2;
+            }
+            projects_depth = std::max(0, std::atoi(argv[i]));
         } else if (a == "--max") {
             if (++i >= argc) {
                 std::cerr << "kigit: --max needs a number\n";
@@ -514,6 +586,10 @@ int main(int argc, char** argv) {
             }
             if (!fs::is_directory(project))
                 throw std::runtime_error("--kicad-repo: no such folder " + project.string());
+        }
+        if (projects_mode) {
+            print_projects(project, projects_depth);
+            return 0;
         }
 
         fs::path board_path;

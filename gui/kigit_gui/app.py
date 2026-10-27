@@ -1,7 +1,15 @@
-"""kigit GUI: list the project's commits, pick two, show kigit's diff viewer.
+"""kigit GUI: open a KiCad project, pick two commits, see what changed.
 
 Started by `kigit gui [PROJECT_DIR]`. All the work is done by the kigit
 command line (see kigit.py); this file is only the window around it.
+
+Flow:
+  1. Browse/Open a folder. kigit looks for a KiCad project in it and up to
+     two levels below, and says so if there's none, or no git history.
+  2. The project's commits are listed (newest first, with the working tree
+     on top). Nothing is rendered yet.
+  3. Pick two commits and press Compare: kigit diffs them and the viewer
+     opens on the schematic.
 """
 
 from __future__ import annotations
@@ -16,13 +24,38 @@ from pathlib import Path
 from nicegui import app, ui
 
 from . import kigit
+from .folder_picker import FolderPicker
 
 LOCAL = "LOCAL"
+SEARCH_DEPTH = 2
 
 # Generated pages are served from here. Commit-to-commit diffs never change,
 # so they're kept for the session; anything involving LOCAL is regenerated.
 CACHE = Path(tempfile.mkdtemp(prefix="kigit-gui-"))
 app.add_static_files("/diffs", str(CACHE))
+
+# Message column: one line, the whole message on hover.
+MESSAGE_CELL = r"""
+<q-td :props="props">
+  <div class="ellipsis" style="max-width: 10.5rem">{{ props.row.subject }}</div>
+  <q-tooltip anchor="center right" self="center left" max-width="34rem"
+             class="bg-grey-10 text-body2" style="white-space: pre-wrap">{{ props.row.tip }}</q-tooltip>
+</q-td>
+"""
+
+# Commit column: the working tree row stands out.
+COMMIT_CELL = r"""
+<q-td :props="props">
+  <span :class="props.row.hash === 'LOCAL' ? 'text-amber-5 text-weight-bold' : 'text-mono'">{{ props.row.short }}</span>
+</q-td>
+"""
+
+TAGS_CELL = r"""
+<q-td :props="props">
+  <q-badge v-if="props.row.pcb" outline color="blue-4" label="PCB" class="q-mr-xs" />
+  <q-badge v-if="props.row.sch" outline color="green-4" label="SCH" />
+</q-td>
+"""
 
 
 def page_name(project: str, old: str, new: str) -> str:
@@ -30,109 +63,227 @@ def page_name(project: str, old: str, new: str) -> str:
     return f"{key}.html"
 
 
-def build(project: str):
-    """Builds the page for one project. Returns the coroutine function that
-    (re)loads the commit history, so the caller can run it once the page is up."""
+def short_rev(rev: str) -> str:
+    return rev[:7] if len(rev) == 40 else rev
+
+
+def build(start_folder: str):
+    """Builds the page. Returns the coroutine that opens a folder, so the
+    caller can open the starting folder once the page exists."""
     ui.dark_mode(True)
     ui.query(".nicegui-content").classes("p-0 gap-0")
-    state = {"project": project, "history": None}
+    state: dict = {"board": None, "history": None}
 
-    with ui.header().classes("items-center gap-4 py-2 px-4 bg-[#161a20] border-b border-[#29303a]"):
+    # ---------------------------------------------------------------- header
+    with ui.header().classes("items-center gap-3 py-2 px-4 bg-[#161a20] border-b border-[#29303a] no-wrap"):
         ui.label("kigit").classes("text-lg font-bold text-[#e8b84d]")
-        project_input = ui.input(value=project).props("dense dark outlined").classes("w-[28rem]")
-        ui.button("Open", on_click=lambda: load(project_input.value)).props("flat dense")
-        status = ui.label("").classes("text-sm text-gray-400 ml-auto")
+        folder_input = ui.input(value=start_folder, placeholder="KiCad project folder").props(
+            "dense dark outlined").classes("w-[30rem]")
+        folder_input.on("keydown.enter", lambda: open_folder(folder_input.value))
+        ui.button("Browse", icon="folder_open", on_click=lambda: browse()).props("flat dense")
+        ui.button("Open", on_click=lambda: open_folder(folder_input.value)).props("flat dense")
+        status = ui.label("").classes("text-sm text-gray-400 ml-auto truncate")
 
-    with ui.left_drawer(value=True, bordered=True).props("width=460").classes("bg-[#161a20] p-0"):
+    # ----------------------------------------------------------- commit list
+    with ui.left_drawer(value=True, bordered=True).props("width=480").classes("bg-[#161a20] p-0"):
         with ui.column().classes("w-full p-3 gap-2"):
-            ui.label("Pick two commits to compare them, or one to see what it changed.").classes(
-                "text-xs text-gray-400")
-            with ui.row().classes("w-full gap-2 items-center"):
+            project_label = ui.label("").classes("text-sm font-semibold")
+            hint = ui.label("Pick two commits, then press Compare.").classes("text-xs text-gray-400")
+            with ui.row().classes("w-full gap-2 items-center no-wrap"):
                 compare_btn = ui.button("Compare", on_click=lambda: compare()).props("unelevated dense color=amber-8")
-                ui.button("Refresh", on_click=lambda: load(state["project"])).props("flat dense")
-                ui.space()
-                only = ui.switch("PCB/schematic changes only", value=True, on_change=lambda: fill()).props("dense")
+                picked = ui.label("").classes("text-xs text-gray-300 truncate")
+            only = ui.switch("Only commits that changed the board or schematic", value=False,
+                             on_change=lambda: fill()).props("dense dark").classes("text-xs")
             columns = [
                 {"name": "short", "label": "Commit", "field": "short", "align": "left"},
-                {"name": "what", "label": "", "field": "what", "align": "left"},
+                {"name": "tags", "label": "", "field": "tags", "align": "left"},
                 {"name": "date", "label": "Date", "field": "date", "align": "left"},
-                {"name": "subject", "label": "Message", "field": "subject", "align": "left",
-                 "style": "white-space: normal"},
+                {"name": "subject", "label": "Message", "field": "subject", "align": "left"},
             ]
             table = ui.table(columns=columns, rows=[], row_key="hash", selection="multiple",
                              on_select=lambda e: on_select()).props(
                 "dense flat dark virtual-scroll hide-bottom :rows-per-page-options=[0]").classes(
-                "w-full h-[calc(100vh-150px)]")
+                "w-full h-[calc(100vh-200px)]")
+            table.add_slot("body-cell-subject", MESSAGE_CELL)
+            table.add_slot("body-cell-short", COMMIT_CELL)
+            table.add_slot("body-cell-tags", TAGS_CELL)
 
+    # ---------------------------------------------------------------- viewer
     with ui.element("div").classes("w-full h-[calc(100vh-52px)] relative"):
-        frame = ui.element("iframe").classes("w-full h-full border-0 bg-[#0f1115]")
-        placeholder = ui.label("Pick commits on the left and press Compare.").classes(
-            "absolute inset-0 flex items-center justify-center text-gray-500")
+        frame = ui.element("iframe").classes("w-full h-full border-0 bg-[#0f1115]").mark("viewer")
+        frame.set_visibility(False)
+        with ui.column().classes("absolute inset-0 items-center justify-center gap-2") as placeholder:
+            placeholder_icon = ui.icon("folder_open").classes("text-5xl text-gray-600")
+            placeholder_text = ui.label("Open a KiCad project folder to start.").classes("text-gray-400")
+            placeholder_more = ui.label("").classes("text-xs text-gray-500 text-center max-w-[36rem]")
 
+    def show_message(icon: str, text: str, more: str = "", tone: str = "text-gray-400") -> None:
+        frame.set_visibility(False)
+        placeholder.set_visibility(True)
+        placeholder_icon.name = icon
+        placeholder_text.text = text
+        placeholder_text.classes(replace=tone)
+        placeholder_more.text = more
+
+    # ------------------------------------------------------------- open/load
+    async def browse() -> None:
+        chosen = await FolderPicker(folder_input.value or str(Path.home()))
+        if chosen:
+            folder_input.value = chosen
+            await open_folder(chosen)
+
+    def clear_project() -> None:
+        state["board"] = state["history"] = None
+        table.rows = []
+        table.selected = []
+        table.update()
+        project_label.text = ""
+        on_select()
+
+    async def open_folder(folder: str) -> None:
+        folder = str(Path(folder or ".").expanduser())
+        clear_project()
+        if not Path(folder).is_dir():
+            status.text = ""
+            show_message("error_outline", f"{folder} isn't a folder.", tone="text-red-400")
+            ui.notify(f"{folder} isn't a folder", type="negative")
+            return
+        status.text = "Looking for a KiCad project..."
+        try:
+            found = await kigit.projects(folder, SEARCH_DEPTH)
+        except kigit.KigitError as e:
+            status.text = ""
+            show_message("error_outline", "Couldn't search this folder.", str(e), "text-red-400")
+            return
+
+        boards = [p for p in found if p.pcb]
+        if not found:
+            status.text = ""
+            show_message("search_off", "No KiCad project found.",
+                         f"Looked in {folder} and {SEARCH_DEPTH} levels below it for a .kicad_pro or .kicad_pcb.",
+                         "text-red-400")
+            ui.notify("No KiCad project found in this folder (searched 2 levels deep)", type="negative")
+            return
+        if not boards:
+            names = ", ".join(p.name for p in found)
+            status.text = ""
+            show_message("developer_board_off", "Found a KiCad project, but no board file.",
+                         f"{names}: kigit compares projects through their .kicad_pcb, which isn't there.",
+                         "text-red-400")
+            ui.notify("KiCad project has no .kicad_pcb", type="negative")
+            return
+
+        project = boards[0] if len(boards) == 1 else await choose_project(folder, boards)
+        if project is None:
+            status.text = ""
+            show_message("folder_open", "Several projects here; none chosen.")
+            return
+        if not project.git:
+            status.text = ""
+            show_message("history_toggle_off", f"{project.name} isn't in a git repository.",
+                         "kigit compares commits, so the project needs git history. "
+                         "(Two loose board files can be compared with `kigit --files OLD NEW`.)",
+                         "text-red-400")
+            ui.notify(f"{project.name} isn't in a git repository", type="negative")
+            return
+        await load_history(project)
+
+    async def choose_project(folder: str, boards: list[kigit.Project]):
+        with ui.dialog() as dialog, ui.card().classes("w-[36rem] bg-[#161a20] gap-1"):
+            ui.label(f"{len(boards)} KiCad projects found").classes("text-base font-semibold")
+            ui.label("Pick the one to open:").classes("text-xs text-gray-400 mb-2")
+            for p in boards:
+                rel = os.path.relpath(p.dir, folder)
+                with ui.row().classes(
+                        "w-full items-center gap-2 px-2 py-1 rounded cursor-pointer hover:bg-[#1c2128] no-wrap").on(
+                        "click", lambda p=p: dialog.submit(p)):
+                    ui.icon("developer_board").classes("text-amber-500")
+                    with ui.column().classes("gap-0 flex-grow min-w-0"):
+                        ui.label(p.name).classes("font-medium")
+                        ui.label("." if rel == "." else rel).classes("text-xs text-gray-400 truncate")
+                    if not p.git:
+                        ui.badge("no git", color="red-5").props("outline")
+            with ui.row().classes("w-full justify-end"):
+                ui.button("Cancel", on_click=lambda: dialog.submit(None)).props("flat")
+        return await dialog
+
+    async def load_history(project: kigit.Project) -> None:
+        status.text = f"Reading {project.name} history..."
+        try:
+            h = await kigit.history(project.board)
+        except kigit.KigitError as e:
+            status.text = ""
+            show_message("error_outline", "Couldn't read the history.", str(e), "text-red-400")
+            return
+        state["board"], state["history"] = project.board, h
+        folder_input.value = project.dir
+        project_label.text = f"{project.name}  ·  {len(h.commits)} commits"
+        status.text = h.repo
+        fill()
+        show_message("compare_arrows", "Pick two commits on the left, then press Compare.",
+                     "The newest entry is your working tree: HEAD plus any uncommitted changes.")
+
+    # ------------------------------------------------------------ commit rows
     def fill() -> None:
         h = state["history"]
         if not h:
             table.rows = []
+            table.update()
             return
         rows = []
-        if h.local:
-            what = " ".join(k.upper() for k in ("pcb", "sch") if h.local[k])
-            rows.append({"hash": LOCAL, "short": "LOCAL", "what": what, "date": "now",
-                         "subject": "Uncommitted changes"})
+        local = h.local
+        head = h.commits[0] if h.commits else None
+        if local.dirty:
+            subject = f"HEAD + uncommitted changes ({len(local.files)} file{'s' if len(local.files) != 1 else ''})"
+            tip = "Your working tree: HEAD plus these uncommitted changes:\n" + "\n".join(
+                f"  {f}" for f in local.files[:20]) + ("\n  ..." if len(local.files) > 20 else "")
+        else:
+            subject = "HEAD (no uncommitted changes)"
+            tip = "Your working tree, which matches HEAD."
+        if head:
+            tip += f"\n\nHEAD is {head.short}: {head.subject}"
+        rows.append({"hash": LOCAL, "short": "HEAD*" if local.dirty else "HEAD", "pcb": local.pcb,
+                     "sch": local.sch, "date": "now", "subject": subject, "tip": tip})
         for c in h.commits:
             if only.value and not (c.pcb or c.sch):
                 continue
-            what = " ".join(k for k, on in (("PCB", c.pcb), ("SCH", c.sch)) if on)
-            rows.append({"hash": c.hash, "short": c.short, "what": what, "date": c.date[:16],
-                         "subject": c.subject})
+            message = c.subject + (f"\n\n{c.body}" if c.body else "")
+            tip = f"{message}\n\n{c.author} · {c.date}\n{c.hash}"
+            rows.append({"hash": c.hash, "short": c.short, "pcb": c.pcb, "sch": c.sch, "date": c.date[:16],
+                         "subject": c.subject, "tip": tip})
         table.rows = rows
-        table.selected = [r for r in table.selected if any(r["hash"] == x["hash"] for x in rows)]
+        keep = {r["hash"] for r in rows}
+        table.selected = [r for r in table.selected if r["hash"] in keep]
         table.update()
         on_select()
 
     def on_select() -> None:
-        # Keep at most two, the most recently clicked.
+        # At most two, keeping the most recently picked.
         if len(table.selected) > 2:
             table.selected = table.selected[-2:]
             table.update()
         n = len(table.selected)
-        compare_btn.set_enabled(n in (1, 2))
-        compare_btn.text = "Compare" if n == 2 else "Show this commit" if n == 1 else "Compare"
+        compare_btn.set_enabled(n == 2)
+        names = [r["short"] for r in table.selected]
+        picked.text = (" ↔ ".join(names) if n == 2 else f"{names[0]} + pick one more" if n == 1
+                       else "Nothing picked")
+        hint.set_visibility(state["history"] is not None)
 
-    async def load(path: str) -> None:
-        state["project"] = path
-        status.text = "Reading history..."
-        try:
-            state["history"] = await kigit.history(path)
-        except kigit.KigitError as e:
-            state["history"] = None
-            status.text = ""
-            ui.notify(str(e), type="negative", multi_line=True, close_button=True)
-            fill()
-            return
-        h = state["history"]
-        status.text = f"{h.board} · {len(h.commits)} commits"
-        fill()
-
+    # ---------------------------------------------------------------- compare
     async def compare() -> None:
-        sel = table.selected
-        if len(sel) == 2:
-            old, new = sel[0]["hash"], sel[1]["hash"]
-        elif len(sel) == 1:
-            # What this commit changed: its parent -> it (LOCAL: HEAD -> working tree).
-            new = sel[0]["hash"]
-            old = "HEAD" if new == LOCAL else f"{new}~1"
-        else:
+        if len(table.selected) != 2 or not state["board"]:
             return
-        name = page_name(state["project"], old, new)
+        a, b = (r["hash"] for r in table.selected)
+        # kigit orders them by history (older first); LOCAL is always newest.
+        board = state["board"]
+        name = page_name(board, a, b)
         out = CACHE / name
         compare_btn.props("loading")
         status.text = "Comparing..."
         started = time.monotonic()
         try:
-            if LOCAL in (old, new) or not out.exists():
-                warnings = await kigit.diff_html(state["project"], old, new, out)
-                for w in warnings:
+            if LOCAL in (a, b) or not out.exists():
+                for w in await kigit.diff_html(board, a, b, out):
                     ui.notify(w, type="warning", multi_line=True, close_button=True)
         except kigit.KigitError as e:
             status.text = ""
@@ -140,24 +291,22 @@ def build(project: str):
             return
         finally:
             compare_btn.props(remove="loading")
-        def label(rev: str) -> str:  # full hashes shortened, "LOCAL"/"HEAD" as is
-            base, tilde, rest = rev.partition("~")
-            return (base[:7] if len(base) == 40 else base) + tilde + rest
-
-        status.text = f"{label(old)} → {label(new)} · {time.monotonic() - started:.1f} s"
-        # Cache-buster so a regenerated LOCAL page actually reloads.
-        frame.props(f'src="/diffs/{name}?t={int(time.time())}"')
+        status.text = f"{short_rev(a)} ↔ {short_rev(b)} · {time.monotonic() - started:.1f} s"
+        # Open on the schematic; the cache-buster makes a regenerated LOCAL page reload.
+        frame.props(f'src="/diffs/{name}?t={int(time.time())}#sch"')
         placeholder.set_visibility(False)
+        frame.set_visibility(True)
 
-    return load
+    on_select()
+    return open_folder
 
 
 @ui.page("/")
 async def index() -> None:
-    # The project folder comes from `kigit gui [PROJECT_DIR]` (see main()).
-    project = os.environ.get("KIGIT_PROJECT", os.getcwd())
-    load = build(project)
-    await load(project)
+    # The starting folder comes from `kigit gui [PROJECT_DIR]` (see main()).
+    folder = os.environ.get("KIGIT_PROJECT", os.getcwd())
+    open_folder = build(folder)
+    await open_folder(folder)
 
 
 def main() -> None:

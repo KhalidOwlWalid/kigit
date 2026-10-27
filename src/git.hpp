@@ -44,10 +44,12 @@ std::vector<std::string> list_files(const std::string& root, const Revision& rev
 // A commit that touched the project, newest first.
 struct Commit {
     std::string hash, short_hash, date, author, subject;
+    std::string body;               // rest of the commit message after the subject
     std::vector<std::string> files; // changed paths (from the repo root)
 };
 
-// Commits touching `pathspec` (a folder or file, from the repo root).
+// Commits in HEAD's history, newest first. With a pathspec, only commits
+// touching it; empty = every commit.
 std::vector<Commit> log(const std::string& root, const std::string& pathspec, int max_count);
 
 // Uncommitted changed/untracked paths under `pathspec`.

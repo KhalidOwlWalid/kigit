@@ -2,31 +2,46 @@
 
 Needs a built kigit and a KiCad project in git, for example:
     KIGIT_BIN=../build/kigit KIGIT_PROJECT=~/my/board uv run pytest
+KIGIT_PROJECT should be the project folder itself (the tests also open its
+parent folders to check the 2-level search).
 """
 
 import os
+from pathlib import Path
 
 import pytest
 from nicegui import ui
 from nicegui.events import TableSelectionEventArguments
 from nicegui.testing import User
 
-from kigit_gui import app  # noqa: F401  (registers the page)
+from kigit_gui import app
+
+PROJECT = os.environ.get("KIGIT_PROJECT", "")
 
 pytestmark = [
     pytest.mark.skipif(
-        not os.environ.get("KIGIT_BIN") or not os.environ.get("KIGIT_PROJECT"),
+        not os.environ.get("KIGIT_BIN") or not PROJECT,
         reason="set KIGIT_BIN and KIGIT_PROJECT to run the GUI tests",
     ),
     pytest.mark.module_under_test(app),  # re-registers the page for each test
 ]
 
 
+async def open_at(user: User, monkeypatch, folder: str) -> None:
+    """Starts the GUI in `folder`, like `kigit gui FOLDER`."""
+    monkeypatch.setenv("KIGIT_PROJECT", folder)
+    await user.open("/")
+
+
+def commit_table(user: User):
+    return user.find(ui.table).elements.pop()
+
+
 async def select(user: User, rows: list[dict]) -> None:
     """Selects table rows and notifies the app, as a click in the browser would.
     (The simulated user can't send selection data, so the table's selection
     handlers are called directly.)"""
-    table = user.find(ui.table).elements.pop()
+    table = commit_table(user)
     with user.client:
         table.selected = rows
         args = TableSelectionEventArguments(sender=table, client=user.client, selection=rows)
@@ -34,30 +49,59 @@ async def select(user: User, rows: list[dict]) -> None:
             handler(args)
 
 
-async def test_lists_commits(user: User) -> None:
-    await user.open("/")
-    await user.should_see("commits", retries=50)  # status line: "<board> · N commits"
-    table = user.find(ui.table).elements.pop()
-    assert any(r["hash"] != "LOCAL" for r in table.rows)
+async def test_lists_commits_with_working_tree_on_top(user: User, monkeypatch) -> None:
+    await open_at(user, monkeypatch, PROJECT)
+    await user.should_see("Pick two commits on the left", retries=50)
+    rows = commit_table(user).rows
+    assert rows[0]["hash"] == "LOCAL" and rows[0]["subject"].startswith("HEAD")
+    assert len(rows) > 2
+    assert all(r["tip"] for r in rows)  # hover text with the full message
 
 
-async def test_one_commit_shows_what_it_changed(user: User) -> None:
-    await user.open("/")
-    await user.should_see("commits", retries=50)
-    table = user.find(ui.table).elements.pop()
-    commit = next(r for r in table.rows if r["hash"] != "LOCAL")
-    await select(user, [commit])
-    user.find("Show this commit").click()
-    await user.should_see("→", retries=100)  # status line: "<parent> → <commit> · 0.2 s"
-    frame = next(e for e in user.find(ui.element).elements if e.tag == "iframe")
-    assert "/diffs/" in frame.props.get("src", "")
+async def test_finds_project_one_level_down(user: User, monkeypatch) -> None:
+    await open_at(user, monkeypatch, str(Path(PROJECT).parent))
+    await user.should_see("Pick two commits on the left", retries=50)
 
 
-async def test_two_commits_compare(user: User) -> None:
-    await user.open("/")
-    await user.should_see("commits", retries=50)
-    table = user.find(ui.table).elements.pop()
-    commits = [r for r in table.rows if r["hash"] != "LOCAL"][:2]
-    await select(user, commits)
+async def test_compare_needs_two_and_opens_schematic(user: User, monkeypatch) -> None:
+    await open_at(user, monkeypatch, PROJECT)
+    await user.should_see("Pick two commits on the left", retries=50)
+    rows = commit_table(user).rows
+    await select(user, [rows[1]])
+    await user.should_see("pick one more")
+    await select(user, [rows[1], rows[2]])
     user.find("Compare").click()
-    await user.should_see("→", retries=100)
+    await user.should_see(marker="viewer", retries=100)  # shown once the diff is ready
+    frame = user.find(marker="viewer").elements.pop()
+    assert frame.props["src"].endswith("#sch")
+
+
+async def test_empty_folder_is_flagged(user: User, monkeypatch, tmp_path: Path) -> None:
+    await open_at(user, monkeypatch, str(tmp_path))
+    await user.should_see("No KiCad project found", retries=50)
+
+
+async def test_project_three_levels_down_is_not_found(user: User, monkeypatch, tmp_path: Path) -> None:
+    deep = tmp_path / "a" / "b" / "c"
+    deep.mkdir(parents=True)
+    (deep / "x.kicad_pro").write_text("{}")
+    (deep / "x.kicad_pcb").write_text("(kicad_pcb)")
+    await open_at(user, monkeypatch, str(tmp_path))
+    await user.should_see("No KiCad project found", retries=50)
+
+
+async def test_project_without_git_is_flagged(user: User, monkeypatch, tmp_path: Path) -> None:
+    (tmp_path / "board").mkdir()
+    (tmp_path / "board" / "x.kicad_pro").write_text("{}")
+    (tmp_path / "board" / "x.kicad_pcb").write_text("(kicad_pcb)")
+    await open_at(user, monkeypatch, str(tmp_path))
+    await user.should_see("isn't in a git repository", retries=50)
+
+
+async def test_several_projects_ask_which(user: User, monkeypatch, tmp_path: Path) -> None:
+    for name in ("one", "two"):
+        (tmp_path / name).mkdir()
+        (tmp_path / name / f"{name}.kicad_pro").write_text("{}")
+        (tmp_path / name / f"{name}.kicad_pcb").write_text("(kicad_pcb)")
+    await open_at(user, monkeypatch, str(tmp_path))
+    await user.should_see("2 KiCad projects found", retries=50)
