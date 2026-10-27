@@ -33,8 +33,8 @@ endforeach()
 configure_file(src/viewer_template.hpp.in
                ${CMAKE_CURRENT_BINARY_DIR}/generated/viewer_template.hpp @ONLY)
 
-add_executable(kigit
-  src/main.cpp
+# Everything except main() is a library, so the tests can use it directly.
+add_library(kigit_core STATIC
   src/sexpr.cpp
   src/board.cpp
   src/git.cpp
@@ -45,12 +45,22 @@ add_executable(kigit
   src/sch_diff.cpp
   src/netcheck.cpp
 )
-target_include_directories(kigit PRIVATE src ${CMAKE_CURRENT_BINARY_DIR}/generated)
-target_compile_definitions(kigit PRIVATE KIGIT_VERSION="${PROJECT_VERSION}")
-target_link_libraries(kigit PRIVATE nlohmann_json::nlohmann_json)
+target_include_directories(kigit_core PUBLIC src ${CMAKE_CURRENT_BINARY_DIR}/generated)
+target_compile_definitions(kigit_core PUBLIC KIGIT_VERSION="${PROJECT_VERSION}")
+target_link_libraries(kigit_core PUBLIC nlohmann_json::nlohmann_json)
+
+add_executable(kigit src/main.cpp)
+target_link_libraries(kigit PRIVATE kigit_core)
 
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+  target_compile_options(kigit_core PRIVATE -Wall -Wextra -Wpedantic)
   target_compile_options(kigit PRIVATE -Wall -Wextra -Wpedantic)
+endif()
+
+option(KIGIT_BUILD_TESTS "Build the test suite (ctest)" ON)
+if(KIGIT_BUILD_TESTS)
+  enable_testing()
+  add_subdirectory(tests)
 endif()
 
 install(TARGETS kigit RUNTIME DESTINATION bin)

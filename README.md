@@ -224,6 +224,30 @@ diffed, because refilling a pour changes its shape every time.
 **Schematic.** Parts are matched by KiCad ID (then reference), nets by label
 name or shared pins, wires and labels by position; see "Schematic diff".
 
+## Testing
+
+```sh
+cmake -S . -B build && cmake --build build -j
+cd build && ctest            # everything (about 5 s)
+ctest -L unit                # C++ only
+ctest -L gui                 # the GUI (needs uv)
+```
+
+The tests don't need any of your projects: `tests/fixtures/` holds a tiny
+KiCad project in two versions, and `tests/make_fixture_repo.sh` builds a
+throwaway git repo from it (four commits, including a folder rename). The
+expected nets in the schematic tests are KiCad's own netlist for those files.
+
+- `tests/cpp/`: parser, board, PCB diff, schematic nets, schematic diff, git
+  integration, and the `kigit` binary end to end.
+- `gui/tests/`: the GUI with NiceGUI's simulated user.
+- Optional check against real projects: kigit's nets must match `kicad-cli`
+  exactly. Skipped unless you list projects:
+
+  ```sh
+  KIGIT_REGRESSION_PROJECTS="~/boards/a/a.kicad_pcb:~/boards/b/b.kicad_pcb" ctest -L regression -V
+  ```
+
 ## Layout
 
 ```
@@ -234,6 +258,8 @@ src/diff.*     per-net matching and stats
 src/html.*     JSON payload + viewer template
 src/schematic.*         .kicad_sch -> sheets, parts, wires, labels, nets
 src/sch_diff.*          schematic diff (parts, nets, wires, labels)
+tests/                  C++ tests, fixtures, fixture-repo script, regression check
+gui/tests/              GUI tests
 resources/viewer.html   page shell + styles; pcb.js, sch.js, shell.js are
                         combined into it at build time (one HTML file)
 ```

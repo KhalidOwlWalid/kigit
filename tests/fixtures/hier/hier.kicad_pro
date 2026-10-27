@@ -1,0 +1,10 @@
+{
+  "meta": { "filename": "hier.kicad_pro", "version": 3 },
+  "schematic": {
+    "top_level_sheets": [
+      { "filename": "hier.kicad_sch", "name": "hier", "uuid": "hier-root" },
+      { "filename": "extra.kicad_sch", "name": "extra", "uuid": "extra-root" }
+    ]
+  },
+  "sheets": [ ["hier-root", "hier"], ["sheet-child", "Child"], ["extra-root", "extra"] ]
+}

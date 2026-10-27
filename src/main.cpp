@@ -702,7 +702,7 @@ int main(int argc, char** argv) {
             if (swap && old_rev.hash != new_rev.hash && git::is_ancestor(root, new_rev, old_rev)) {
                 std::swap(old_rev, new_rev);
                 if (!quiet)
-                    std::printf("note: %s is older than %s, comparing %s -> %s\n", old_rev.short_hash.c_str(),
+                    std::fprintf(stderr, "note: %s is older than %s, comparing %s -> %s\n", old_rev.short_hash.c_str(),
                                 new_rev.short_hash.c_str(), old_rev.short_hash.c_str(),
                                 new_rev.short_hash.c_str());
             }
