@@ -315,7 +315,8 @@ nlohmann::json schematic_view_json(const Schematic& a, const Schematic& b, const
 
     struct SheetOut {
         json wires = json::array(), junctions = json::array(), nc = json::array(), labels = json::array(),
-             symbols = json::array(), boxes = json::array(), texts = json::array(), drawings = json::array();
+             symbols = json::array(), boxes = json::array(), texts = json::array(), drawings = json::array(),
+             buses = json::array(), entries = json::array();
         int changes = 0;
     };
     std::vector<SheetOut> out(b.sheets.size());
@@ -366,6 +367,32 @@ nlohmann::json schematic_view_json(const Schematic& a, const Schematic& b, const
             if (old_sheet[sh] >= 0) out[old_sheet[sh]].junctions.push_back({r4s(p.x), r4s(p.y), kRemoved});
         }
         for (const auto& [sh, p] : b.no_connects) out[sh].nc.push_back({r4s(p.x), r4s(p.y)});
+    }
+
+    // Buses and bus entries, matched by position like wires (no nets: a bus
+    // carries several).
+    {
+        auto seg_key = [](const Schematic& s, int sheet, Point a, Point b) {
+            std::string p = pos_key(s, sheet, a), q = pos_key(s, sheet, b);
+            return p < q ? p + "|" + q : q + "|" + p;
+        };
+        std::unordered_map<std::string, int> in_old, in_new;
+        for (const auto& bs : a.buses) ++in_old[seg_key(a, bs.sheet, bs.a, bs.b)];
+        for (const auto& bs : b.buses) ++in_new[seg_key(b, bs.sheet, bs.a, bs.b)];
+        for (const auto& bs : b.buses) {
+            auto f = in_old.find(seg_key(b, bs.sheet, bs.a, bs.b));
+            int st = (f != in_old.end() && f->second-- > 0) ? kSame : kAdded;
+            out[bs.sheet].buses.push_back({r4s(bs.a.x), r4s(bs.a.y), r4s(bs.b.x), r4s(bs.b.y), st});
+            note(bs.sheet, st);
+        }
+        for (const auto& bs : a.buses) {
+            auto f = in_new.find(seg_key(a, bs.sheet, bs.a, bs.b));
+            if ((f != in_new.end() && f->second-- > 0) || old_sheet[bs.sheet] < 0) continue;
+            out[old_sheet[bs.sheet]].buses.push_back({r4s(bs.a.x), r4s(bs.a.y), r4s(bs.b.x), r4s(bs.b.y), kRemoved});
+            note(old_sheet[bs.sheet], kRemoved);
+        }
+        for (const auto& e : b.bus_entries)
+            out[e.sheet].entries.push_back({r4s(e.a.x), r4s(e.a.y), r4s(e.b.x), r4s(e.b.y)});
     }
 
     // Labels and sheet pins.
@@ -467,7 +494,8 @@ nlohmann::json schematic_view_json(const Schematic& a, const Schematic& b, const
                           {"parent", sh.parent},   {"w", sh.paper.x},           {"h", sh.paper.y},
                           {"changes", o.changes},  {"wires", o.wires},          {"junctions", o.junctions},
                           {"nc", o.nc},            {"labels", o.labels},        {"symbols", o.symbols},
-                          {"boxes", o.boxes},      {"texts", o.texts},          {"drawings", o.drawings}});
+                          {"boxes", o.boxes},      {"texts", o.texts},          {"drawings", o.drawings},
+                          {"buses", o.buses},      {"entries", o.entries}});
     }
 
     // Nets and parts, for tooltips.

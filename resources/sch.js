@@ -167,7 +167,7 @@
     const U = vertical ? [-1, 0] : [0, -1];
     const forward = d[0] * R[0] + d[1] * R[1] > 0;
     const textLen = textWidth(str, size);
-    let out = `<g class="lbl st${st}" data-n="${net}">`;
+    let out = `<g class="lbl st${st}${net < 0 ? " buslbl" : ""}" data-n="${net}">`;
     if (kind === 0) {
       const at = [x + U[0] * 0.3, y + U[1] * 0.3];
       out += text(str, at[0], at[1], vertical, forward ? -1 : 1, 1, size);
@@ -227,6 +227,10 @@
     const syms = sh.symbols.map((s, k) => [s, k]).sort((p, q) => order(p[0].st) - order(q[0].st));
     for (const [s, k] of syms) out += symbolSvg(s, k);
     const wires = [...sh.wires].sort((p, q) => order(p[4]) - order(q[4]));
+    // Buses (thick) and bus entries (the short diagonals into them).
+    for (const e of sh.entries || []) out += `<path class="bus-entry" d="M${e[0]} ${e[1]}L${e[2]} ${e[3]}"/>`;
+    for (const b of [...(sh.buses || [])].sort((p, q) => order(p[4]) - order(q[4])))
+      out += `<path class="bus st${b[4]}" d="M${b[0]} ${b[1]}L${b[2]} ${b[3]}"/>`;
     for (const w of wires)
       out += `<path class="wire st${w[4]}" data-n="${w[5]}" d="M${w[0]} ${w[1]}L${w[2]} ${w[3]}"/>`;
     for (const j of sh.junctions) out += `<circle class="junction st${j[2]}" cx="${j[0]}" cy="${j[1]}" r="0.46"/>`;

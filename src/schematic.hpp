@@ -77,9 +77,21 @@ struct SchSymbol {
     double angle = 0;
     bool mirror_x = false, mirror_y = false;
     bool power = false;              // power symbol (GND, +3.3V, ...)
+    bool on_board = true;            // false: not placed on the PCB ("Exclude from board"); left
+                                     // out of nets' pin lists, like KiCad's netlist
     std::vector<SchPin> pins;
     std::string def;                 // key into Schematic::defs (drawing)
     std::vector<SchText> visible_fields; // reference, value, ... as shown on the sheet
+};
+
+// A bus segment, and the little diagonal "bus entry" between a bus and a wire.
+struct SchBus {
+    int sheet = 0;
+    Point a, b;
+};
+struct SchBusEntry {
+    int sheet = 0;
+    Point a, b; // a on one side, b = a + size
 };
 
 struct SchWire {
@@ -100,6 +112,7 @@ struct SchLabel {
     double angle = 0;                // text direction: 0 right, 90 up, 180 left, 270 down
     double size = 1.27;
     std::string shape;               // global/hierarchical/sheet pin: input, output, ...
+    bool bus = false;                // a bus name (D[0..7], NAME{ALIAS}, {A B}), not a net
 };
 
 // The box of a sub-sheet as drawn on its parent.
@@ -126,6 +139,9 @@ struct Schematic {
     std::vector<SchLabel> labels;
     std::vector<std::pair<int, Point>> junctions; // (sheet, position)
     std::vector<std::pair<int, Point>> no_connects;
+    std::vector<SchBus> buses;
+    std::vector<SchBusEntry> bus_entries;
+    std::map<std::string, std::vector<std::string>> bus_aliases; // name -> members
     std::vector<SchSheetBox> sheet_boxes;
     std::vector<std::pair<int, SchText>> texts;     // free text notes
     std::vector<std::pair<int, std::string>> drawings; // lines/boxes drawn on sheets (SVG path data)

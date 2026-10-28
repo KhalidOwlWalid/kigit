@@ -175,7 +175,7 @@ changed, grey unchanged.
 
 "Old positions" shows moved parts' previous place as a faint ghost (off by
 default). The drawing is kigit's own, not KiCad's export: close to KiCad but
-with a different font, and buses, images and text boxes aren't drawn yet.
+with a different font, and images and text boxes aren't drawn yet.
 
 ## Schematic nets (work in progress)
 
@@ -196,8 +196,9 @@ kigit --check-netlist owl.net         # LOCAL; or add a revision: ... owl.net c4
 ```
 
 It prints any net whose pins or name differ. On the owl_v1 history (25
-schematic commits) every net matches KiCad exactly. Buses aren't supported
-yet.
+schematic commits) every net matches KiCad exactly, as it does on projects
+using buses (vector buses like `D[0..7]`, groups and bus aliases like
+`USB_C{USB}`, across sheets).
 
 ### Schematic diff
 

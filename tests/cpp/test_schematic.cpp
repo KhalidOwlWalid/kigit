@@ -131,6 +131,30 @@ TEST_CASE("hierarchy and two top-level sheets: same as KiCad") {
     CHECK(s.warnings.empty());
 }
 
+TEST_CASE("buses across the hierarchy: same as KiCad") {
+    // MAIN{GRP} (alias GRP = SIG AUX) on the parent feeds sheet pin B{GRP};
+    // D[0..1] feeds Q[0..1]. Members pair by name (groups) or position (vectors).
+    Schematic s = load_schematic("bus.kicad_sch", folder_reader(fixture("bus")));
+    NetMap expected = {
+        {"/D0", {"R11.1", "R3.1"}},
+        {"/D1", {"R12.1", "R4.1"}},
+        {"/MAIN.SIG", {"R1.1", "R10.1"}},
+        {"unconnected-(R1-Pad2)", {"R1.2"}},
+        {"unconnected-(R3-Pad2)", {"R3.2"}},
+        {"unconnected-(R4-Pad2)", {"R4.2"}},
+        {"unconnected-(R10-Pad2)", {"R10.2"}},
+        {"unconnected-(R11-Pad2)", {"R11.2"}},
+        {"unconnected-(R12-Pad2)", {"R12.2"}},
+    };
+    CHECK(nets_of(s) == expected);
+    CHECK(s.warnings.empty());
+    CHECK(s.buses.size() == 4);
+    CHECK(s.bus_aliases.at("GRP") == std::vector<std::string>{"SIG", "AUX"});
+    int bus_labels = 0;
+    for (const auto& l : s.labels) bus_labels += l.bus;
+    CHECK(bus_labels == 6); // 2 labels + 2 sheet pins + 2 hierarchical labels
+}
+
 TEST_CASE("missing sub-sheet file is a warning, not a failure") {
     FileReader dir = folder_reader(fixture("hier"));
     Schematic s = load_schematic("hier.kicad_sch", [&](const std::string& rel) -> std::optional<std::string> {

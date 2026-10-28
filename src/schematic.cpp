@@ -389,9 +389,18 @@ private:
                     sch_.labels.push_back(std::move(l));
                 });
                 children.emplace_back(child_index, child.file);
-            } else if ((kind == "bus" || kind == "bus_entry") && !warned_bus_) {
-                sch_.warnings.push_back("buses aren't supported yet; nets carried only by buses may be split");
-                warned_bus_ = true;
+            } else if (kind == "bus") {
+                std::vector<Point> p;
+                if (const Node* pts = n.child("pts")) pts->each("xy", [&](const Node& q) { p.push_back(xy(&q)); });
+                for (size_t i = 1; i < p.size(); ++i) sch_.buses.push_back({index, p[i - 1], p[i]});
+            } else if (kind == "bus_entry") {
+                Point at = xy(n.child("at")), size = xy(n.child("size"));
+                sch_.bus_entries.push_back({index, at, {at.x + size.x, at.y + size.y}});
+            } else if (kind == "bus_alias") {
+                std::vector<std::string> members;
+                if (const Node* m = n.child("members"))
+                    for (size_t i = 0; i < m->arg_count(); ++i) members.push_back(sexpr::unescape(m->arg(i)));
+                sch_.bus_aliases[sexpr::unescape(n.arg(0))] = std::move(members);
             }
         }
 
@@ -425,6 +434,8 @@ private:
             s.mirror_y = m->arg(0) == "y";
         }
         if (const Node* u = n.child("unit")) s.unit = static_cast<int>(u->num(0, 1));
+        if (const Node* ob = n.child("on_board")) s.on_board = ob->arg(0) != "no";
+        if (const Node* ex = n.child("exclude_from_board")) s.on_board = ex->arg(0) != "yes";
         int style = 1;
         if (const Node* b = n.child("body_style")) style = static_cast<int>(b->num(0, 1));
         else if (const Node* b2 = n.child("convert")) style = static_cast<int>(b2->num(0, 1));
@@ -503,7 +514,6 @@ public:
 private:
     const FileReader& read_;
     Schematic& sch_;
-    bool warned_bus_ = false;
 };
 
 // ---------------------------------------------------------- connectivity
@@ -591,6 +601,88 @@ std::string pin_label(const SchSymbol& s, const SchPin& p) {
     return escape_slash(same > 1 ? p.name + "-Pad" + p.number : p.name);
 }
 
+// ---------------------------------------------------------------- buses
+
+struct BusMember {
+    std::string key;  // how members pair up between buses: name, or "#index" for vectors
+    std::string full; // the member's net name: "USB2C.D_P", "D3"
+};
+
+// "PREFIX[A..B]" -> PREFIXA ... PREFIXB. False if `text` isn't a vector bus.
+bool expand_vector(const std::string& text, std::vector<std::string>& out) {
+    size_t open = text.rfind('[');
+    size_t dots = text.find("..", open == std::string::npos ? 0 : open);
+    size_t close = text.find(']', dots == std::string::npos ? 0 : dots);
+    if (open == std::string::npos || dots == std::string::npos || close == std::string::npos) return false;
+    std::string prefix = text.substr(0, open), suffix = text.substr(close + 1);
+    int a, b;
+    try {
+        size_t used = 0;
+        a = std::stoi(text.substr(open + 1, dots - open - 1), &used);
+        if (used != dots - open - 1) return false;
+        b = std::stoi(text.substr(dots + 2, close - dots - 2), &used);
+        if (used != close - dots - 2) return false;
+    } catch (...) {
+        return false;
+    }
+    int step = a <= b ? 1 : -1;
+    for (int i = a;; i += step) {
+        out.push_back(prefix + std::to_string(i) + suffix);
+        if (i == b) break;
+    }
+    return true;
+}
+
+// The members of a bus name, or nothing if `text` is an ordinary net name.
+//   D[0..7]          vector: D0 ... D7 (paired with other buses by position)
+//   {SDA SCL}        group: SDA, SCL
+//   I2C{SDA SCL}     named group: I2C.SDA, I2C.SCL
+//   USB_C{USB}       named group of an alias's members: USB_C.D_P, USB_C.D_N
+// Groups pair up with other buses by member name. "~{X}" (overbar) isn't a group.
+std::vector<BusMember> bus_members(const std::string& text, const std::map<std::string, std::vector<std::string>>& aliases) {
+    std::vector<BusMember> out;
+    std::vector<std::string> vec;
+    size_t brace = std::string::npos;
+    for (size_t i = 0; i < text.size(); ++i) {
+        if (text[i] == '{' && (i == 0 || (text[i - 1] != '~' && text[i - 1] != '_' && text[i - 1] != '^'))) {
+            brace = i;
+            break;
+        }
+    }
+    if (brace != std::string::npos && text.back() == '}') {
+        std::string name = text.substr(0, brace), inner = text.substr(brace + 1, text.size() - brace - 2);
+        std::vector<std::string> tokens;
+        std::string tok;
+        for (char c : inner + " ") {
+            if (c == ' ' || c == ',' || c == '\t') {
+                if (!tok.empty()) tokens.push_back(tok);
+                tok.clear();
+            } else {
+                tok += c;
+            }
+        }
+        auto add = [&](const std::string& m) { out.push_back({m, name.empty() ? m : name + "." + m}); };
+        for (const auto& t : tokens) {
+            std::vector<std::string> expanded;
+            if (auto a = aliases.find(t); a != aliases.end()) {
+                for (const auto& m : a->second) {
+                    std::vector<std::string> v;
+                    if (expand_vector(m, v)) for (auto& x : v) add(x);
+                    else add(m);
+                }
+            } else if (expand_vector(t, expanded)) {
+                for (auto& x : expanded) add(x);
+            } else {
+                add(t);
+            }
+        }
+        return out;
+    }
+    if (expand_vector(text, vec))
+        for (size_t i = 0; i < vec.size(); ++i) out.push_back({"#" + std::to_string(i), vec[i]});
+    return out;
+}
+
 void connect(Schematic& sch, const std::unordered_map<size_t, bool>& local_power) {
     DisjointSet ds;
     std::unordered_map<PointKey, int, PointKeyHash> points;
@@ -608,6 +700,9 @@ void connect(Schematic& sch, const std::unordered_map<size_t, bool>& local_power
         return it->second;
     };
 
+    // Labels naming a bus belong to buses, not wires (handled below).
+    for (auto& l : sch.labels) l.bus = !bus_members(l.text, sch.bus_aliases).empty();
+
     // Register every connection point.
     for (auto& w : sch.wires) {
         ds.join(point(w.sheet, w.a), point(w.sheet, w.b));
@@ -615,7 +710,8 @@ void connect(Schematic& sch, const std::unordered_map<size_t, bool>& local_power
     for (auto& [sheet, at] : sch.junctions) point(sheet, at);
     for (auto& s : sch.symbols)
         for (auto& p : s.pins) point(s.sheet, p.pos);
-    for (auto& l : sch.labels) point(l.sheet, l.at);
+    for (auto& l : sch.labels)
+        if (!l.bus) point(l.sheet, l.at);
 
     // A point touching a wire anywhere along it connects to that wire.
     // (Two wires merely crossing don't: the crossing isn't a point unless a
@@ -631,6 +727,7 @@ void connect(Schematic& sch, const std::unordered_map<size_t, bool>& local_power
 
     // Labels, power symbols and sheet pins join points by name.
     for (const auto& l : sch.labels) {
+        if (l.bus) continue;
         int id = point(l.sheet, l.at);
         switch (l.kind) {
         case LabelKind::Global: ds.join(id, name_node("G:" + l.text)); break;
@@ -647,6 +744,79 @@ void connect(Schematic& sch, const std::unordered_map<size_t, bool>& local_power
             bool local = s.power && lp != local_power.end() && lp->second;
             std::string key = local ? "P:" + std::to_string(s.sheet) + ":" + power_net(s, p) : "G:" + power_net(s, p);
             ds.join(point(s.sheet, p.pos), name_node(key));
+        }
+    }
+
+    // Buses. A bus is its own graph (touching a wire doesn't connect them);
+    // the bus names on it (labels, hierarchical labels, sheet pins) say which
+    // members it carries. Members of the same bus pair up by name (or by
+    // position for vectors), and each member joins the nets of its name: a
+    // wire labelled "USB2C.D_P" is that member. Across the hierarchy, a sheet
+    // pin's members join the child's hierarchical bus label's members.
+    struct BusOffer {
+        int node;
+        Candidate name;
+    };
+    std::vector<BusOffer> bus_offers;
+    {
+        DisjointSet bds;
+        std::unordered_map<PointKey, int, PointKeyHash> bpoints;
+        auto bpoint = [&](int sheet, Point p) {
+            PointKey k{sheet, grid(p.x), grid(p.y)};
+            auto [it, inserted] = bpoints.try_emplace(k, 0);
+            if (inserted) it->second = bds.add();
+            return it->second;
+        };
+        for (const auto& b : sch.buses) bds.join(bpoint(b.sheet, b.a), bpoint(b.sheet, b.b));
+        // Which bus graph each bus name sits on (its own if it's on no bus).
+        std::vector<int> graph_of(sch.labels.size(), -1);
+        for (size_t i = 0; i < sch.labels.size(); ++i) {
+            const SchLabel& l = sch.labels[i];
+            if (!l.bus) continue;
+            long long px = grid(l.at.x), py = grid(l.at.y);
+            int g = -1;
+            if (auto f = bpoints.find(PointKey{l.sheet, px, py}); f != bpoints.end()) g = f->second;
+            for (const auto& b : sch.buses) {
+                if (g >= 0) break;
+                if (b.sheet == l.sheet &&
+                    on_segment_interior(px, py, grid(b.a.x), grid(b.a.y), grid(b.b.x), grid(b.b.y)))
+                    g = bpoint(b.sheet, b.a);
+            }
+            graph_of[i] = g >= 0 ? bds.find(g) : -1 - static_cast<int>(i); // alone: a graph of its own
+        }
+        auto depth_of_sheet = [&](int sheet) {
+            int d = 0;
+            for (int s2 = sheet; sch.sheets[s2].parent >= 0; s2 = sch.sheets[s2].parent) ++d;
+            return d;
+        };
+        for (size_t i = 0; i < sch.labels.size(); ++i) {
+            const SchLabel& l = sch.labels[i];
+            if (!l.bus) continue;
+            std::string graph = std::to_string(l.sheet) + ":" + std::to_string(graph_of[i]) + ":";
+            const std::string& path = sch.sheets[l.sheet].path;
+            int d = depth_of_sheet(l.sheet);
+            for (const BusMember& m : bus_members(l.text, sch.bus_aliases)) {
+                int member = name_node("B:" + graph + m.key); // this member, on this bus
+                switch (l.kind) {
+                case LabelKind::Local:
+                    ds.join(member, name_node("L:" + std::to_string(l.sheet) + ":" + m.full));
+                    bus_offers.push_back({member, {kLocalLabel, d, path + m.full}});
+                    break;
+                case LabelKind::Global:
+                    ds.join(member, name_node("G:" + m.full));
+                    bus_offers.push_back({member, {kGlobal, d, m.full}});
+                    break;
+                case LabelKind::Hierarchical:
+                    ds.join(member, name_node("L:" + std::to_string(l.sheet) + ":" + m.full));
+                    ds.join(member, name_node("HB:" + std::to_string(l.sheet) + ":" + l.text + ":" + m.key));
+                    bus_offers.push_back({member, {kHierLabel, d, path + m.full}});
+                    break;
+                case LabelKind::SheetPin:
+                    ds.join(member, name_node("HB:" + std::to_string(l.child) + ":" + l.text + ":" + m.key));
+                    bus_offers.push_back({member, {kSheetPin, d, path + m.full}});
+                    break;
+                }
+            }
         }
     }
 
@@ -674,7 +844,12 @@ void connect(Schematic& sch, const std::unordered_map<size_t, bool>& local_power
     };
 
     for (auto& w : sch.wires) w.net = net_for(point(w.sheet, w.a));
+    for (const auto& o : bus_offers) offer(net_for(o.node), o.name);
     for (auto& l : sch.labels) {
+        if (l.bus) {
+            l.net = -1; // a bus, not a net
+            continue;
+        }
         l.net = net_for(point(l.sheet, l.at));
         int d = depth_of(l.sheet);
         const std::string& path = sch.sheets[l.sheet].path;
@@ -697,7 +872,7 @@ void connect(Schematic& sch, const std::unordered_map<size_t, bool>& local_power
                 offer(p.net, {local ? kLocalPower : kGlobalPower, d,
                               local ? sch.sheets[s.sheet].path + power_net(s, p) : power_net(s, p)});
             }
-            if (s.power) continue; // power symbols and flags aren't parts
+            if (s.power || !s.on_board) continue; // power symbols, flags and off-board parts aren't in nets
             sch.nets[p.net].nodes.push_back({static_cast<int>(i), static_cast<int>(j)});
             ++pin_count[p.net];
         }
