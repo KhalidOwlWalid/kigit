@@ -3,7 +3,13 @@ name = "kigit-gui"
 version = "0.1.0"
 description = "Desktop GUI for kigit: pick two commits, see the PCB and schematic diff"
 requires-python = ">=3.10"
-dependencies = ["nicegui>=2.10,<3"]
+dependencies = [
+    "nicegui>=2.10,<3",
+    # The GUI's own window (Windows, via Edge WebView2). Elsewhere it opens in
+    # the browser; `kigit gui --native` falls back to that when pywebview or a
+    # window system is missing.
+    "pywebview>=5; sys_platform == 'win32'",
+]
 
 [project.scripts]
 kigit-gui = "kigit_gui.app:main"

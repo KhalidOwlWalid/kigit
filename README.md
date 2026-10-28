@@ -72,6 +72,12 @@ kigit gui                  # start in the current folder
 kigit gui ~/path/to/board  # or any folder
 ```
 
+On Windows the GUI opens in its own window (Edge WebView2, built into
+Windows 10/11); on Linux it opens in your web browser. `--native` and
+`--browser` choose; if a window can't be opened (no WebView2, or on Linux no
+GTK/Qt for Python), it says why and uses the browser. Either way it only
+listens on 127.0.0.1, so it isn't reachable from the network.
+
 1. **Open a project.** Type a folder or press **Browse** (folders holding
    KiCad files are marked). kigit looks for a project in that folder and up
    to two levels below. It tells you if it finds none, if the project has no

@@ -598,11 +598,67 @@ async def index() -> None:
     await open_folder(folder)
 
 
+# Probe for a native window, run in a separate Python: pywebview picks its
+# backend (Edge WebView2 on Windows, GTK or Qt on Linux) and fails if there is
+# none. Run here, a failure would take the GUI down with it.
+_NATIVE_PROBE = """
+import importlib, sys
+g = importlib.import_module("webview.guilib")  # (webview.guilib the attribute is None until started)
+lib = g.initialize() or getattr(g, "guilib", None)
+if getattr(lib, "renderer", "") == "mshtml":
+    sys.exit("Microsoft Edge WebView2 isn't installed (https://go.microsoft.com/fwlink/p/?LinkId=2124703)")
+"""
+
+
+def native_problem() -> str | None:
+    """Why the GUI can't open in its own window here, or None if it can."""
+    try:
+        import webview  # noqa: F401
+    except ImportError:
+        return "pywebview isn't installed"
+    try:
+        r = subprocess.run([sys.executable, "-c", _NATIVE_PROBE], capture_output=True, text=True, timeout=60)
+    except (OSError, subprocess.TimeoutExpired) as e:
+        return f"checking for a window system failed ({e})"
+    if r.returncode != 0:
+        lines = [line for line in r.stderr.strip().splitlines() if line.strip()]
+        if not lines:
+            return f"window system check exited with {r.returncode}"
+        # "webview.errors.WebViewException: You must have ..." -> the message only
+        return lines[-1].split(": ", 1)[-1] if "Error" in lines[-1] or "Exception" in lines[-1] else lines[-1]
+    return None
+
+
+def choose_window(mode: str, platform: str = sys.platform, problem=native_problem) -> tuple[bool, str | None]:
+    """Native window or browser tab: (native, why not native if it was wanted).
+
+    mode is "native", "browser" or "auto" (native on Windows, browser elsewhere).
+    Native falls back to the browser when it can't work here.
+    """
+    if mode == "browser" or (mode == "auto" and platform != "win32"):
+        return False, None
+    why = problem()
+    return (why is None), why
+
+
 def main() -> None:
+    import multiprocessing
+
+    # The native window runs in a child process that re-imports this module;
+    # only the main process runs the app.
+    if multiprocessing.current_process().name != "MainProcess":
+        return
     parser = argparse.ArgumentParser(prog="kigit gui", description="kigit desktop GUI")
     parser.add_argument("project", nargs="?", default=".", help="KiCad project folder (default: current folder)")
     parser.add_argument("--port", type=int, default=8765, help="local port (default 8765)")
-    parser.add_argument("--no-browser", action="store_true", help="don't open a browser window")
+    window = parser.add_mutually_exclusive_group()
+    window.add_argument("--native", dest="window", action="store_const", const="native",
+                        help="open in its own window (default on Windows); falls back to the browser if it can't")
+    window.add_argument("--browser", dest="window", action="store_const", const="browser",
+                        help="open in the web browser (default on Linux)")
+    parser.set_defaults(window="auto")
+    parser.add_argument("--no-browser", action="store_true",
+                        help="don't open anything; just serve at http://127.0.0.1:PORT")
     parser.add_argument("--log-dir", help="folder for the session log (default: $KIGIT_LOG_DIR, else the app data folder)")
     parser.add_argument("--no-log", action="store_true", help="don't write a session log file")
     parser.add_argument("-V", "--verbose", action="store_true", help="include debug lines in the log")
@@ -625,10 +681,23 @@ def main() -> None:
         threading.Thread(target=force_exit, daemon=True).start()
 
     app.on_shutdown(on_shutdown)
+
+    native = False
+    if not args.no_browser:
+        native, why = choose_window(args.window)
+        if why:
+            logs.log.warning("can't open kigit in its own window (%s); using the browser instead", why)
+    logs.log.info("opening in %s", "its own window" if native else
+                  f"the browser at http://127.0.0.1:{args.port}" if not args.no_browser else
+                  f"nothing (serving at http://127.0.0.1:{args.port})")
+    # Native: closing the window quits kigit.
+    window_args = {"native": True, "window_size": (1400, 900)} if native else {"show": not args.no_browser}
     try:
-        ui.run(title="kigit", port=args.port, show=not args.no_browser, reload=False, dark=True,
+        # 127.0.0.1: reachable from this computer only (the GUI can browse
+        # folders and run kigit; it must not be open to the network).
+        ui.run(title="kigit", host="127.0.0.1", port=args.port, reload=False, dark=True,
                timeout_graceful_shutdown=2,
-               favicon="🦉", show_welcome_message=False)
+               favicon="🦉", show_welcome_message=False, **window_args)
     except KeyboardInterrupt:
         # Ctrl+C: the server has shut down already; no traceback.
         logs.log.info("stopped (Ctrl+C)")

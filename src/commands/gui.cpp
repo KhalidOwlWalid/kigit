@@ -60,7 +60,9 @@ int run_gui(const char* argv0, int argc, char** argv) {
         args.push_back("--no-dev");
         if (fs::exists(gui / "uv.lock")) args.push_back("--frozen");
     }
-    args.emplace_back("kigit-gui");
+    // `python -m kigit_gui`, not the kigit-gui script: the native window's
+    // child process on Windows re-imports the app by module name.
+    for (const char* x : {"python", "-m", "kigit_gui"}) args.emplace_back(x);
     for (int i = 0; i < argc; ++i) args.emplace_back(argv[i]);
     return platform::run_program(*uv, args);
 }

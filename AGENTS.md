@@ -212,6 +212,16 @@ kigit gui [PROJECT_DIR]
   and a manual revision entry. "Compare folders" works without git.
   There's a log viewer and an "Include silkscreen" checkbox.
 - Dialogs are created inside `dialog_host`.
+- Window: native (pywebview, `ui.run(native=True)`) by default on Windows,
+  browser elsewhere; `--native` / `--browser` override. `choose_window()`
+  decides, and `native_problem()` probes pywebview in a separate Python
+  first, because NiceGUI exits, or shuts the server down, if the window
+  can't open. Any problem means fall back to the browser with a warning.
+  pywebview is a Windows-only dependency in `pyproject.toml`. The server
+  always binds `127.0.0.1`.
+- `kigit gui` starts the app as `python -m kigit_gui` (not the `kigit-gui`
+  script), so the native window's child process can re-import it by module
+  name on Windows. `main()` returns early outside the main process.
 - Ctrl+C: `timeout_graceful_shutdown=2` plus a force-exit watchdog
   (uvicorn otherwise waits for open websockets). On Windows, `kigit.exe`
   waits for the GUI with a `CreateProcessW` wait and a non-inherited
