@@ -18,7 +18,20 @@ downloads Python and the GUI's packages (once, about a minute); after that
 it starts straight away. A portable zip is there too: unzip it anywhere and
 run `bin\kigit.exe`.
 
-**Linux:** build from source (below). macOS isn't supported for now.
+**Linux** (x86-64; Ubuntu 22.04+, Debian 12+, Fedora 36+ or similar):
+download `kigit-<version>-linux-x86_64.tar.gz` from the Releases page and
+unpack it into `~/.local`:
+
+```sh
+tar -xzf kigit-*-linux-x86_64.tar.gz -C ~/.local --strip-components=1
+kigit --version    # ~/.local/bin must be on your PATH (it is on most distros)
+kigit gui
+```
+
+It brings its own copy of uv for the GUI (in `~/.local/libexec/kigit`, so a
+uv you already have isn't touched). Needs git. To uninstall, delete
+`~/.local/bin/kigit`, `~/.local/share/kigit` and `~/.local/libexec/kigit`.
+Or build from source (below). macOS isn't supported for now.
 
 ### Making a release
 
@@ -30,9 +43,9 @@ git tag v0.1.0
 git push origin v0.1.0
 ```
 
-GitHub Actions (`.github/workflows/release.yml`) builds kigit on Windows,
-runs the tests, builds the installer and the zip, test-installs it, and
-publishes a release with both files. To try a build without releasing, run
+GitHub Actions (`.github/workflows/release.yml`) builds and tests kigit on
+Windows and Linux, packages the Windows installer, the Windows zip and the
+Linux tarball, tries each one, and publishes a release with all three. To try a build without releasing, run
 the **Release** workflow by hand from the Actions tab and download the files
 from the run's artifacts.
 

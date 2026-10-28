@@ -1,13 +1,16 @@
-# Builds the Windows downloads and publishes them as a GitHub Release.
+# Builds the release downloads for Windows and Linux and publishes them as a
+# GitHub Release.
 #
 # To release: set the version in CMakeLists.txt (project(kigit VERSION x.y.z)),
 # commit, then tag and push the tag:
-#     git tag v0.1.0 && git push origin v0.1.0
-# GitHub then builds on a Windows machine, runs the tests, and creates the
-# release "v0.1.0" with:
-#     kigit-0.1.0-setup.exe          installer (per user, no admin; adds kigit to PATH
-#                                    and a Start menu entry for the GUI)
-#     kigit-0.1.0-windows-x64.zip    portable: unzip anywhere, run bin\kigit.exe
+#     git tag v0.1.1 && git push origin v0.1.1
+# GitHub then builds and tests on Windows and Linux (in parallel), and when
+# both pass creates the release "v0.1.1" with:
+#     kigit-0.1.1-setup.exe              Windows installer (per user, no admin; adds kigit
+#                                        to PATH and a Start menu entry for the GUI)
+#     kigit-0.1.1-windows-x64.zip        Windows portable: unzip anywhere, run bin\kigit.exe
+#     kigit-0.1.1-linux-x86_64.tar.gz    Linux: unpack into ~/.local (bin/kigit,
+#                                        share/kigit/gui, libexec/kigit/uv)
 #
 # "Run workflow" on the Actions tab builds the same files without releasing
 # (download them from the run's Artifacts) to try a build first.
@@ -23,7 +26,7 @@ permissions:
 
 jobs:
   windows:
-    name: Windows installer
+    name: Windows
     runs-on: windows-latest
     defaults:
       run:
@@ -35,7 +38,7 @@ jobs:
       - uses: astral-sh/setup-uv@v5
 
       - name: Configure
-        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DKIGIT_PORTABLE=ON
 
       - name: Build
         run: cmake --build build --config Release --parallel
@@ -53,7 +56,6 @@ jobs:
             throw "Tag $env:GITHUB_REF_NAME doesn't match the version in CMakeLists.txt ($version)"
           }
           "version=$version" >> $env:GITHUB_OUTPUT
-          Get-ChildItem -Recurse stage | Select-Object -ExpandProperty FullName
 
       - name: Portable zip
         run: |
@@ -81,12 +83,71 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: kigit-${{ steps.stage.outputs.version }}-windows
+          name: windows
           path: dist/*
 
-      - name: Publish release
-        if: github.ref_type == 'tag'
-        uses: softprops/action-gh-release@v2
+  linux:
+    name: Linux
+    # The oldest supported Ubuntu: the binary needs this glibc (2.35) or newer,
+    # so it runs on Ubuntu 22.04+, Debian 12+, Fedora 36+ and the like.
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+
+      - name: Configure
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DKIGIT_PORTABLE=ON
+
+      - name: Build
+        run: cmake --build build --parallel
+
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+
+      - name: Package
+        run: |
+          version=$(build/kigit --version --no-log | sed 's/^kigit //')
+          if [ "$GITHUB_REF_TYPE" = tag ] && [ "v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "Tag $GITHUB_REF_NAME doesn't match the version in CMakeLists.txt ($version)"; exit 1
+          fi
+          name=kigit-$version-linux-x86_64
+          cmake --install build --prefix "stage/$name"
+          install -Dm755 "$(command -v uv)" "stage/$name/libexec/kigit/uv"
+          mkdir -p dist
+          tar -czf "dist/$name.tar.gz" -C stage "$name"
+
+      # Unpack it the way a user would, then run it.
+      - name: Try the package
+        run: |
+          mkdir -p "$RUNNER_TEMP/try"
+          tar -xzf dist/*.tar.gz -C "$RUNNER_TEMP/try" --strip-components=1
+          "$RUNNER_TEMP/try/bin/kigit" --version --no-log
+          test -f "$RUNNER_TEMP/try/share/kigit/gui/pyproject.toml"
+          test -x "$RUNNER_TEMP/try/libexec/kigit/uv"
+          # Only system libraries (glibc), nothing that may be missing elsewhere.
+          ldd "$RUNNER_TEMP/try/bin/kigit"
+          ! ldd "$RUNNER_TEMP/try/bin/kigit" | grep -E 'libstdc\+\+|libspdlog|libfmt'
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux
+          path: dist/*
+
+  publish:
+    name: Publish release
+    needs: [windows, linux]
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - run: ls -l dist
+
+      - uses: softprops/action-gh-release@v2
         with:
           files: dist/*
           generate_release_notes: true

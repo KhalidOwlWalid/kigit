@@ -34,10 +34,13 @@ int run_gui(const char* argv0, int argc, char** argv) {
         std::cerr << "). Set KIGIT_GUI_DIR to the kigit/gui folder.\n";
         return 1;
     }
-    // uv: the copy shipped next to kigit (Windows installer), else from PATH.
+    // uv: the copy shipped with kigit, else from PATH. The Windows release
+    // puts it next to kigit.exe; the Linux one in <prefix>/libexec/kigit, so
+    // unpacking into ~/.local doesn't replace a uv the user already has.
     std::optional<fs::path> uv;
-    for (const char* name : {"uv.exe", "uv"})
-        if (fs::path p = exe.parent_path() / name; fs::is_regular_file(p)) {
+    for (const fs::path& p : {exe.parent_path() / "uv.exe", exe.parent_path() / "uv",
+                              exe.parent_path().parent_path() / "libexec" / "kigit" / "uv"})
+        if (fs::is_regular_file(p)) {
             uv = p;
             break;
         }

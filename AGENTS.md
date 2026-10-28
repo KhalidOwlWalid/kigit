@@ -213,7 +213,7 @@ kigit gui [PROJECT_DIR]
   enabled, or the iframe `src` to change, instead of sleeping.
 - `kigit gui` looks for the app in `$KIGIT_GUI_DIR`, `<exe>/../gui` (build
   folder) or `<exe>/../share/kigit/gui` (installed), and for `uv` next to
-  the exe, then on PATH. The installed copy keeps its Python environment in
+  the exe, then in `<exe>/../libexec/kigit`, then on PATH. The installed copy keeps its Python environment in
   `<app data>/kigit/gui-env` and runs `--no-dev --frozen` (from `uv.lock`).
 
 ## Releases (Windows)
@@ -221,12 +221,27 @@ kigit gui [PROJECT_DIR]
 1. Set `project(kigit VERSION x.y.z)` in `CMakeLists.txt` and commit.
 2. `git tag vx.y.z && git push origin vx.y.z`.
 
-`release.yml` then builds on `windows-latest`, runs the tests, stages
-`cmake --install` output plus `uv.exe`, and builds
-`kigit-x.y.z-windows-x64.zip` and `kigit-x.y.z-setup.exe` (Inno Setup via
-choco). It test-installs silently, runs the installed exe, and publishes a
-GitHub Release. The tag must match the CMake version or the job fails.
-"Run workflow" by hand builds the files as artifacts without releasing.
+`release.yml` has three jobs:
+
+- **windows** (`windows-latest`): build with `-DKIGIT_PORTABLE=ON`, test,
+  stage `cmake --install` output plus `uv.exe` in `bin`, then build
+  `kigit-x.y.z-windows-x64.zip` and `kigit-x.y.z-setup.exe` (Inno Setup via
+  choco) and test-install silently.
+- **linux** (`ubuntu-22.04`, for an old enough glibc): build with
+  `-DKIGIT_PORTABLE=ON`, test, then package
+  `kigit-x.y.z-linux-x86_64.tar.gz` (`bin/kigit`, `share/kigit/gui`,
+  `libexec/kigit/uv`), unpack it and check it runs and links only glibc.
+- **publish** (tags only, after both pass): one GitHub Release with all
+  files.
+
+The tag must match the CMake version or the job fails. "Run workflow" by
+hand builds the files as artifacts without releasing. Published tags don't
+move: a fix gets a new version.
+
+`KIGIT_PORTABLE=ON` downloads nlohmann_json and spdlog instead of using the
+system's copies, and on Linux links libstdc++/libgcc statically, so the
+binary only needs glibc. `kigit gui` looks for uv next to the exe, then in
+`<prefix>/libexec/kigit/uv`, then on PATH.
 
 The installer is per-user (no admin): `%LOCALAPPDATA%\Programs\kigit`,
 `bin` added to the user PATH, a Start menu entry running `kigit gui`, and a

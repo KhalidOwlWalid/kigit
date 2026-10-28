@@ -7,7 +7,7 @@ cmake_minimum_required(VERSION 3.16...3.31)
 if(NOT DEFINED CMAKE_POLICY_VERSION_MINIMUM)
   set(CMAKE_POLICY_VERSION_MINIMUM 3.5 CACHE STRING "Minimum CMake policy version for dependencies")
 endif()
-project(kigit VERSION 0.1.0 LANGUAGES CXX)
+project(kigit VERSION 0.1.1 LANGUAGES CXX)
 
 # Linux and Windows (MSVC or MinGW) are supported. macOS code is kept but
 # isn't built by CI for now. Everything OS-specific in the code is in
@@ -26,13 +26,20 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
   set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type" FORCE)
 endif()
 
+# KIGIT_PORTABLE (release builds): a kigit that runs on other machines.
+# Libraries are downloaded and built in, never taken from this system, and
+# on Linux the C++ runtime is linked in too, so only glibc is needed.
+option(KIGIT_PORTABLE "Build a self-contained kigit for distribution" OFF)
+
 # MSVC: link the C++ runtime into kigit.exe, so it runs on any Windows
 # without installing the Visual C++ Redistributable. (Set before the
 # libraries below so they're built the same way.)
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 
 # nlohmann_json: use the system package if present, otherwise download it.
-find_package(nlohmann_json 3.2 QUIET)
+if(NOT KIGIT_PORTABLE)
+  find_package(nlohmann_json 3.2 QUIET)
+endif()
 if(NOT nlohmann_json_FOUND)
   include(FetchContent)
   FetchContent_Declare(json
@@ -41,7 +48,9 @@ if(NOT nlohmann_json_FOUND)
 endif()
 
 # spdlog: use the system package if present, otherwise download it.
-find_package(spdlog 1.9 QUIET)
+if(NOT KIGIT_PORTABLE)
+  find_package(spdlog 1.9 QUIET)
+endif()
 if(NOT spdlog_FOUND)
   include(FetchContent)
   FetchContent_Declare(spdlog
@@ -117,6 +126,9 @@ endif()
 if(MINGW)
   # A kigit.exe that runs without MinGW's DLLs next to it.
   target_link_options(kigit PRIVATE -static)
+endif()
+if(KIGIT_PORTABLE AND UNIX AND NOT APPLE AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+  target_link_options(kigit PRIVATE -static-libstdc++ -static-libgcc)
 endif()
 
 option(KIGIT_BUILD_TESTS "Build the test suite (ctest)" ON)
