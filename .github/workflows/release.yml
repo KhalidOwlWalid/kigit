@@ -1,0 +1,92 @@
+# Builds the Windows downloads and publishes them as a GitHub Release.
+#
+# To release: set the version in CMakeLists.txt (project(kigit VERSION x.y.z)),
+# commit, then tag and push the tag:
+#     git tag v0.1.0 && git push origin v0.1.0
+# GitHub then builds on a Windows machine, runs the tests, and creates the
+# release "v0.1.0" with:
+#     kigit-0.1.0-setup.exe          installer (per user, no admin; adds kigit to PATH
+#                                    and a Start menu entry for the GUI)
+#     kigit-0.1.0-windows-x64.zip    portable: unzip anywhere, run bin\kigit.exe
+#
+# "Run workflow" on the Actions tab builds the same files without releasing
+# (download them from the run's Artifacts) to try a build first.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write # to create the release
+
+jobs:
+  windows:
+    name: Windows installer
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+
+      # uv runs the GUI's Python environment; a copy ships with kigit.
+      - uses: astral-sh/setup-uv@v5
+
+      - name: Configure
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build --config Release --parallel
+
+      - name: Test
+        run: ctest --test-dir build -C Release --output-on-failure
+
+      - name: Stage files
+        id: stage
+        run: |
+          cmake --install build --config Release --prefix stage
+          Copy-Item (Get-Command uv).Source stage\bin\
+          $version = (& stage\bin\kigit.exe --version) -replace '^kigit ', ''
+          if ($env:GITHUB_REF_TYPE -eq 'tag' -and "v$version" -ne $env:GITHUB_REF_NAME) {
+            throw "Tag $env:GITHUB_REF_NAME doesn't match the version in CMakeLists.txt ($version)"
+          }
+          "version=$version" >> $env:GITHUB_OUTPUT
+          Get-ChildItem -Recurse stage | Select-Object -ExpandProperty FullName
+
+      - name: Portable zip
+        run: |
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Compress-Archive -Path stage\* -DestinationPath "dist\kigit-${{ steps.stage.outputs.version }}-windows-x64.zip"
+
+      - name: Installer
+        run: |
+          choco install innosetup -y --no-progress
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" `
+            "/DAppVersion=${{ steps.stage.outputs.version }}" "/DStageDir=$PWD\stage" "/DOutputDir=$PWD\dist" `
+            packaging\windows\kigit.iss
+          if ($LASTEXITCODE -ne 0) { throw "ISCC failed" }
+
+      # Install it the way a user would (silently), then run the installed kigit.
+      - name: Try the installer
+        run: |
+          $setup = Get-ChildItem dist\*-setup.exe
+          Start-Process $setup.FullName -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART' -Wait
+          $kigit = "$env:LOCALAPPDATA\Programs\kigit\bin\kigit.exe"
+          & $kigit --version
+          if ($LASTEXITCODE -ne 0) { throw "installed kigit didn't run" }
+          if (-not (Test-Path "$env:LOCALAPPDATA\Programs\kigit\share\kigit\gui\pyproject.toml")) { throw "GUI not installed" }
+          if (-not (Test-Path "$env:LOCALAPPDATA\Programs\kigit\bin\uv.exe")) { throw "uv not installed" }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: kigit-${{ steps.stage.outputs.version }}-windows
+          path: dist/*
+
+      - name: Publish release
+        if: github.ref_type == 'tag'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true

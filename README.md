@@ -7,6 +7,35 @@ arc, via and pad between the two revisions, and writes a single self-contained
 HTML page where you can hover a trace to highlight its whole net: what was
 added, what was removed, and how the net's copper length changed.
 
+## Install
+
+**Windows:** download `kigit-<version>-setup.exe` from the
+[Releases](https://github.com/KhalidOwlWalid/kigit/releases) page and run
+it. No admin rights needed. It adds `kigit` to your PATH and a **kigit**
+entry to the Start menu that opens the GUI. Needs
+[Git for Windows](https://git-scm.com/download/win). The first GUI start
+downloads Python and the GUI's packages (once, about a minute); after that
+it starts straight away. A portable zip is there too: unzip it anywhere and
+run `bin\kigit.exe`.
+
+**Linux / macOS:** build from source (below).
+
+### Making a release
+
+Set the version in `CMakeLists.txt` (`project(kigit VERSION x.y.z)`), commit,
+then push a matching tag:
+
+```sh
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+GitHub Actions (`.github/workflows/release.yml`) builds kigit on Windows,
+runs the tests, builds the installer and the zip, test-installs it, and
+publishes a release with both files. To try a build without releasing, run
+the **Release** workflow by hand from the Actions tab and download the files
+from the run's artifacts.
+
 ## Build
 
 Needs a C++20 compiler and CMake 3.16+. `nlohmann_json` is used from the

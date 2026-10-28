@@ -17,6 +17,11 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
   set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type" FORCE)
 endif()
 
+# MSVC: link the C++ runtime into kigit.exe, so it runs on any Windows
+# without installing the Visual C++ Redistributable. (Set before the
+# libraries below so they're built the same way.)
+set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+
 # nlohmann_json: use the system package if present, otherwise download it.
 find_package(nlohmann_json 3.2 QUIET)
 if(NOT nlohmann_json_FOUND)
@@ -113,5 +118,7 @@ endif()
 
 install(TARGETS kigit RUNTIME DESTINATION bin)
 # The Python GUI (kigit gui) is found at <prefix>/share/kigit/gui.
+# uv.lock pins the Python packages the installed GUI uses.
 install(DIRECTORY gui/ DESTINATION share/kigit/gui
-        PATTERN ".venv" EXCLUDE PATTERN "__pycache__" EXCLUDE PATTERN "uv.lock" EXCLUDE)
+        PATTERN ".venv" EXCLUDE PATTERN "__pycache__" EXCLUDE PATTERN ".pytest_cache" EXCLUDE
+        PATTERN "tests" EXCLUDE)
