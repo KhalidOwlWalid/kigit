@@ -1,0 +1,1 @@
+- [ ] Developer mode (see the diff text file being opened as you select a changed trace, footprint etc.)

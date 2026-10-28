@@ -130,6 +130,20 @@ TEST_CASE("v1 -> v2: a refill is told apart from an edited outline") {
     }
 }
 
+TEST_CASE("v1 -> v2: silkscreen") {
+    std::string v1 = read_text(fixture("v1/demo.kicad_pcb")), v2 = read_text(fixture("v2/demo.kicad_pcb"));
+    Board a = load_board(v1, true), b = load_board(v2, true);
+    Diff d = diff_boards(a, b);
+    std::map<std::string, std::multiset<Status>> by_owner;
+    for (const auto& s : d.silk) by_owner[s.item->owner].insert(s.status);
+    // R1: unchanged line + reference, one new line. R2 moved, so its silkscreen
+    // moved with it. C1 is new: its line and reference are added.
+    CHECK(by_owner["fp-r1"] == std::multiset{Status::Same, Status::Same, Status::Added});
+    CHECK(by_owner["fp-r2"] == std::multiset{Status::Moved, Status::Moved});
+    CHECK(by_owner["fp-c1"] == std::multiset{Status::Added, Status::Added});
+    CHECK(diff_boards(demo(1), demo(2)).silk.empty()); // not loaded: not compared
+}
+
 TEST_CASE("rotating a footprint moves its pads; it doesn't change them") {
     // Same footprint at 0 and at 90 degrees: KiCad stores the pads' angles as
     // absolute, so they differ, but relative to the footprint nothing changed.

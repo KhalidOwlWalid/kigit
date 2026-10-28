@@ -155,6 +155,10 @@ def build(start_folder: str):
             with ui.row().classes("w-full gap-2 items-center no-wrap"):
                 compare_btn = ui.button("Compare", on_click=lambda: compare()).props("unelevated dense color=amber-8")
                 picked = ui.label("").classes("text-xs text-gray-300 truncate")
+            # Off by default: silkscreen makes comparisons slower and pages bigger.
+            silk = ui.checkbox("Include silkscreen", value=False).props("dense dark").classes("text-xs").tooltip(
+                "Also compare and draw the silkscreen (labels, outlines, logos). Applies to every comparison."
+            ).mark("include-silkscreen")
             # For when the list doesn't show the commit you're after: type any
             # two revisions git understands.
             with ui.expansion("Diff commits manually", icon="edit", value=False).props(
@@ -434,18 +438,18 @@ def build(start_folder: str):
         if not board:
             notify("Open a project first", type="warning")
             return
-        name = page_name(board, a, b)
+        name = page_name(board + ("|silk" if silk.value else ""), a, b)
         out = CACHE / name
         # Only full hashes always mean the same commit; names like HEAD~1 or
         # a branch can move, and LOCAL changes as you edit, so re-diff those.
         cacheable = all(len(r) == 40 and all(c in "0123456789abcdef" for c in r) for r in (a, b))
         button.props("loading")
-        logs.log.info("compare %s .. %s", a, b)
+        logs.log.info("compare %s .. %s%s", a, b, " (with silkscreen)" if silk.value else "")
         status.text = "Comparing..."
         started = time.monotonic()
         try:
             if not (cacheable and out.exists()):
-                for w in await kigit.diff_html(board, a, b, out):
+                for w in await kigit.diff_html(board, a, b, out, silkscreen=silk.value):
                     notify(w, type="warning", multi_line=True, close_button=True)
         except kigit.KigitError as e:
             status.text = ""
@@ -557,12 +561,12 @@ def build(start_folder: str):
 
     async def run_files_diff(old_board: str, new_board: str) -> None:
         # Always regenerated: files on disk can change between comparisons.
-        name = page_name("files", old_board, new_board)
+        name = page_name("files" + ("|silk" if silk.value else ""), old_board, new_board)
         status.text = "Comparing..."
         logs.log.info("compare files %s .. %s", old_board, new_board)
         started = time.monotonic()
         try:
-            for w in await kigit.diff_files_html(old_board, new_board, CACHE / name):
+            for w in await kigit.diff_files_html(old_board, new_board, CACHE / name, silkscreen=silk.value):
                 notify(w, type="warning", multi_line=True, close_button=True)
         except kigit.KigitError as e:
             status.text = ""

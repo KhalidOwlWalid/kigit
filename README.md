@@ -241,6 +241,13 @@ schematic: parts +1 -0, 8 changed electrically, 1 fields only, 0 only moved; 3 n
 So moving a footprint or the whole layout shows as moved, not as everything
 removed and re-added, while re-routing still shows the new and old copper.
 
+**Silkscreen** (optional: `--silkscreen`, or "Include silkscreen" in the GUI;
+off by default since it makes pages bigger): F/B silkscreen shapes and text
+are compared and drawn (front near-white, back purple and mirrored), with
+their own layer toggles. Matched like footprint graphics: silkscreen that
+moved with its footprint shows as moved; new or edited items as added /
+removed. Text uses a browser font, so it's close to KiCad's, not identical.
+
 Zones (copper pours) are drawn from the newer revision only and aren't
 diffed, because refilling a pour changes its shape every time.
 

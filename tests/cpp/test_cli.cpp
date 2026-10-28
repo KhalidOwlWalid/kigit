@@ -116,6 +116,16 @@ TEST_CASE("diff across the folder rename, as JSON on stdout") {
     CHECK(zone_kinds == std::set<std::string>{"GND:refilled", "VCC:outline"});
 }
 
+TEST_CASE("--silkscreen is opt-in") {
+    TempDir tmp;
+    make_fixture_repo(tmp.path());
+    std::string board = quote((tmp / "board/demo.kicad_pcb").string());
+    CHECK(parse(run_kigit("-n --json -o - -C " + board + " HEAD~3..HEAD"))["silk"].is_null());
+    json with = parse(run_kigit("-n --json -o - --silkscreen -C " + board + " HEAD~3..HEAD"));
+    REQUIRE(with["silk"].is_array());
+    CHECK(with["silk"].size() > 0);
+}
+
 TEST_CASE("revisions given newest-first are swapped") {
     TempDir tmp;
     make_fixture_repo(tmp.path());

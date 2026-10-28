@@ -166,7 +166,86 @@ bool is_fp_graphic(std::string_view k) {
            k == "fp_curve" || k == "fp_text" || k == "fp_text_box";
 }
 
-void read_footprint(const Node& fp, const Ctx& ctx, std::vector<Item>& items, std::vector<Footprint>& footprints) {
+bool is_silk_layer(std::string_view l) { return l == "F.SilkS" || l == "B.SilkS"; }
+
+// Text effects: size, thickness, justification, mirroring, visibility.
+void read_text_effects(const Node& n, SilkItem& t, bool& hidden) {
+    hidden = false;
+    for (size_t i = 1; i < n.children.size(); ++i) {
+        const Node& c = n.children[i];
+        if (!c.is_list && !c.quoted && c.atom == "hide") hidden = true;
+        if (c.is_list && c.name() == "hide" && (c.arg_count() == 0 || c.arg(0) == "yes")) hidden = true;
+    }
+    const Node* e = n.child("effects");
+    if (!e) return;
+    if (const Node* f = e->child("font")) {
+        if (const Node* sz = f->child("size")) t.size = sz->num(0, 1);
+        if (const Node* th = f->child("thickness")) t.thickness = th->num(0, 0.15);
+    }
+    if (const Node* j = e->child("justify"))
+        for (size_t i = 0; i < j->arg_count(); ++i) {
+            std::string_view a = j->arg(i);
+            if (a == "left") t.h = -1;
+            else if (a == "right") t.h = 1;
+            else if (a == "top") t.v = -1;
+            else if (a == "bottom") t.v = 1;
+            else if (a == "mirror") t.mirror = true;
+        }
+    for (size_t i = 1; i < e->children.size(); ++i) {
+        const Node& c = e->children[i];
+        if ((!c.is_list && c.atom == "hide") || (c.is_list && c.name() == "hide" && c.arg(0) != "no")) hidden = true;
+    }
+}
+
+// A silkscreen shape as SVG path data, with `to_board` mapping its points
+// (identity for board items, the footprint's placement for footprint items).
+template <typename F>
+std::string silk_path(const Node& g, F to_board, bool& fill) {
+    auto P = [&](const Node* n) { return to_board(read_xy(n)); };
+    std::string_view k = g.name();
+    if (const Node* f = g.child("fill")) {
+        std::string_view t = f->child("type") ? f->child("type")->arg(0) : f->arg(0);
+        fill = t == "solid" || t == "yes" || t == "outline";
+    }
+    if (k.ends_with("_line")) return "M" + pt(P(g.child("start"))) + "L" + pt(P(g.child("end")));
+    if (k.ends_with("_arc")) {
+        if (g.child("mid")) return arc_path(P(g.child("start")), P(g.child("mid")), P(g.child("end")));
+        return {};
+    }
+    if (k.ends_with("_rect")) {
+        Point a = read_xy(g.child("start")), b = read_xy(g.child("end"));
+        return "M" + pt(to_board(a)) + "L" + pt(to_board({b.x, a.y})) + "L" + pt(to_board(b)) + "L" +
+               pt(to_board({a.x, b.y})) + "Z";
+    }
+    if (k.ends_with("_circle")) {
+        Point c = read_xy(g.child("center")), e = read_xy(g.child("end"));
+        double r = std::hypot(e.x - c.x, e.y - c.y);
+        Point cc = to_board(c);
+        std::string rs = fnum(r) + " " + fnum(r) + " 0 1 1 ";
+        return "M" + pt({cc.x - r, cc.y}) + "A" + rs + pt({cc.x + r, cc.y}) + "A" + rs + pt({cc.x - r, cc.y}) + "Z";
+    }
+    if (k.ends_with("_poly")) {
+        std::string d;
+        if (const Node* pts = g.child("pts"))
+            for (const Node& p : pts->children) {
+                if (!p.is_list) continue;
+                if (p.name() == "xy") d += (d.empty() ? "M" : "L") + pt(P(&p));
+                else if (p.name() == "arc") d += (d.empty() ? "M" : "L") + pt(P(p.child("end")));
+            }
+        return d.empty() ? d : d + "Z";
+    }
+    return {};
+}
+
+double stroke_width(const Node& g) {
+    if (const Node* st = g.child("stroke"))
+        if (const Node* w = st->child("width")) return w->num(0);
+    if (const Node* w = g.child("width")) return w->num(0);
+    return 0.12;
+}
+
+void read_footprint(const Node& fp, const Ctx& ctx, std::vector<Item>& items, std::vector<Footprint>& footprints,
+                    std::vector<SilkItem>* silk) {
     const Node* at = fp.child("at");
     Point origin = read_xy(at);
     double fp_angle = at ? at->num(2) : 0;
@@ -223,6 +302,44 @@ void read_footprint(const Node& fp, const Ctx& ctx, std::vector<Item>& items, st
             info.pads.push_back(with_local_at(c, {"uuid", "tstamp", "net", "pinfunction", "pintype"}));
         }
     }
+    // Silkscreen (only if asked for), mapped to the board.
+    if (silk) {
+        auto to_board = [&](Point local) {
+            Point r = rotate(local, fp_angle);
+            return Point{origin.x + r.x, origin.y + r.y};
+        };
+        for (const Node& c : fp.children) {
+            if (!c.is_list) continue;
+            std::string_view k = c.name();
+            const Node* layer = c.child("layer");
+            if (!layer || !is_silk_layer(layer->arg(0))) continue;
+            SilkItem it;
+            it.front = layer->arg(0) == "F.SilkS";
+            it.owner = fp_id.empty() ? "ref:" + ref : fp_id;
+            if (is_fp_graphic(k) && k != "fp_text" && k != "fp_text_box") {
+                it.d = silk_path(c, to_board, it.fill);
+                if (it.d.empty()) continue;
+                it.width = stroke_width(c);
+            } else if (k == "fp_text" || k == "property") {
+                bool hidden = false;
+                read_text_effects(c, it, hidden);
+                if (hidden) continue;
+                std::string text = sexpr::unescape(c.arg(1));
+                if (k == "property" && c.arg(0) == "Reference") text = ref;
+                if (text == "${REFERENCE}") text = ref;
+                if (text.empty()) continue;
+                it.text = text;
+                const Node* a = c.child("at");
+                it.at = to_board(read_xy(a));
+                it.angle = a ? a->num(2) : 0;
+            } else {
+                continue;
+            }
+            it.key = it.owner + "|" + with_local_at(c, {"uuid", "tstamp"});
+            silk->push_back(std::move(it));
+        }
+    }
+
     std::sort(info.graphics.begin(), info.graphics.end());
     std::sort(info.pads.begin(), info.pads.end());
     footprints.push_back(std::move(info));
@@ -364,7 +481,7 @@ std::string Item::key() const {
     return {};
 }
 
-Board load_board(std::string_view text) {
+Board load_board(std::string_view text, bool silkscreen) {
     Node root = sexpr::parse(text);
     const Node* pcb = nullptr;
     for (const Node& c : root.children)
@@ -425,11 +542,32 @@ Board load_board(std::string_view text) {
             it.id = id_of(n);
             board.items.push_back(std::move(it));
         } else if (kind == "footprint" || kind == "module") {
-            read_footprint(n, ctx, board.items, board.footprints);
+            read_footprint(n, ctx, board.items, board.footprints, silkscreen ? &board.silk : nullptr);
         } else if (kind == "zone") {
             read_zone(n, ctx, board.items, board.zones);
         } else if (kind.starts_with("gr_")) {
             read_outline(n, board.outline);
+            const Node* layer = n.child("layer");
+            if (silkscreen && layer && is_silk_layer(layer->arg(0))) {
+                SilkItem it;
+                it.front = layer->arg(0) == "F.SilkS";
+                if (kind == "gr_text") {
+                    bool hidden = false;
+                    read_text_effects(n, it, hidden);
+                    it.text = sexpr::unescape(n.arg(0));
+                    while (!it.text.empty() && it.text.back() == '\n') it.text.pop_back();
+                    const Node* a = n.child("at");
+                    it.at = read_xy(a);
+                    it.angle = a ? a->num(2) : 0;
+                    if (hidden || it.text.empty()) continue;
+                } else {
+                    it.d = silk_path(n, [](Point p) { return p; }, it.fill);
+                    it.width = stroke_width(n);
+                    if (it.d.empty()) continue;
+                }
+                it.key = "board|" + sexpr::canonical(n);
+                board.silk.push_back(std::move(it));
+            }
         }
     }
     return board;

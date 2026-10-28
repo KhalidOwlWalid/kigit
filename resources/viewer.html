@@ -96,6 +96,19 @@ main { position: relative; min-width: 0; min-height: 0; overflow: hidden; }
 .it.st4 { opacity: .35; pointer-events: none; }
 /* Changed in place: the same item with different copper (amber). */
 .trk.st5 { stroke: var(--accent); } .pad.st5, .via.st5 { fill: var(--accent); }
+/* Silkscreen: front near-white, back purple; diff colours as for copper. */
+:root { --silk-f: #e9e6dc; --silk-b: #b48ce0; }
+.silk { fill: none; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
+.silk.fill { fill: currentColor; }
+.silk-text { pointer-events: none; fill: currentColor; font-family: "DejaVu Sans", "Segoe UI", Roboto, sans-serif; }
+.silklayer.front { color: var(--silk-f); } .silklayer.back { color: var(--silk-b); }
+.silklayer .silk { stroke: currentColor; }
+.silklayer .st0 { opacity: .55; }
+.silklayer .st1 { color: var(--added); } .silklayer .st2 { color: var(--removed); opacity: .85; }
+.silklayer .st3 { color: var(--moved); }
+.silklayer.off { display: none; }
+#board.hide-same .silklayer .st0, #board.hide-added .silklayer .st1, #board.hide-removed .silklayer .st2 { display: none; }
+#board.hl .silklayer { opacity: .25; }
 #board.hide-moved .st3, #board.hide-ghost .st4, #board.hide-changed .st5 { display: none; }
 .fp-section #fpList { max-height: 22vh; overflow-y: auto; margin: 0 -14px; padding: 0 6px; }
 .fp-section .note { color: var(--faint); font-size: 11px; margin-top: 6px; }
@@ -312,6 +325,7 @@ body[data-tab="pcb"] [data-pane="sch"], body[data-tab="sch"] [data-pane="pcb"] {
       </div>
       <div class="hint-small">Double-click a layer to show only that one.</div>
       <div class="layers" id="layers"></div>
+      <div class="layers" id="silkLayers" style="margin-top:6px"></div>
     </section>
     <section class="fp-section">
       <h3>Footprints &amp; pours</h3>

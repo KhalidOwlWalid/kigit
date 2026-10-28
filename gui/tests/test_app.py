@@ -9,6 +9,7 @@ KIGIT_PROJECT is the project folder itself (the tests also open its parent
 folder to check the 2-level search).
 """
 
+import asyncio
 import atexit
 import os
 import shutil
@@ -186,3 +187,29 @@ async def test_diff_manually_needs_both(user: User, monkeypatch) -> None:
     user.find("Old").type("HEAD")
     user.find("Find manually").click()
     await user.should_see("Enter both an old and a new commit")
+
+
+async def test_include_silkscreen_checkbox(user: User, monkeypatch) -> None:
+    """Off by default; when ticked, the compared page includes the silkscreen."""
+    await open_at(user, monkeypatch, PROJECT)
+    await user.should_see("Pick two commits on the left", retries=50)
+    box = user.find(marker="include-silkscreen").elements.pop()
+    assert box.value is False
+    rows = commit_table(user).rows
+
+    async def compare() -> str:
+        frame = next(e for e in user.client.elements.values() if e.tag == "iframe")  # hidden at first
+        before = frame.props.get("src")
+        await select(user, [rows[1], rows[-1]])
+        user.find("Compare").click()
+        for _ in range(100):  # until the viewer shows the new page
+            if frame.props.get("src") != before:
+                break
+            await asyncio.sleep(0.1)
+        src = frame.props["src"]
+        return (app.CACHE / src.split("/diffs/")[1].split("?")[0]).read_text()
+
+    assert '"silk":null' in await compare()
+    box.value = True
+    page = await compare()
+    assert '"silk":[' in page

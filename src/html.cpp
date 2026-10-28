@@ -27,6 +27,37 @@ json rev_json(const git::Revision& r) {
 
 } // namespace
 
+namespace {
+
+// Silkscreen for the viewer; null when it wasn't loaded (--silkscreen off).
+json silk_json(const Diff& diff) {
+    if (diff.silk.empty()) return nullptr;
+    json out = json::array();
+    for (const auto& sd : diff.silk) {
+        const SilkItem& it = *sd.item;
+        json j = {{"f", it.front ? 1 : 0}, {"s", static_cast<int>(sd.status)}};
+        if (!it.d.empty()) {
+            j["d"] = it.d;
+            j["w"] = r4(it.width);
+            if (it.fill) j["fl"] = 1;
+        } else {
+            j["t"] = it.text;
+            j["x"] = r4(it.at.x);
+            j["y"] = r4(it.at.y);
+            j["a"] = r4(it.angle);
+            j["sz"] = r4(it.size);
+            j["th"] = r4(it.thickness);
+            j["h"] = it.h;
+            j["v"] = it.v;
+            if (it.mirror) j["m"] = 1;
+        }
+        out.push_back(std::move(j));
+    }
+    return out;
+}
+
+} // namespace
+
 nlohmann::json report_data(const Board& old_board, const Board& new_board, const Diff& diff,
                            const ReportInfo& info) {
     // Copper layers: the new board's stackup, plus any only the old one had.
@@ -168,6 +199,7 @@ nlohmann::json report_data(const Board& old_board, const Board& new_board, const
         {"items", jitems},
         {"zones", jzones},
         {"footprints", jfootprints},
+        {"silk", silk_json(diff)},
         {"zone_changes", jzone_changes},
     };
 

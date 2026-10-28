@@ -124,6 +124,27 @@ TEST_CASE("KiCad 5: zones take their layer from the zone itself") {
     CHECK(b.items[0].polygons.size() == 1);
 }
 
+TEST_CASE("silkscreen: only when asked for, placed on the board") {
+    std::string text = read_text(fixture("v1/demo.kicad_pcb"));
+    CHECK(load_board(text).silk.empty());
+    Board b = load_board(text, true);
+    // R1 at (10, 10): its silkscreen line (-0.5,-0.4)-(0.5,-0.4) and its reference text.
+    bool line = false, ref = false;
+    for (const auto& s : b.silk) {
+        if (s.owner != "fp-r1") continue;
+        line |= s.d == "M9.5 9.6L10.5 9.6";
+        if (s.text == "R1") {
+            ref = true;
+            CHECK(s.at.x == doctest::Approx(10));
+            CHECK(s.at.y == doctest::Approx(8.5));
+            CHECK(s.front);
+        }
+    }
+    CHECK(line);
+    CHECK(ref);
+    for (const auto& s : b.silk) CHECK(s.text != "1k"); // the value is on F.Fab, not silkscreen
+}
+
 TEST_CASE("not a board") {
     CHECK_THROWS(load_board("(kicad_sch (version 1))"));
 }

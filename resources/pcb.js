@@ -40,6 +40,38 @@
   const perLayer = layers.map(() => ({ zones: "", pads: ["", "", "", "", "", ""], tracks: ["", "", "", "", "", ""], hits: "" }));
   let vias = "", holes = "";
 
+  // Silkscreen (only present when compared with --silkscreen / "Include
+  // silkscreen"): back side underneath, front on top; text in KiCad's place,
+  // size and justification (a browser font, so not KiCad's exact strokes).
+  function silkSvg() {
+    const silk = DATA.silk;
+    if (!silk) return "";
+    const order = [0, 3, 2, 1]; // unchanged, moved, removed, added on top
+    const side = (front) => {
+      let out = "";
+      for (const st of order)
+        for (const it of silk) {
+          if (it.f !== front || it.s !== st) continue;
+          if (it.d !== undefined) {
+            out += `<path class="silk st${it.s}${it.fl ? " fill" : ""}" d="${it.d}" stroke-width="${Math.max(it.w, 0.05)}"/>`;
+          } else {
+            const anchor = it.h < 0 ? "start" : it.h > 0 ? "end" : "middle";
+            const base = it.v < 0 ? "hanging" : it.v > 0 ? "alphabetic" : "central";
+            const mirror = it.m ? ` scale(-1 1)` : "";
+            const lines = String(it.t).split("\n");
+            const lh = it.sz * 1.6;
+            const shift = it.v > 0 ? -(lines.length - 1) * lh : it.v < 0 ? 0 : -((lines.length - 1) * lh) / 2;
+            out += `<text class="silk-text st${it.s}" transform="translate(${it.x} ${it.y}) rotate(${-it.a})${mirror}" ` +
+              `font-size="${it.sz * 1.38}" text-anchor="${anchor}" dominant-baseline="${base}" ` +
+              `style="font-weight:${it.th / it.sz > 0.17 ? 700 : 400}">` +
+              lines.map((l, k) => `<tspan x="0" dy="${k === 0 ? shift : lh}">${esc(l)}</tspan>`).join("") + `</text>`;
+          }
+        }
+      return out;
+    };
+    return `<g class="silklayer back" data-side="B">${side(0)}</g><g class="silklayer front" data-side="F">${side(1)}</g>`;
+  }
+
   function padSvg(it, i) {
     const cls = `it pad st${it.s}`, at = `data-i="${i}"${it.fp !== undefined ? ` data-fp="${it.fp}"` : ""}`;
     const tf = `transform="translate(${it.x} ${it.y}) rotate(${-it.a})"`;
@@ -81,7 +113,7 @@
         `<g>${p.zones}</g><g>${ORDER.map((s) => p.pads[s]).join("")}</g>` +
         `<g>${ORDER.map((s) => p.tracks[s]).join("")}</g><g>${p.hits}</g></g>`;
     }).join("") +
-    `<g id="vias">${vias}</g><g>${holes}</g>` +
+    `<g id="vias">${vias}</g><g>${holes}</g>` + silkSvg() +
     `<g class="outline">${outline.map((d) => `<path d="${d}"/>`).join("")}</g></g>`;
 
   // Elements per net, for highlighting.
@@ -376,6 +408,17 @@
   // ---------- layers ----------
   const layerOn = layers.map(() => true);
   const viaEls = [...svg.querySelectorAll(".via")];
+  // Silkscreen toggles (front/back), next to the copper layers.
+  if (DATA.silk) {
+    $("#silkLayers").innerHTML =
+      `<label><input type="checkbox" data-silk="F" checked><span class="sw" style="background:var(--silk-f)"></span>F.Silkscreen</label>` +
+      `<label><input type="checkbox" data-silk="B" checked><span class="sw" style="background:var(--silk-b)"></span>B.Silkscreen</label>`;
+    $("#silkLayers").addEventListener("change", (e) => {
+      const side = e.target.dataset.silk;
+      if (side) svg.querySelector(`.silklayer[data-side="${side}"]`)?.classList.toggle("off", !e.target.checked);
+    });
+  }
+
   function syncLayers() {
     svg.querySelectorAll(".layer").forEach((g) => g.classList.toggle("off", !layerOn[+g.dataset.l]));
     viaEls.forEach((v) => {

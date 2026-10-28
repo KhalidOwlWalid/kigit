@@ -59,6 +59,12 @@ struct ZoneDiff {
     enum Kind { Added, Removed, OutlineChanged, Refilled } kind;
 };
 
+// A silkscreen item and what happened to it (Same, Added, Removed, Moved).
+struct SilkDiffItem {
+    const SilkItem* item;
+    Status status;
+};
+
 struct Diff {
     std::vector<DiffItem> items;          // tracks, arcs, vias, pads of both sides (+ old positions)
     std::vector<const Item*> zones;       // zone fills of the new board (drawn, not diffed)
@@ -67,6 +73,7 @@ struct Diff {
     int changed = 0;                      // items edited in place, all nets
     std::vector<FootprintDiff> footprints; // only the ones that differ
     std::vector<ZoneDiff> zone_changes;    // only the ones that differ
+    std::vector<SilkDiffItem> silk;        // new side's silkscreen + removed old items (if loaded)
 };
 
 // Matches items of `old_board` and `new_board`: first by KiCad ID (so moved

@@ -71,6 +71,8 @@ OPTIONS
                         This is a web page: open it in a browser, don't run it.
     -n, --no-open       Don't open the result in a browser
     -s, --stats         Print every changed net, not just the top 15
+        --silkscreen    Also compare and draw the silkscreen (F/B.SilkS
+                        shapes and text). Off by default: it makes pages bigger
         --no-swap       Keep the revision order as given
     -q, --quiet         Only print errors and the output path
     -V, --verbose       Also print the session log (with debug lines) to stderr
@@ -559,6 +561,7 @@ int run(int argc, char** argv) {
     log_query.max_count = 2000;
     bool log_kicad_only = false;
     bool projects_mode = false;
+    bool silkscreen = false;
     int projects_depth = 2;
     std::string netlist_file;
 
@@ -600,6 +603,8 @@ int run(int argc, char** argv) {
             swap = false;
         } else if (a == "--log") {
             log_mode = true;
+        } else if (a == "--silkscreen") {
+            silkscreen = true;
         } else if (a == "--projects") {
             projects_mode = true;
         } else if (a == "--depth") {
@@ -817,8 +822,8 @@ int run(int argc, char** argv) {
         spdlog::info("comparing {} ({}) -> {} ({}) of {}", old_rev.short_hash, old_rev.subject, new_rev.short_hash,
                      new_rev.subject, board_path.string());
         auto t1 = std::chrono::steady_clock::now();
-        Board old_board = load_board(old_text);
-        Board new_board = load_board(new_text);
+        Board old_board = load_board(old_text, silkscreen);
+        Board new_board = load_board(new_text, silkscreen);
         auto t2 = std::chrono::steady_clock::now();
         Diff diff = diff_boards(old_board, new_board);
         auto t3 = std::chrono::steady_clock::now();

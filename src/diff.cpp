@@ -151,6 +151,27 @@ void diff_zones(const Board& a, const Board& b, Diff& d) {
         if (!matched.count(&oz)) d.zone_changes.push_back({&oz, nullptr, ZoneDiff::Removed});
 }
 
+// Silkscreen: the same item if it's the same shape in its footprint's frame
+// (or on the board) for the same footprint. Moved with its footprint if its
+// board position changed; otherwise unchanged. The rest is added/removed.
+void diff_silk(const Board& a, const Board& b, Diff& d) {
+    std::unordered_map<std::string, std::vector<const SilkItem*>> old_by_key;
+    for (const auto& it : a.silk) old_by_key[it.key].push_back(&it);
+    for (const auto& it : b.silk) {
+        auto f = old_by_key.find(it.key);
+        if (f == old_by_key.end() || f->second.empty()) {
+            d.silk.push_back({&it, Status::Added});
+            continue;
+        }
+        const SilkItem* old = f->second.back();
+        f->second.pop_back();
+        bool same_place = old->d == it.d && near(old->at.x, it.at.x) && near(old->at.y, it.at.y) && old->angle == it.angle;
+        d.silk.push_back({&it, same_place ? Status::Same : Status::Moved});
+    }
+    for (const auto& [key, left] : old_by_key)
+        for (const SilkItem* it : left) d.silk.push_back({it, Status::Removed});
+}
+
 } // namespace
 
 Diff diff_boards(const Board& old_board, const Board& new_board) {
@@ -226,6 +247,7 @@ Diff diff_boards(const Board& old_board, const Board& new_board) {
 
     diff_footprints(old_board, new_board, d);
     diff_zones(old_board, new_board, d);
+    diff_silk(old_board, new_board, d);
     return d;
 }
 

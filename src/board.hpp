@@ -83,17 +83,35 @@ struct ZoneInfo {
     size_t fill = 0;                    // hash of KiCad's computed fill
 };
 
+// A silkscreen line/shape or text, in board coordinates.
+struct SilkItem {
+    bool front = true;               // F.SilkS (else B.SilkS)
+    std::string d;                   // SVG path for shapes ("" for text)
+    double width = 0;                // line width
+    bool fill = false;               // filled polygon/circle/rect
+    std::string text;                // text items
+    Point at;
+    double angle = 0, size = 1, thickness = 0.15;
+    int h = 0, v = 0;                // justification: -1 left/top, 0 centre, 1 right/bottom
+    bool mirror = false;             // back-side text reads mirrored from the top
+    std::string owner;               // footprint ID ("" = drawn on the board itself)
+    std::string key;                 // identity for diffing: owner + shape in the owner's frame
+};
+
 struct Board {
     std::vector<Layer> layers;       // copper layers in stackup order (F.Cu first)
     std::vector<Item> items;
     std::vector<Footprint> footprints;
     std::vector<ZoneInfo> zones;
+    std::vector<SilkItem> silk;      // only filled in if asked for (load_board(..., true))
     std::vector<std::string> outline; // Edge.Cuts shapes as SVG path data
     int version = 0;                  // file format version, e.g. 20260206
 };
 
 // Parses .kicad_pcb text. Throws std::runtime_error on bad input.
-Board load_board(std::string_view text);
+// With `silkscreen`, also reads the silkscreen (costs time and page size,
+// so it's opt-in).
+Board load_board(std::string_view text, bool silkscreen = false);
 
 // Centre of the circle through three points (for arcs). Returns false if
 // the points are collinear.
