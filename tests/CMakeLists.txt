@@ -22,7 +22,10 @@ add_executable(kigit_tests
   cpp/test_cli.cpp
 )
 target_link_libraries(kigit_tests PRIVATE kigit_core doctest::doctest)
+# DOCTEST_CONFIG_USE_STD_HEADERS: include the real <tuple> etc. instead of
+# doctest declaring std types itself, which new MSVC forbids (C5285).
 target_compile_definitions(kigit_tests PRIVATE
+  DOCTEST_CONFIG_USE_STD_HEADERS
   KIGIT_FIXTURES="${CMAKE_CURRENT_SOURCE_DIR}/fixtures"
   KIGIT_BIN="$<TARGET_FILE:kigit>")
 add_dependencies(kigit_tests kigit) # the CLI tests run the real binary
