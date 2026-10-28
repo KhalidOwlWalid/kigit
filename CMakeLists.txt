@@ -7,7 +7,7 @@ cmake_minimum_required(VERSION 3.16...3.31)
 if(NOT DEFINED CMAKE_POLICY_VERSION_MINIMUM)
   set(CMAKE_POLICY_VERSION_MINIMUM 3.5 CACHE STRING "Minimum CMake policy version for dependencies")
 endif()
-project(kigit VERSION 0.1.1 LANGUAGES CXX)
+project(kigit VERSION 0.1.2 LANGUAGES CXX)
 
 # Linux and Windows (MSVC or MinGW) are supported. macOS code is kept but
 # isn't built by CI for now. Everything OS-specific in the code is in
