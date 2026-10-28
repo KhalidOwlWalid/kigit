@@ -142,6 +142,8 @@ def build(start_folder: str):
         ui.button("Browse", icon="folder_open", on_click=lambda: browse()).props("flat dense")
         ui.button("Open", on_click=lambda: open_folder(folder_input.value)).props("flat dense")
         status = ui.label("").classes("text-sm text-gray-400 ml-auto truncate")
+        ui.button("Compare folders", icon="difference", on_click=lambda: compare_folders()).props(
+            "flat dense").tooltip("Compare two copies of a KiCad project, without git").mark("compare-folders")
         ui.button(icon="receipt_long", on_click=show_log).props("flat dense round").tooltip("Session log").mark("log-button")
 
     # ----------------------------------------------------------- commit list
@@ -209,8 +211,13 @@ def build(start_folder: str):
             placeholder_icon = ui.icon("folder_open").classes("text-5xl text-gray-600")
             placeholder_text = ui.label("Open a KiCad project folder to start.").classes("text-gray-400")
             placeholder_more = ui.label("").classes("text-xs text-gray-500 text-center max-w-[36rem]")
+            # Shown when a project has no git history: compare two copies instead.
+            no_git_button = ui.button("Compare two copies of this project", icon="difference").props(
+                "unelevated dense color=amber-8").mark("no-git-compare")
+            no_git_button.set_visibility(False)
 
     def show_message(icon: str, text: str, more: str = "", tone: str = "text-gray-400") -> None:
+        no_git_button.set_visibility(False)
         frame.set_visibility(False)
         placeholder.set_visibility(True)
         placeholder_icon.name = icon
@@ -279,9 +286,11 @@ def build(start_folder: str):
         if not project.git:
             status.text = ""
             show_message("history_toggle_off", f"{project.name} isn't in a git repository.",
-                         "kigit compares commits, so the project needs git history. "
-                         "(Two loose board files can be compared with `kigit --files OLD NEW`.)",
+                         "There's no history to pick commits from, but you can compare it with another "
+                         "copy of the project (an older backup, a colleague's version, ...).",
                          "text-red-400")
+            no_git_button.on_click(lambda: compare_folders(new=project.dir))
+            no_git_button.set_visibility(True)
             notify(f"{project.name} isn't in a git repository", type="negative")
             return
         await load_history(project)
@@ -449,6 +458,124 @@ def build(start_folder: str):
         frame.props(f'src="/diffs/{name}?t={int(time.time())}#sch"')
         placeholder.set_visibility(False)
         frame.set_visibility(True)
+
+    # ------------------------------------------------- compare folders (no git)
+    async def compare_folders(old: str = "", new: str = "") -> None:
+        """Compare two copies of a project, each given by its folder."""
+        boards: dict[str, str | None] = {"old": None, "new": None}
+
+        with dialog_host, ui.dialog() as dialog, ui.card().classes("w-[44rem] max-w-full bg-[#161a20] gap-3"):
+            ui.label("Compare two KiCad project folders").classes("text-base font-semibold")
+            ui.label("No git needed: pick the folder of each copy (an older backup, a colleague's version, ...). "
+                     "kigit finds the board in each, and the schematic next to it.").classes("text-xs text-gray-400")
+
+            def side(key: str, title: str, start: str):
+                with ui.column().classes("w-full gap-1"):
+                    with ui.row().classes("w-full items-center gap-2 no-wrap"):
+                        box = ui.input(title, value=start, placeholder="project folder").props(
+                            "dense dark outlined").classes("flex-grow").mark(f"folder-{key}")
+                        browse_btn = ui.button(icon="folder_open").props("flat dense round").tooltip("Browse")
+                    found = ui.label("").classes("text-xs")
+                    choice = ui.select([], label="Board").props("dense dark outlined").classes("w-full")
+                    choice.set_visibility(False)
+
+                async def detect() -> None:
+                    folder = (box.value or "").strip()
+                    boards[key] = None
+                    choice.set_visibility(False)
+                    if not folder:
+                        found.text = ""
+                    elif not Path(folder).expanduser().is_dir():
+                        found.text = "Not a folder."
+                        found.classes(replace="text-xs text-red-400")
+                    else:
+                        try:
+                            projects = [p for p in await kigit.projects(str(Path(folder).expanduser()), SEARCH_DEPTH)
+                                        if p.pcb]
+                        except kigit.KigitError as e:
+                            projects, found.text = [], str(e)
+                        if not projects:
+                            found.text = f"No KiCad board (.kicad_pcb) here or {SEARCH_DEPTH} levels below."
+                            found.classes(replace="text-xs text-red-400")
+                        elif len(projects) == 1:
+                            boards[key] = projects[0].board
+                            found.text = f"✓ {Path(projects[0].board).name}"
+                            found.classes(replace="text-xs text-green-400")
+                        else:
+                            options = {p.board: os.path.relpath(p.board, folder) for p in projects}
+                            choice.options = options
+                            choice.value = None
+                            choice.update()
+                            choice.set_visibility(True)
+                            found.text = f"{len(projects)} boards here; pick one:"
+                            found.classes(replace="text-xs text-amber-400")
+                    refresh()
+
+                def picked(e) -> None:
+                    boards[key] = e.value
+                    refresh()
+
+                async def browse_side() -> None:
+                    chosen = await FolderPicker(box.value or folder_input.value or str(Path.home()))
+                    if chosen:
+                        box.value = chosen
+                        await detect()
+
+                box.on("blur", detect)
+                box.on("keydown.enter", detect)
+                browse_btn.on_click(browse_side)
+                choice.on_value_change(picked)
+                return detect
+
+            detect_old = side("old", "Old (before)", old)
+            detect_new = side("new", "New (after)", new)
+            with ui.row().classes("w-full justify-end gap-2"):
+                ui.button("Cancel", on_click=lambda: dialog.submit(None)).props("flat")
+                def go_compare() -> None:
+                    # Checked here too: the button is disabled until both are
+                    # found, but don't rely on that alone.
+                    if boards["old"] and boards["new"]:
+                        dialog.submit((boards["old"], boards["new"]))
+                    else:
+                        notify("Pick two project folders that each have a KiCad board", type="warning")
+
+                go = ui.button("Compare", icon="compare_arrows", on_click=go_compare).props(
+                    "unelevated color=amber-8").mark("compare-folders-go")
+
+            def refresh() -> None:
+                go.set_enabled(bool(boards["old"] and boards["new"]))
+
+            refresh()
+
+        dialog.open()
+        await detect_old()
+        await detect_new()
+        result = await dialog
+        if result:
+            await run_files_diff(*result)
+
+    async def run_files_diff(old_board: str, new_board: str) -> None:
+        # Always regenerated: files on disk can change between comparisons.
+        name = page_name("files", old_board, new_board)
+        status.text = "Comparing..."
+        logs.log.info("compare files %s .. %s", old_board, new_board)
+        started = time.monotonic()
+        try:
+            for w in await kigit.diff_files_html(old_board, new_board, CACHE / name):
+                notify(w, type="warning", multi_line=True, close_button=True)
+        except kigit.KigitError as e:
+            status.text = ""
+            notify(str(e), type="negative", multi_line=True, close_button=True)
+            return
+        label = lambda b: Path(b).parent.name or Path(b).name
+        status.text = f"{label(old_board)} ↔ {label(new_board)} (no git) · {time.monotonic() - started:.1f} s"
+        logs.log.info("compared files in %.2f s", time.monotonic() - started)
+        frame.props(f'src="/diffs/{name}?t={int(time.time())}#sch"')
+        placeholder.set_visibility(False)
+        frame.set_visibility(True)
+
+    # Pop-up dialogs live here, whichever button opens them.
+    dialog_host = ui.element("div")
 
     on_select()
     return open_folder

@@ -47,6 +47,12 @@ kigit gui ~/path/to/board  # or any folder
 3. **Compare.** kigit diffs the two and the viewer opens on the schematic
    (the PCB is one tab away).
 
+**No git?** Press **Compare folders** in the header to compare two copies of
+a project (an old backup, a colleague's version, ...): pick each copy's
+folder, kigit finds the board in each (and the schematic next to it), and the
+viewer opens as usual. Opening a project that isn't in git offers the same
+thing, with that project already filled in. (CLI: `kigit --files OLD NEW`.)
+
 The GUI is a small Python app ([NiceGUI](https://nicegui.io)) in `gui/`
 that drives the `kigit` command line, so it needs
 [uv](https://docs.astral.sh/uv/), which sets up its Python environment on

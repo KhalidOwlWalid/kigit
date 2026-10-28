@@ -139,3 +139,10 @@ async def diff_html(project: str, old: str, new: str, out_file: Path) -> list[st
     """Writes the diff viewer page for old..new to out_file. Returns kigit's warnings."""
     _, err = await _run("-C", project, "-n", "-q", "-o", str(out_file), f"{old}..{new}")
     return [line.removeprefix("warning: ") for line in err.splitlines() if line.startswith("warning:")]
+
+
+async def diff_files_html(old_board: str, new_board: str, out_file: Path) -> list[str]:
+    """Writes the diff viewer page for two board files, no git involved (each
+    board's schematic is read from its own folder). Returns kigit's warnings."""
+    _, err = await _run("-n", "-q", "-o", str(out_file), "--files", old_board, new_board)
+    return [line.removeprefix("warning: ") for line in err.splitlines() if line.startswith("warning:")]
