@@ -4,6 +4,8 @@
 #include <doctest/doctest.h>
 #include <nlohmann/json.hpp>
 
+#include <set>
+
 using namespace kigit::test;
 using nlohmann::json;
 
@@ -103,6 +105,15 @@ TEST_CASE("diff across the folder rename, as JSON on stdout") {
     }
     CHECK(c1_added);
     CHECK(r2_value);
+
+    // Footprints and pours: R1's pads changed within the footprint; the GND
+    // pour was only refilled, the VCC pour's outline was edited.
+    bool r1_pads = false;
+    for (const auto& f : d["footprints"]) r1_pads |= f["ref"] == "R1" && f["pads"] == true;
+    CHECK(r1_pads);
+    std::set<std::string> zone_kinds;
+    for (const auto& z : d["zone_changes"]) zone_kinds.insert(z["net"].get<std::string>() + ":" + z["kind"].get<std::string>());
+    CHECK(zone_kinds == std::set<std::string>{"GND:refilled", "VCC:outline"});
 }
 
 TEST_CASE("revisions given newest-first are swapped") {

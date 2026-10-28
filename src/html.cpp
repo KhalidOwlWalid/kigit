@@ -56,6 +56,7 @@ nlohmann::json report_data(const Board& old_board, const Board& new_board, const
                          {"pAdd", s.pads_added},
                          {"pRem", s.pads_removed},
                          {"moved", s.moved},
+                         {"changed", s.changed},
                          {"lenOld", r4(s.length_old)},
                          {"lenNew", r4(s.length_new)}});
     }
@@ -68,6 +69,32 @@ nlohmann::json report_data(const Board& old_board, const Board& new_board, const
         }
         return ids;
     };
+
+    // Footprint changes, and which one each pad belongs to (for highlighting).
+    std::unordered_map<std::string, int> fp_index; // footprint ID (or ref) -> index in jfootprints
+    json jfootprints = json::array();
+    for (const FootprintDiff& fd : diff.footprints) {
+        const Footprint* f = fd.new_fp ? fd.new_fp : fd.old_fp;
+        int idx = static_cast<int>(jfootprints.size());
+        for (const Footprint* side : {fd.old_fp, fd.new_fp})
+            if (side) fp_index[side->id.empty() ? "ref:" + side->ref : side->id] = idx;
+        json fields = json::array();
+        for (const auto& [k, b, a] : fd.fields) fields.push_back({k, b, a});
+        jfootprints.push_back({{"ref", fd.ref()},
+                               {"lib", f->lib},
+                               {"st", static_cast<int>(fd.status)},
+                               {"moved", fd.moved},
+                               {"pads", fd.pads_changed},
+                               {"gAdd", fd.graphics_added},
+                               {"gRem", fd.graphics_removed},
+                               {"fields", fields}});
+    }
+    json jzone_changes = json::array();
+    for (const ZoneDiff& zd : diff.zone_changes) {
+        const ZoneInfo* z = zd.new_zone ? zd.new_zone : zd.old_zone;
+        static const char* kinds[] = {"added", "removed", "outline", "refilled"};
+        jzone_changes.push_back({{"net", z->net}, {"name", z->name}, {"layers", z->layers}, {"kind", kinds[zd.kind]}});
+    }
 
     json jitems = json::array();
     for (const DiffItem& di : diff.items) {
@@ -106,6 +133,8 @@ nlohmann::json report_data(const Board& old_board, const Board& new_board, const
             j["dr"] = r4(it.drill);
             j["ref"] = it.ref;
             j["pin"] = it.pad_number;
+            if (auto f = fp_index.find(it.fp_id.empty() ? "ref:" + it.ref : it.fp_id); f != fp_index.end())
+                j["fp"] = f->second;
             break;
         case ItemKind::Zone:
             continue;
@@ -138,6 +167,8 @@ nlohmann::json report_data(const Board& old_board, const Board& new_board, const
         {"outline", outline_src.outline},
         {"items", jitems},
         {"zones", jzones},
+        {"footprints", jfootprints},
+        {"zone_changes", jzone_changes},
     };
 
     return data;

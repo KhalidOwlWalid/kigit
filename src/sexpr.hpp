@@ -45,4 +45,10 @@ Node parse(std::string_view text);
 // Resolves backslash escapes in a quoted atom (\" \\ \n).
 std::string unescape(std::string_view atom);
 
+// A node written out in a normal form, for comparing two versions of
+// something: child lists named in `skip` (e.g. "uuid") are left out, and
+// numbers are normalised (1.0 and 1 are the same), so only real differences
+// show. Strings are always quoted.
+std::string canonical(const Node& n, const std::vector<std::string_view>& skip = {"uuid", "tstamp"});
+
 } // namespace kigit::sexpr

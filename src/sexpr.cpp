@@ -1,6 +1,8 @@
 #include "sexpr.hpp"
 
+#include <algorithm>
 #include <charconv>
+#include <cstdio>
 #include <stdexcept>
 
 namespace kigit::sexpr {
@@ -128,6 +130,46 @@ std::string unescape(std::string_view atom) {
             out += atom[i];
         }
     }
+    return out;
+}
+
+namespace {
+
+void write_canonical(const Node& n, const std::vector<std::string_view>& skip, std::string& out) {
+    if (!n.is_list) {
+        double v;
+        auto [ptr, ec] = std::from_chars(n.atom.data(), n.atom.data() + n.atom.size(), v);
+        if (!n.quoted && ec == std::errc{} && ptr == n.atom.data() + n.atom.size()) {
+            char buf[32];
+            int len = std::snprintf(buf, sizeof buf, "%.6f", v);
+            std::string num(buf, len);
+            while (!num.empty() && num.back() == '0') num.pop_back();
+            if (!num.empty() && num.back() == '.') num.pop_back();
+            if (num == "-0") num = "0";
+            out += num;
+        } else {
+            out += '"';
+            out += unescape(n.atom);
+            out += '"';
+        }
+        return;
+    }
+    out += '(';
+    bool first = true;
+    for (const Node& c : n.children) {
+        if (c.is_list && std::find(skip.begin(), skip.end(), c.name()) != skip.end()) continue;
+        if (!first) out += ' ';
+        first = false;
+        write_canonical(c, skip, out);
+    }
+    out += ')';
+}
+
+} // namespace
+
+std::string canonical(const Node& n, const std::vector<std::string_view>& skip) {
+    std::string out;
+    write_canonical(n, skip, out);
     return out;
 }
 

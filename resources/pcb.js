@@ -4,15 +4,17 @@
   const $ = (s) => document.querySelector(s);
   const { meta, layers, nets, items, zones, outline } = DATA;
   const svg = $("#board");
-  // Status codes from the backend (diff.hpp): 3 = only moved, 4 = where it used to be.
-  const STATUS = ["unchanged", "added", "removed", "moved", "old position"];
-  const BADGE = [0, 1, 2, 5, 6]; // badge colour classes shared with the schematic view
+  // Status codes from the backend (diff.hpp): 3 = only moved, 4 = where it used
+  // to be (ghost), 5 = the same item with different copper (changed in place).
+  const STATUS = ["unchanged", "added", "removed", "moved", "old position", "changed"];
+  const BADGE = [0, 1, 2, 5, 6, 3]; // badge colour classes shared with the schematic view
+  const footprints = DATA.footprints || [], zoneChanges = DATA.zone_changes || [];
   const INNER_COLORS = ["#d9a03f", "#5cb86e", "#b673e0", "#48c2c6", "#e07ab8", "#9eab4c", "#7f8fe8", "#e0865a"];
 
   const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const netName = (n) => (nets[n].name === "" ? "(no net)" : nets[n].name);
   const mm = (v) => (Math.round(v * 100) / 100).toFixed(2);
-  const changeCount = (s) => s.add + s.rem + s.vAdd + s.vRem + s.pAdd + s.pRem;
+  const changeCount = (s) => s.add + s.rem + s.vAdd + s.vRem + s.pAdd + s.pRem + (s.changed || 0);
 
   let inner = 0;
   const layerColor = layers.map((l) =>
@@ -35,11 +37,11 @@
   }
 
   // ---------- draw ----------
-  const perLayer = layers.map(() => ({ zones: "", pads: ["", "", "", "", ""], tracks: ["", "", "", "", ""], hits: "" }));
+  const perLayer = layers.map(() => ({ zones: "", pads: ["", "", "", "", "", ""], tracks: ["", "", "", "", "", ""], hits: "" }));
   let vias = "", holes = "";
 
   function padSvg(it, i) {
-    const cls = `it pad st${it.s}`, at = `data-i="${i}"`;
+    const cls = `it pad st${it.s}`, at = `data-i="${i}"${it.fp !== undefined ? ` data-fp="${it.fp}"` : ""}`;
     const tf = `transform="translate(${it.x} ${it.y}) rotate(${-it.a})"`;
     if (it.shape === "circle") return `<circle class="${cls}" ${at} cx="${it.x}" cy="${it.y}" r="${it.sw / 2}"/>`;
     let r = 0;
@@ -69,7 +71,7 @@
 
   // Unchanged first, then removed, then added on top.
   // Old positions underneath, then unchanged, moved, removed, and added on top.
-  const ORDER = [4, 0, 3, 2, 1];
+  const ORDER = [4, 0, 3, 5, 2, 1];
   const layerOrder = layers.map((_, i) => i).reverse(); // bottom layer drawn first
   svg.innerHTML =
     `<g id="world">` +
@@ -151,8 +153,25 @@
   });
   svg.addEventListener("pointerleave", () => { hideTip(); setHover(null); });
 
+  // Pads per footprint (for the footprint list).
+  const fpEls = new Map();
+  svg.querySelectorAll("[data-fp]").forEach((el) => {
+    const f = +el.dataset.fp;
+    if (!fpEls.has(f)) fpEls.set(f, []);
+    fpEls.get(f).push(el);
+  });
+
   // ---------- highlight ----------
   let hovered = null, pinned = null, shown = null;
+  // Highlights one footprint's pads instead of a net (null: back to nets).
+  function setFootprint(f) {
+    svg.querySelectorAll(".on").forEach((el) => el.classList.remove("on"));
+    shown = null;
+    svg.classList.remove("hl");
+    if (f === null) { refreshHL(); return; }
+    (fpEls.get(f) || []).forEach((el) => el.classList.add("on"));
+    svg.classList.add("hl");
+  }
   function refreshHL() {
     const target = hovered !== null ? hovered : pinned;
     if (target === shown) return;
@@ -197,6 +216,8 @@
     if (s.add || s.rem) parts.push(`tracks ${s.add ? "+" + s.add : ""}${s.add && s.rem ? " " : ""}${s.rem ? "−" + s.rem : ""}`);
     if (s.vAdd || s.vRem) parts.push(`vias ${s.vAdd ? "+" + s.vAdd : ""}${s.vAdd && s.vRem ? " " : ""}${s.vRem ? "−" + s.vRem : ""}`);
     if (s.pAdd || s.pRem) parts.push(`pads ${s.pAdd ? "+" + s.pAdd : ""}${s.pAdd && s.pRem ? " " : ""}${s.pRem ? "−" + s.pRem : ""}`);
+    if (s.changed) parts.push(`${s.changed} changed in place`);
+    if (s.moved) parts.push(`${s.moved} moved`);
     const d = s.lenNew - s.lenOld;
     const len = `length ${mm(s.lenOld)} → ${mm(s.lenNew)} mm` + (Math.abs(d) >= 0.005 ? ` (${d > 0 ? "+" : ""}${mm(d)})` : "");
     return (parts.length ? parts.join(" · ") : "no changes") + "<br>" + len;
@@ -243,6 +264,7 @@
       `<div class="t">${esc(netName(pinned))}</div>` +
       `<dl><dt>Tracks</dt><dd>${pm(s.add, s.rem)} <span style="color:var(--faint)">· ${s.same} unchanged</span></dd>` +
       `<dt>Vias</dt><dd>${pm(s.vAdd, s.vRem)}</dd><dt>Pads</dt><dd>${pm(s.pAdd, s.pRem)}</dd>` +
+      (s.changed ? `<dt>Edited</dt><dd>${s.changed} <span style="color:var(--faint)">· same item, copper changed</span></dd>` : "") +
       (s.moved ? `<dt>Moved</dt><dd>${s.moved} <span style="color:var(--faint)">· same copper, new place</span></dd>` : "") +
       `<dt>Length</dt><dd>${mm(s.lenOld)} → ${mm(s.lenNew)} mm${Math.abs(d) >= 0.005 ? ` <span style="color:${d > 0 ? "var(--added)" : "var(--removed)"}">(${d > 0 ? "+" : ""}${mm(d)})</span>` : ""}</dd></dl>` +
       `<div class="row"><button id="zoomNet">Zoom to net</button><button id="clearNet">Clear</button></div>`;
@@ -263,6 +285,63 @@
   nets.forEach((s) => { totalAdd += s.add + s.vAdd + s.pAdd; totalRem += s.rem + s.vRem + s.pRem; });
   $("#nAdded").textContent = totalAdd;
   $("#nMoved").textContent = nets.reduce((a, s) => a + (s.moved || 0), 0);
+  $("#nChanged").textContent = nets.reduce((a, s) => a + (s.changed || 0), 0);
+
+  // ---------- footprints & pours ----------
+  // Footprint changes that aren't (only) copper: pads changed within the
+  // footprint, graphics, fields; and pours that were refilled or redrawn.
+  const fpList = $("#fpList");
+  function fpDesc(f) {
+    const what = [];
+    if (f.st === 1) what.push("added");
+    if (f.st === 2) what.push("removed");
+    if (f.pads) what.push("pads changed");
+    if (f.gAdd || f.gRem) what.push(`graphics +${f.gAdd} −${f.gRem}`);
+    for (const [k, b, a] of f.fields) what.push(`${k}: ${b || "(none)"} → ${a || "(none)"}`);
+    if (f.moved) what.push("moved");
+    return what.join(" · ");
+  }
+  const fpRank = (f) => (f.st === 1 || f.st === 2 || f.pads ? 0 : f.fields.length ? 1 : f.gAdd || f.gRem ? 2 : 3);
+  const fpOrder = footprints.map((_, i) => i).sort((a, b) => fpRank(footprints[a]) - fpRank(footprints[b]) ||
+    footprints[a].ref.localeCompare(footprints[b].ref, undefined, { numeric: true }));
+  const zoneCount = (k) => zoneChanges.filter((z) => z.kind === k).length;
+  const zoneParts = [];
+  if (zoneCount("outline")) zoneParts.push(`${zoneCount("outline")} outline changed`);
+  if (zoneCount("added")) zoneParts.push(`${zoneCount("added")} added`);
+  if (zoneCount("removed")) zoneParts.push(`${zoneCount("removed")} removed`);
+  if (zoneCount("refilled")) zoneParts.push(`${zoneCount("refilled")} refilled only`);
+  $("#fpCount").textContent = footprints.length ? `${footprints.length} footprint${footprints.length === 1 ? "" : "s"} changed` : "No footprint changes";
+  $("#zoneNote").textContent = zoneParts.length ? `Pours: ${zoneParts.join(", ")}` : "";
+  $("#zoneNote").title = zoneChanges.map((z) => `${z.net || "(no net)"} ${z.name ? "(" + z.name + ") " : ""}on ${z.layers.join(", ")}: ${z.kind}`).join("\n");
+  fpList.innerHTML = fpOrder.map((i) => {
+    const f = footprints[i];
+    const mark = f.st === 1 ? "+" : f.st === 2 ? "−" : "~";
+    return `<button class="chg" data-fp="${i}" title="${esc(f.lib)}"><span class="k st${f.st === 5 ? 3 : f.st}">${mark}</span>` +
+      `<span><div class="nm">${esc(f.ref)}</div><div class="d">${esc(fpDesc(f))}</div></span></button>`;
+  }).join("");
+  let fpPinned = null;
+  fpList.addEventListener("mouseover", (e) => { const r = e.target.closest("[data-fp]"); if (r) setFootprint(+r.dataset.fp); });
+  fpList.addEventListener("mouseleave", () => setFootprint(fpPinned));
+  fpList.addEventListener("click", (e) => {
+    const r = e.target.closest("[data-fp]");
+    if (!r) return;
+    const f = +r.dataset.fp;
+    fpPinned = fpPinned === f ? null : f;
+    fpList.querySelectorAll(".pin").forEach((x) => x.classList.remove("pin"));
+    if (fpPinned !== null) {
+      r.classList.add("pin");
+      const els = fpEls.get(f) || [];
+      if (els.length) {
+        let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+        for (const el of els) {
+          const it = items[+el.dataset.i], rr = Math.max(it.sw, it.sh);
+          x0 = Math.min(x0, it.x - rr); y0 = Math.min(y0, it.y - rr); x1 = Math.max(x1, it.x + rr); y1 = Math.max(y1, it.y + rr);
+        }
+        fitBox({ x: x0, y: y0, width: x1 - x0, height: y1 - y0 }, 1.5);
+      }
+    }
+    setFootprint(fpPinned);
+  });
   $("#nRemoved").textContent = totalRem;
 
   // ---------- layers ----------
@@ -301,11 +380,11 @@
     const changedTotal = nets.filter((s) => changeCount(s) > 0).length;
     $("#netCount").textContent = `${changedTotal} of ${nets.length} nets changed · showing ${rows.length}`;
     list.innerHTML = rows.length ? rows.map((n) => {
-      const s = nets[n], d = s.lenNew - s.lenOld, a = s.add + s.vAdd + s.pAdd, r = s.rem + s.vRem + s.pRem;
+      const s = nets[n], d = s.lenNew - s.lenOld, a = s.add + s.vAdd + s.pAdd, r = s.rem + s.vRem + s.pRem, e = s.changed || 0;
       const len = Math.abs(d) >= 0.005 ? `${d > 0 ? "+" : ""}${mm(d)}` : "";
-      return `<button class="net${a + r ? "" : " quiet"}${n === pinned ? " pin" : ""}" data-n="${n}" title="${esc(netName(n))}">` +
+      return `<button class="net${a + r + e ? "" : " quiet"}${n === pinned ? " pin" : ""}" data-n="${n}" title="${esc(netName(n))}">` +
         `<span class="nm">${esc(netName(n))}</span><span class="a">${a ? "+" + a : ""}</span>` +
-        `<span class="r">${r ? "−" + r : ""}</span><span class="len">${len}</span></button>`;
+        `<span class="r">${r ? "−" + r : ""}</span><span class="e">${e ? "~" + e : ""}</span><span class="len">${len}</span></button>`;
     }).join("") : `<div class="empty">No nets match.</div>`;
   }
   list.addEventListener("mouseover", (e) => { const r = e.target.closest(".net"); if (r) setHover(+r.dataset.n); });

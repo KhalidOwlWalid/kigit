@@ -161,7 +161,12 @@ void read_outline(const Node& n, std::vector<std::string>& out) {
     }
 }
 
-void read_footprint(const Node& fp, const Ctx& ctx, std::vector<Item>& items) {
+bool is_fp_graphic(std::string_view k) {
+    return k == "fp_line" || k == "fp_arc" || k == "fp_circle" || k == "fp_rect" || k == "fp_poly" ||
+           k == "fp_curve" || k == "fp_text" || k == "fp_text_box";
+}
+
+void read_footprint(const Node& fp, const Ctx& ctx, std::vector<Item>& items, std::vector<Footprint>& footprints) {
     const Node* at = fp.child("at");
     Point origin = read_xy(at);
     double fp_angle = at ? at->num(2) : 0;
@@ -176,10 +181,57 @@ void read_footprint(const Node& fp, const Ctx& ctx, std::vector<Item>& items) {
             if (t.arg(0) == "reference") ref = sexpr::unescape(t.arg(1));
         });
 
+    // The footprint as a whole.
+    Footprint info;
+    info.id = fp_id;
+    info.ref = ref;
+    info.lib = sexpr::unescape(fp.arg(0));
+    info.at = origin;
+    info.angle = fp_angle;
+    if (const Node* l = fp.child("layer")) info.side = sexpr::unescape(l->arg(0));
+    // Pads' and texts' (at x y angle): x, y are in the footprint's frame but the
+    // angle includes the footprint's rotation. Make it relative, so rotating a
+    // footprint doesn't look like editing it.
+    auto with_local_at = [&](const Node& c, std::vector<std::string_view> skip) {
+        skip.push_back("at");
+        std::string out = sexpr::canonical(c, skip);
+        if (const Node* a = c.child("at")) {
+            double rel = std::fmod(std::fmod(a->num(2) - fp_angle, 360.0) + 360.0, 360.0);
+            char buf[96];
+            std::snprintf(buf, sizeof buf, " (at %.6g %.6g %.6g)", a->num(0), a->num(1), std::round(rel * 1e4) / 1e4);
+            out += buf;
+        }
+        return out;
+    };
+    for (const Node& c : fp.children) {
+        if (!c.is_list) continue;
+        std::string_view k = c.name();
+        if (k == "property") {
+            // The value is a field; where and how it's shown is graphics.
+            std::string key = sexpr::unescape(c.arg(0));
+            if (key != "Reference") info.fields[key] = sexpr::unescape(c.arg(1));
+            Node look = c;
+            if (look.children.size() > 2) look.children.erase(look.children.begin() + 2);
+            info.graphics.push_back(with_local_at(look, {"uuid", "tstamp"}));
+        } else if (k == "model") {
+            info.fields["3D model"] = sexpr::unescape(c.arg(0));
+        } else if (is_fp_graphic(k)) {
+            info.graphics.push_back(with_local_at(c, {"uuid", "tstamp"}));
+        } else if (k == "pad") {
+            // Shape and place in the footprint's frame; the net is electrical,
+            // compared elsewhere.
+            info.pads.push_back(with_local_at(c, {"uuid", "tstamp", "net", "pinfunction", "pintype"}));
+        }
+    }
+    std::sort(info.graphics.begin(), info.graphics.end());
+    std::sort(info.pads.begin(), info.pads.end());
+    footprints.push_back(std::move(info));
+
     fp.each("pad", [&](const Node& pad) {
         Item it;
         it.kind = ItemKind::Pad;
         it.pad_number = sexpr::unescape(pad.arg(0));
+        it.fp_id = fp_id;
         if (!fp_id.empty()) it.id = fp_id + "/" + it.pad_number;
         it.shape = std::string(pad.arg(2));
         it.ref = ref;
@@ -192,6 +244,8 @@ void read_footprint(const Node& fp, const Ctx& ctx, std::vector<Item>& items) {
         Point r = rotate(local, fp_angle);
         it.a = {origin.x + r.x, origin.y + r.y};
         it.angle = pat ? pat->num(2) : 0; // stored as absolute orientation
+        it.local = local;
+        it.local_angle = std::fmod(std::fmod(it.angle - fp_angle, 360.0) + 360.0, 360.0);
         it.size = read_xy(pad.child("size"));
         if (const Node* rr = pad.child("roundrect_rratio")) it.rratio = rr->num(0);
         if (const Node* d = pad.child("drill")) {
@@ -202,8 +256,23 @@ void read_footprint(const Node& fp, const Ctx& ctx, std::vector<Item>& items) {
     });
 }
 
-void read_zone(const Node& z, const Ctx& ctx, std::vector<Item>& items) {
+void read_zone(const Node& z, const Ctx& ctx, std::vector<Item>& items, std::vector<ZoneInfo>& zones) {
     std::string net = net_of(z, ctx);
+
+    ZoneInfo info;
+    info.id = id_of(z);
+    info.net = net;
+    if (const Node* nm = z.child("name")) info.name = sexpr::unescape(nm->arg(0));
+    if (const Node* l = z.child("layer")) info.layers = {sexpr::unescape(l->arg(0))};
+    if (const Node* ls = z.child("layers"))
+        for (size_t i = 0; i < ls->arg_count(); ++i) info.layers.push_back(sexpr::unescape(ls->arg(i)));
+    std::string outline, fill;
+    z.each("polygon", [&](const Node& p) { outline += sexpr::canonical(p); });
+    z.each("filled_polygon", [&](const Node& p) { fill += sexpr::canonical(p); });
+    info.outline = std::hash<std::string>{}(outline);
+    info.fill = std::hash<std::string>{}(fill);
+    zones.push_back(std::move(info));
+
     // KiCad 5 zones are single-layer and give the layer on the zone itself.
     const Node* zone_layer = z.child("layer");
     std::unordered_map<std::string, size_t> by_layer; // layer -> item index
@@ -356,9 +425,9 @@ Board load_board(std::string_view text) {
             it.id = id_of(n);
             board.items.push_back(std::move(it));
         } else if (kind == "footprint" || kind == "module") {
-            read_footprint(n, ctx, board.items);
+            read_footprint(n, ctx, board.items, board.footprints);
         } else if (kind == "zone") {
-            read_zone(n, ctx, board.items);
+            read_zone(n, ctx, board.items, board.zones);
         } else if (kind.starts_with("gr_")) {
             read_outline(n, board.outline);
         }

@@ -1,7 +1,10 @@
 #include "git.hpp"
 
+#include <spdlog/spdlog.h>
+
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cstdlib>
 #include <optional>
 #include <sstream>
@@ -29,6 +32,18 @@ std::string quote(const std::string& s) {
 
 // Runs a shell command and returns stdout. `ok` receives success.
 std::string run(const std::string& cmd, bool& ok) {
+    auto started = std::chrono::steady_clock::now();
+    struct LogOnExit { // every git call, at debug level: what ran, how long, and whether it worked
+        const std::string& cmd;
+        bool& ok;
+        std::chrono::steady_clock::time_point started;
+        ~LogOnExit() {
+            spdlog::debug("git: {} ({:.0f} ms){}", cmd,
+                          std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - started).count(),
+                          ok ? "" : " FAILED");
+        }
+    } log_on_exit{cmd, ok, started};
+    ok = false;
     std::string out;
     FILE* p = popen((cmd + " 2>/dev/null").c_str(), "r");
     if (!p) {

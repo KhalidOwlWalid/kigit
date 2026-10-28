@@ -1,6 +1,9 @@
 #include "diff.hpp"
 
+#include <algorithm>
 #include <cmath>
+#include <iterator>
+#include <set>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -9,8 +12,8 @@ namespace kigit {
 namespace {
 
 void count(NetStats& s, const Item& it, Status st) {
-    if (st == Status::Moved) {
-        ++s.moved;
+    if (st == Status::Moved || st == Status::Changed) {
+        ++(st == Status::Moved ? s.moved : s.changed);
         if (it.kind == ItemKind::Track || it.kind == ItemKind::Arc) ++s.same;
         return;
     }
@@ -36,9 +39,15 @@ void count(NetStats& s, const Item& it, Status st) {
 
 bool near(double a, double b) { return std::abs(a - b) < 1e-4; }
 
-// The same item, only shifted or rotated: everything that makes it the copper
-// it is (net, layers, width, size, length) is unchanged. A dragged track end
-// or a new width is an edit, not a move.
+bool same_angle(double a, double b) {
+    double d = std::fmod(std::abs(a - b), 360.0);
+    return d < 1e-3 || d > 360.0 - 1e-3;
+}
+
+// The same item, only shifted or rotated as a whole: everything that makes it
+// the copper it is (net, layers, width, size, length) is unchanged. A pad
+// must also sit in the same place within its footprint; a pad that moved
+// within its footprint means the footprint itself changed.
 bool only_moved(const Item& a, const Item& b) {
     if (a.kind != b.kind || a.net != b.net || a.layers != b.layers) return false;
     switch (a.kind) {
@@ -49,11 +58,97 @@ bool only_moved(const Item& a, const Item& b) {
         return near(a.width, b.width) && near(a.drill, b.drill);
     case ItemKind::Pad:
         return a.shape == b.shape && near(a.size.x, b.size.x) && near(a.size.y, b.size.y) &&
-               near(a.rratio, b.rratio) && near(a.drill, b.drill);
+               near(a.rratio, b.rratio) && near(a.drill, b.drill) && near(a.local.x, b.local.x) &&
+               near(a.local.y, b.local.y) && same_angle(a.local_angle, b.local_angle);
     case ItemKind::Zone:
         return false;
     }
     return false;
+}
+
+// How many entries of sorted `a` aren't in sorted `b` (multiset difference).
+int missing_from(const std::vector<std::string>& a, const std::vector<std::string>& b) {
+    std::vector<std::string> out;
+    std::set_difference(a.begin(), a.end(), b.begin(), b.end(), std::back_inserter(out));
+    return static_cast<int>(out.size());
+}
+
+void diff_footprints(const Board& a, const Board& b, Diff& d) {
+    // By ID, then by reference for footprints KiCad re-created.
+    std::unordered_map<std::string, const Footprint*> old_by_id, old_by_ref;
+    for (const auto& f : a.footprints) {
+        if (!f.id.empty()) old_by_id.emplace(f.id, &f);
+        if (!f.ref.empty()) old_by_ref.emplace(f.ref, &f);
+    }
+    std::unordered_set<const Footprint*> matched;
+    for (const auto& nf : b.footprints) {
+        const Footprint* of = nullptr;
+        if (auto i = old_by_id.find(nf.id); !nf.id.empty() && i != old_by_id.end() && !matched.count(i->second))
+            of = i->second;
+        else if (auto r = old_by_ref.find(nf.ref); !nf.ref.empty() && r != old_by_ref.end() && !matched.count(r->second))
+            of = r->second;
+        FootprintDiff fd;
+        fd.new_fp = &nf;
+        if (!of) {
+            fd.status = Status::Added;
+            d.footprints.push_back(std::move(fd));
+            continue;
+        }
+        matched.insert(of);
+        fd.old_fp = of;
+        fd.moved = !near(of->at.x, nf.at.x) || !near(of->at.y, nf.at.y) || !same_angle(of->angle, nf.angle) ||
+                   of->side != nf.side;
+        fd.pads_changed = of->pads != nf.pads;
+        fd.graphics_added = missing_from(nf.graphics, of->graphics);
+        fd.graphics_removed = missing_from(of->graphics, nf.graphics);
+        if (of->lib != nf.lib) fd.fields.push_back({"Footprint", of->lib, nf.lib});
+        std::set<std::string> keys;
+        for (const auto& [k, v] : of->fields) keys.insert(k);
+        for (const auto& [k, v] : nf.fields) keys.insert(k);
+        for (const auto& k : keys) {
+            auto o = of->fields.find(k), n = nf.fields.find(k);
+            std::string before = o == of->fields.end() ? "" : o->second, after = n == nf.fields.end() ? "" : n->second;
+            if (before != after) fd.fields.push_back({k, before, after});
+        }
+        if (fd.moved || fd.pads_changed || fd.graphics_changed() || !fd.fields.empty()) {
+            fd.status = Status::Changed;
+            d.footprints.push_back(std::move(fd));
+        }
+    }
+    for (const auto& of : a.footprints) {
+        if (matched.count(&of)) continue;
+        FootprintDiff fd;
+        fd.old_fp = &of;
+        fd.status = Status::Removed;
+        d.footprints.push_back(std::move(fd));
+    }
+}
+
+void diff_zones(const Board& a, const Board& b, Diff& d) {
+    auto key = [](const ZoneInfo& z) {
+        if (!z.id.empty()) return z.id;
+        std::string k = z.net + "|" + z.name;
+        for (const auto& l : z.layers) k += "|" + l;
+        return k;
+    };
+    std::unordered_map<std::string, const ZoneInfo*> old_zones;
+    for (const auto& z : a.zones) old_zones.emplace(key(z), &z);
+    std::unordered_set<const ZoneInfo*> matched;
+    for (const auto& nz : b.zones) {
+        auto f = old_zones.find(key(nz));
+        if (f == old_zones.end() || matched.count(f->second)) {
+            d.zone_changes.push_back({nullptr, &nz, ZoneDiff::Added});
+            continue;
+        }
+        const ZoneInfo& oz = *f->second;
+        matched.insert(&oz);
+        if (oz.outline != nz.outline || oz.net != nz.net || oz.layers != nz.layers)
+            d.zone_changes.push_back({&oz, &nz, ZoneDiff::OutlineChanged});
+        else if (oz.fill != nz.fill)
+            d.zone_changes.push_back({&oz, &nz, ZoneDiff::Refilled});
+    }
+    for (const auto& oz : a.zones)
+        if (!matched.count(&oz)) d.zone_changes.push_back({&oz, nullptr, ZoneDiff::Removed});
 }
 
 } // namespace
@@ -70,7 +165,7 @@ Diff diff_boards(const Board& old_board, const Board& new_board) {
     };
 
     // 1. By KiCad ID. Items with the same ID are the same item: unchanged,
-    //    moved, or edited (then the old one is removed and the new one added).
+    //    moved, or changed in place (drawn with a ghost of the old copper).
     std::unordered_map<std::string, const Item*> old_by_id;
     for (const Item& it : old_board.items)
         if (it.kind != ItemKind::Zone && !it.id.empty()) old_by_id.emplace(it.id, &it);
@@ -91,15 +186,20 @@ Diff diff_boards(const Board& old_board, const Board& new_board) {
         }
         const Item& old = *f->second;
         done.insert(&old);
-        if (old.key() == it.key()) {
+        if (old.key() == it.key() && (it.kind != ItemKind::Pad || only_moved(old, it))) {
             add(it, Status::Same);
         } else if (only_moved(old, it)) {
             add(it, Status::Moved);
             add(old, Status::OldPosition);
             ++d.moved;
-        } else {
+        } else if (old.net != it.net && old.key() != it.key()) {
+            // Moved to another net: that's an electrical change, not an edit.
             add(it, Status::Added);
             add(old, Status::Removed);
+        } else {
+            add(it, Status::Changed);
+            add(old, Status::OldPosition);
+            ++d.changed;
         }
     }
 
@@ -123,6 +223,9 @@ Diff diff_boards(const Board& old_board, const Board& new_board) {
     // 3. Whatever is left on the old side no longer exists.
     for (const Item& it : old_board.items)
         if (it.kind != ItemKind::Zone && !done.count(&it)) add(it, Status::Removed);
+
+    diff_footprints(old_board, new_board, d);
+    diff_zones(old_board, new_board, d);
     return d;
 }
 

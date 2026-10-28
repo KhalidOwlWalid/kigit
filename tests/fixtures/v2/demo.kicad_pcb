@@ -20,15 +20,38 @@
 			(at 0 -1.5 0)
 			(layer "F.SilkS")
 		)
+		(property "Value" "1k"
+			(at 0 1.5 0)
+			(layer "F.Fab")
+		)
+		(fp_line
+			(start -0.5 -0.4)
+			(end 0.5 -0.4)
+			(stroke (width 0.1) (type solid))
+			(layer "F.SilkS")
+			(uuid "fp-r1-silk")
+		)
+		(property "Description" "updated footprint"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+		)
+		(fp_line
+			(start -0.5 0.4)
+			(end 0.5 0.4)
+			(stroke (width 0.1) (type solid))
+			(layer "F.SilkS")
+			(uuid "fp-r1-silk2")
+		)
 		(pad "1" smd rect
-			(at -1 0)
+			(at -0.95 0)
 			(size 0.8 0.9)
 			(layers "F.Cu" "F.Mask")
 			(net "VCC")
 			(uuid "pad-1")
 		)
 		(pad "2" smd rect
-			(at 1 0)
+			(at 0.95 0)
 			(size 0.8 0.9)
 			(layers "F.Cu" "F.Mask")
 			(net "SIG")
@@ -42,6 +65,17 @@
 		(property "Reference" "R2"
 			(at 0 -1.5 0)
 			(layer "F.SilkS")
+		)
+		(property "Value" "1k"
+			(at 0 1.5 0)
+			(layer "F.Fab")
+		)
+		(fp_line
+			(start -0.5 -0.4)
+			(end 0.5 -0.4)
+			(stroke (width 0.1) (type solid))
+			(layer "F.SilkS")
+			(uuid "fp-r2-silk")
 		)
 		(pad "1" smd rect
 			(at -1 0 90)
@@ -98,6 +132,28 @@
 		(net "VCC")
 		(uuid "via-1")
 	)
+	(zone
+		(net "GND")
+		(layer "B.Cu")
+		(uuid "zone-gnd")
+		(hatch edge 0.5)
+		(connect_pads (clearance 0.5))
+		(min_thickness 0.25)
+		(fill yes (thermal_gap 0.5) (thermal_bridge_width 0.5))
+		(polygon (pts (xy 0 0) (xy 30 0) (xy 30 8) (xy 0 8)))
+		(filled_polygon (layer "B.Cu") (pts (xy 0.5 0.5) (xy 29.5 0.5) (xy 29.5 7.4) (xy 0.5 7.5)))
+	)
+	(zone
+		(net "VCC")
+		(layer "B.Cu")
+		(uuid "zone-vcc")
+		(hatch edge 0.5)
+		(connect_pads (clearance 0.5))
+		(min_thickness 0.25)
+		(fill yes (thermal_gap 0.5) (thermal_bridge_width 0.5))
+		(polygon (pts (xy 0 12) (xy 25 12) (xy 25 20) (xy 0 20)))
+		(filled_polygon (layer "B.Cu") (pts (xy 0.5 12.5) (xy 29.5 12.5) (xy 29.5 19.5) (xy 0.5 19.5)))
+	)
 	(segment
 		(start 5 10)
 		(end 5 15)
@@ -113,6 +169,17 @@
 		(property "Reference" "C1"
 			(at 0 -1.5 0)
 			(layer "F.SilkS")
+		)
+		(property "Value" "1k"
+			(at 0 1.5 0)
+			(layer "F.Fab")
+		)
+		(fp_line
+			(start -0.5 -0.4)
+			(end 0.5 -0.4)
+			(stroke (width 0.1) (type solid))
+			(layer "F.SilkS")
+			(uuid "fp-c1-silk")
 		)
 		(pad "1" smd rect
 			(at -1 0)

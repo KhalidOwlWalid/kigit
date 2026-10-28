@@ -19,6 +19,15 @@ if(NOT nlohmann_json_FOUND)
   FetchContent_MakeAvailable(json)
 endif()
 
+# spdlog: use the system package if present, otherwise download it.
+find_package(spdlog 1.9 QUIET)
+if(NOT spdlog_FOUND)
+  include(FetchContent)
+  FetchContent_Declare(spdlog
+    URL https://github.com/gabime/spdlog/archive/refs/tags/v1.14.1.tar.gz)
+  FetchContent_MakeAvailable(spdlog)
+endif()
+
 # Embed the HTML viewer into the binary: the page shell plus its scripts,
 # combined into one self-contained file.
 set(VIEWER_DIR ${CMAKE_CURRENT_SOURCE_DIR}/resources)
@@ -44,10 +53,11 @@ add_library(kigit_core STATIC
   src/schematic.cpp
   src/sch_diff.cpp
   src/netcheck.cpp
+  src/log.cpp
 )
 target_include_directories(kigit_core PUBLIC src ${CMAKE_CURRENT_BINARY_DIR}/generated)
 target_compile_definitions(kigit_core PUBLIC KIGIT_VERSION="${PROJECT_VERSION}")
-target_link_libraries(kigit_core PUBLIC nlohmann_json::nlohmann_json)
+target_link_libraries(kigit_core PUBLIC nlohmann_json::nlohmann_json spdlog::spdlog)
 
 add_executable(kigit src/main.cpp)
 target_link_libraries(kigit PRIVATE kigit_core)

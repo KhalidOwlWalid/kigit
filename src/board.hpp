@@ -1,6 +1,7 @@
 // Board model: the net-carrying copper items of a .kicad_pcb file.
 #pragma once
 
+#include <map>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -43,6 +44,13 @@ struct Item {
     // Pads use their footprint's ID plus the pad number.
     std::string id;
 
+    // Pad, relative to its footprint: position and angle in the footprint's
+    // own frame. Unchanged when the footprint is moved or rotated, changed
+    // when the footprint itself is edited (e.g. a new pad pitch).
+    Point local;
+    double local_angle = 0;
+    std::string fp_id;
+
     // Zone: filled polygons, each closed.
     std::vector<std::vector<Point>> polygons;
 
@@ -54,9 +62,32 @@ struct Item {
     std::string key() const;
 };
 
+// A footprint as a whole, for spotting changes that aren't copper: its
+// graphics (fab/courtyard/silkscreen lines and texts), its fields, and the
+// shape of its pads relative to itself.
+struct Footprint {
+    std::string id, ref, lib;           // lib: library footprint, e.g. "Resistor_SMD:R_0402"
+    std::string side;                   // "F.Cu" or "B.Cu"
+    Point at;
+    double angle = 0;
+    std::map<std::string, std::string> fields; // Value, Description, ..., "3D model"
+    std::vector<std::string> graphics;  // non-copper drawings, canonical form, footprint frame
+    std::vector<std::string> pads;      // pad shapes and places, canonical form, footprint frame
+};
+
+// A copper pour, for telling a real edit (outline) from a refill.
+struct ZoneInfo {
+    std::string id, net, name;
+    std::vector<std::string> layers;
+    size_t outline = 0;                 // hash of the outline the user drew
+    size_t fill = 0;                    // hash of KiCad's computed fill
+};
+
 struct Board {
     std::vector<Layer> layers;       // copper layers in stackup order (F.Cu first)
     std::vector<Item> items;
+    std::vector<Footprint> footprints;
+    std::vector<ZoneInfo> zones;
     std::vector<std::string> outline; // Edge.Cuts shapes as SVG path data
     int version = 0;                  // file format version, e.g. 20260206
 };

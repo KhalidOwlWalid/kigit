@@ -4,11 +4,13 @@
 #include "git.hpp"
 #include "html.hpp"
 #include "locate.hpp"
+#include "log.hpp"
 #include "netcheck.hpp"
 #include "sch_diff.hpp"
 #include "schematic.hpp"
 
 #include <nlohmann/json.hpp>
+#include <spdlog/spdlog.h>
 
 #include <algorithm>
 #include <cctype>
@@ -71,6 +73,17 @@ OPTIONS
     -s, --stats         Print every changed net, not just the top 15
         --no-swap       Keep the revision order as given
     -q, --quiet         Only print errors and the output path
+    -V, --verbose       Also print the session log (with debug lines) to stderr
+
+LOGGING
+    Every run writes a session log, named after when it started
+    (kigit_2026-10-28_14-03-12_<pid>.log). Old logs are kept.
+        --log-dir DIR   Folder for log files (default: $KIGIT_LOG_DIR,
+                        else ~/.local/state/kigit/log)
+        --log-file FILE Append to this file instead (used by the GUI so a
+                        session and the kigit calls it makes share one log)
+        --log-stderr    Also print log lines to stderr
+        --no-log        Don't write a log file
         --log           Print HEAD's history as JSON, newest first, each commit
                         flagged if it changed the board or schematic, plus
                         the uncommitted changes ("local"). Used by the GUI.
@@ -138,6 +151,7 @@ bool is_board_file(const fs::directory_entry& e) {
 void warn(const std::string& msg) {
     bool color = isatty(2);
     std::fprintf(stderr, "%swarning:%s %s\n", color ? "\033[1;33m" : "", color ? "\033[0m" : "", msg.c_str());
+    spdlog::warn("{}", msg);
 }
 
 std::optional<std::string> read_disk(const fs::path& p) {
@@ -304,31 +318,79 @@ void print_summary(const Diff& d, bool all) {
         rem += s.removed;
         vadd += s.vias_added;
         vrem += s.vias_removed;
-        if (s.changed()) changed.emplace_back(name, s);
+        if (s.changed_any()) changed.emplace_back(name, s);
     }
     std::sort(changed.begin(), changed.end(), [](const auto& x, const auto& y) {
-        return x.second.added + x.second.removed > y.second.added + y.second.removed;
+        auto weight = [](const NetStats& s) { return s.added + s.removed + s.changed; };
+        return weight(x.second) > weight(y.second);
     });
 
     std::printf("  %zu of %zu nets changed  (tracks +%d -%d, vias +%d -%d)", changed.size(), d.nets.size(), add,
                 rem, vadd, vrem);
+    if (d.changed) std::printf("; %d items changed in place", d.changed);
     if (d.moved) std::printf("; %d items only moved", d.moved);
     std::printf("\n");
-    if (changed.empty()) return;
 
-    size_t limit = all ? changed.size() : std::min<size_t>(changed.size(), 15);
-    std::printf("\n  %-28s %-12s %-8s %-8s %s\n", "NET", "TRACKS", "VIAS", "PADS", "LENGTH mm");
-    for (size_t i = 0; i < limit; ++i) {
-        const auto& [name, s] = changed[i];
-        char len[64];
-        std::snprintf(len, sizeof len, "%.2f -> %.2f", s.length_old, s.length_new);
-        std::printf("  %s %-12s %-8s %-8s %s\n", pad_right(name.empty() ? "(no net)" : name, 28).c_str(),
-                    signed_counts(s.added, s.removed).c_str(),
-                    signed_counts(s.vias_added, s.vias_removed).c_str(),
-                    signed_counts(s.pads_added, s.pads_removed).c_str(), len);
+    if (!changed.empty()) {
+        size_t limit = all ? changed.size() : std::min<size_t>(changed.size(), 15);
+        std::printf("\n  %-28s %-12s %-8s %-8s %-8s %s\n", "NET", "TRACKS", "VIAS", "PADS", "EDITED", "LENGTH mm");
+        for (size_t i = 0; i < limit; ++i) {
+            const auto& [name, s] = changed[i];
+            char len[64];
+            std::snprintf(len, sizeof len, "%.2f -> %.2f", s.length_old, s.length_new);
+            std::printf("  %s %-12s %-8s %-8s %-8s %s\n", pad_right(name.empty() ? "(no net)" : name, 28).c_str(),
+                        signed_counts(s.added, s.removed).c_str(),
+                        signed_counts(s.vias_added, s.vias_removed).c_str(),
+                        signed_counts(s.pads_added, s.pads_removed).c_str(),
+                        s.changed ? std::to_string(s.changed).c_str() : ".", len);
+        }
+        if (limit < changed.size())
+            std::printf("  ... %zu more (use --stats to list all)\n", changed.size() - limit);
     }
-    if (limit < changed.size())
-        std::printf("  ... %zu more (use --stats to list all)\n", changed.size() - limit);
+
+    // Footprints: what changed about each, copper or not.
+    if (!d.footprints.empty()) {
+        int added = 0, removed = 0, pads = 0, graphics = 0, fields = 0, moved = 0;
+        for (const auto& f : d.footprints) {
+            added += f.status == Status::Added;
+            removed += f.status == Status::Removed;
+            pads += f.pads_changed;
+            graphics += f.graphics_changed();
+            fields += !f.fields.empty();
+            moved += f.moved;
+        }
+        std::printf("\n  footprints: +%d -%d; pads changed %d, graphics changed %d, fields changed %d, moved %d\n",
+                    added, removed, pads, graphics, fields, moved);
+        int shown = 0;
+        for (const auto& f : d.footprints) {
+            // Footprints that only moved are listed with --stats.
+            bool only_moved = f.status == Status::Changed && !f.pads_changed && !f.graphics_changed() && f.fields.empty();
+            if (only_moved && !all) continue;
+            if (!all && ++shown > 15) {
+                std::printf("    ... more (use --stats)\n");
+                break;
+            }
+            std::vector<std::string> what;
+            if (f.status == Status::Added) what.push_back("added (" + f.new_fp->lib + ")");
+            if (f.status == Status::Removed) what.push_back("removed (" + f.old_fp->lib + ")");
+            if (f.pads_changed) what.push_back("pads changed");
+            if (f.graphics_changed())
+                what.push_back("graphics +" + std::to_string(f.graphics_added) + " -" + std::to_string(f.graphics_removed));
+            for (const auto& [k, b, a] : f.fields)
+                what.push_back(k + " " + (b.empty() ? "(none)" : b) + " -> " + (a.empty() ? "(none)" : a));
+            if (f.moved) what.push_back("moved");
+            std::printf("    %s %-8s %s\n", f.status == Status::Added ? "+" : f.status == Status::Removed ? "-" : "~",
+                        f.ref().c_str(), join_list(what, 4).c_str());
+        }
+    }
+
+    // Pours: a changed outline is an edit; a refill alone is routine.
+    if (!d.zone_changes.empty()) {
+        int counts[4] = {0, 0, 0, 0};
+        for (const auto& z : d.zone_changes) ++counts[z.kind];
+        std::printf("\n  zones: +%d -%d, outline changed %d, refilled only %d\n", counts[ZoneDiff::Added],
+                    counts[ZoneDiff::Removed], counts[ZoneDiff::OutlineChanged], counts[ZoneDiff::Refilled]);
+    }
 }
 
 } // namespace
@@ -515,8 +577,7 @@ int run_gui(const char* argv0, int argc, char** argv) {
     return 1;
 }
 
-int main(int argc, char** argv) {
-    if (argc >= 2 && std::string(argv[1]) == "gui") return run_gui(argv[0], argc - 2, argv + 2);
+int run(int argc, char** argv) {
 
     std::vector<std::string> revs;
     std::string output, project_arg;
@@ -604,6 +665,10 @@ int main(int argc, char** argv) {
                 return 2;
             }
             netlist_file = argv[i];
+        } else if (a == "--log-dir" || a == "--log-file") {
+            ++i; // handled in main()
+        } else if (a == "--no-log" || a == "--log-stderr" || a == "-V" || a == "--verbose") {
+            // handled in main()
         } else if (a == "-q" || a == "--quiet") {
             quiet = true;
         } else if (a.starts_with("-") && a.size() > 1) {
@@ -778,6 +843,8 @@ int main(int argc, char** argv) {
             return check_netlist(*sch, *text, false) ? 0 : 1;
         }
 
+        spdlog::info("comparing {} ({}) -> {} ({}) of {}", old_rev.short_hash, old_rev.subject, new_rev.short_hash,
+                     new_rev.subject, board_path.string());
         auto t1 = std::chrono::steady_clock::now();
         Board old_board = load_board(old_text);
         Board new_board = load_board(new_text);
@@ -813,6 +880,25 @@ int main(int argc, char** argv) {
             body = render_html(data);
         }
         auto t4 = std::chrono::steady_clock::now();
+        {
+            auto ms = [](auto a, auto b) { return std::chrono::duration<double, std::milli>(b - a).count(); };
+            int nets_changed = 0;
+            for (const auto& [n, st] : diff.nets) nets_changed += st.changed_any();
+            spdlog::info("timing: read {:.0f} ms, parse {:.0f} ms, diff {:.0f} ms, schematics {:.0f} ms, output {:.0f} ms "
+                         "({} + {} items)",
+                         ms(t0, t1), ms(t1, t2), ms(t2, t3), sch_ms, ms(t3, t4), old_board.items.size(),
+                         new_board.items.size());
+            spdlog::info("pcb: {} of {} nets changed, {} items changed in place, {} moved, {} footprints changed, "
+                         "{} zone changes",
+                         nets_changed, diff.nets.size(), diff.changed, diff.moved, diff.footprints.size(),
+                         diff.zone_changes.size());
+            if (sch_diff) {
+                int parts = 0, nets = 0;
+                for (const auto& p : sch_diff->symbols) parts += p.status != SchStatus::Same;
+                for (const auto& n : sch_diff->nets) nets += n.status != SchStatus::Same;
+                spdlog::info("schematic: {} parts changed, {} nets changed", parts, nets);
+            }
+        }
 
         fs::path out_dir = fs::is_directory(board_path.parent_path()) ? board_path.parent_path() : project;
         fs::path out = output.empty()
@@ -822,12 +908,14 @@ int main(int argc, char** argv) {
         if (output == "-") {
             // For other programs (the GUI): just the data, nothing else on stdout.
             std::fwrite(body.data(), 1, body.size(), stdout);
+            spdlog::info("wrote {} bytes to stdout", body.size());
             return 0;
         }
         std::ofstream f(out, std::ios::binary);
         if (!f) throw std::runtime_error("cannot write " + out.string());
         f << body;
         f.close();
+        spdlog::info("wrote {} ({} bytes)", out.string(), body.size());
 
         if (!quiet) {
             auto ms = [](auto a, auto b) {
@@ -853,7 +941,41 @@ int main(int argc, char** argv) {
         }
     } catch (const std::exception& e) {
         std::cerr << "kigit: " << e.what() << "\n";
+        spdlog::error("{}", e.what());
         return 1;
     }
     return 0;
+}
+
+// Logging options, read before anything else so the whole run is logged.
+static logging::Options log_options(int argc, char** argv) {
+    logging::Options o;
+    for (int i = 1; i < argc; ++i) {
+        std::string a = argv[i];
+        if (a == "--no-log") o.enabled = false;
+        else if (a == "--log-stderr") o.console = true;
+        else if (a == "-V" || a == "--verbose") o.console = o.debug = true;
+        else if (a == "--log-dir" && i + 1 < argc) o.dir = expand_home(argv[++i]);
+        else if (a == "--log-file" && i + 1 < argc) o.file = expand_home(argv[++i]);
+    }
+    return o;
+}
+
+int main(int argc, char** argv) {
+    if (argc >= 2 && std::string(argv[1]) == "gui") return run_gui(argv[0], argc - 2, argv + 2);
+
+    logging::Options lo = log_options(argc, argv);
+    std::string log_path = logging::start(lo);
+    std::string args;
+    for (int i = 1; i < argc; ++i) args += std::string(i > 1 ? " " : "") + argv[i];
+    std::error_code ec;
+    spdlog::info("session start: kigit {} | cwd {} | args: {}", KIGIT_VERSION, fs::current_path(ec).string(), args);
+    if (!log_path.empty()) spdlog::debug("log file: {}", log_path);
+
+    auto started = std::chrono::steady_clock::now();
+    int code = run(argc, argv);
+    spdlog::info("session end: exit {} after {:.0f} ms", code,
+                 std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - started).count());
+    logging::stop();
+    return code;
 }

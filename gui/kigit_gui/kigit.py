@@ -5,9 +5,13 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import re
 import shutil
+import time
 from dataclasses import dataclass
 from pathlib import Path
+
+from . import logs
 
 
 class KigitError(RuntimeError):
@@ -25,14 +29,29 @@ def kigit_binary() -> str:
     raise KigitError("kigit not found: start the GUI with `kigit gui`, or put kigit on PATH")
 
 
+# kigit's own log lines start with a timestamp: "[2026-10-28 14:03:12.345] ..."
+_LOG_LINE = re.compile(r"^\[\d{4}-\d\d-\d\d \d\d:\d\d:\d\d")
+
+
 async def _run(*args: str) -> tuple[bytes, str]:
+    """Runs kigit. Returns (stdout, stderr without log lines). In a logged GUI
+    session, kigit appends to the session log and its lines are echoed to the
+    console."""
+    session_log = os.environ.get(logs.SESSION_FILE_ENV)
+    extra = ["--log-file", session_log, "--log-stderr"] if session_log else ["--no-log"]
+    started = time.monotonic()
     proc = await asyncio.create_subprocess_exec(
-        kigit_binary(), *args, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+        kigit_binary(), *args, *extra, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
     )
     out, err = await proc.communicate()
-    text = err.decode(errors="replace").strip()
+    lines = err.decode(errors="replace").splitlines()
+    logs.echo_kigit_lines([l for l in lines if _LOG_LINE.match(l)])
+    text = "\n".join(l for l in lines if not _LOG_LINE.match(l)).strip()
+    logs.log.debug("kigit %s -> exit %d in %.2f s", " ".join(args), proc.returncode, time.monotonic() - started)
     if proc.returncode != 0:
-        raise KigitError(text.removeprefix("kigit: ") or f"kigit exited with {proc.returncode}")
+        message = text.removeprefix("kigit: ") or f"kigit exited with {proc.returncode}"
+        logs.log.error("kigit %s failed: %s", " ".join(args), message)
+        raise KigitError(message)
     return out, text
 
 
