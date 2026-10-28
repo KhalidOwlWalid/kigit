@@ -3,9 +3,12 @@
 # no KiCad on CI.)
 name: CI
 
+# Site-only changes (docs/) don't need a build.
 on:
   push:
+    paths-ignore: ["docs/**"]
   pull_request:
+    paths-ignore: ["docs/**"]
 
 jobs:
   build-and-test:

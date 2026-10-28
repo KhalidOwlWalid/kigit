@@ -1,0 +1,5 @@
+# GitHub Pages (Jekyll) settings for the kigit site. Built and deployed by
+# .github/workflows/pages.yml. HOME.md is the home page (permalink: /).
+title: kigit
+description: Visual diffs of KiCad boards and schematics between git revisions.
+theme: jekyll-theme-cayman
