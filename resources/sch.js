@@ -439,18 +439,66 @@
     return x0 === Infinity ? null : { x: x0, y: y0, width: x1 - x0, height: y1 - y0 };
   }
 
+  // Card contents: details as label/value rows, changes as Old -> New tables.
+  const val = (v) => (v ? esc(v) : `<span class="none">(none)</span>`);
+  function kvTable(rows) {
+    rows = rows.filter((r) => r[1]);
+    return rows.length ? `<table class="kv">${rows.map(([k, v]) => `<tr><th>${esc(k)}</th><td>${v}</td></tr>`).join("")}</table>` : "";
+  }
+  function diffTable(rows, head = ["Field", "Old", "New"]) {
+    if (!rows.length) return "";
+    return `<table class="diff"><thead><tr><th>${head[0]}</th><th>${head[1]}</th><th></th><th>${head[2]}</th></tr></thead><tbody>` +
+      rows.map(([f, b, a]) => `<tr><td class="field">${esc(f)}</td><td class="old">${val(b)}</td>` +
+        `<td class="arrow">→</td><td class="new">${val(a)}</td></tr>`).join("") + `</tbody></table>`;
+  }
+  function pinPills(pins, cls) {
+    return `<div class="pins ${cls}">${pins.map((p) => `<span>${esc(p)}</span>`).join("")}</div>`;
+  }
+
+  function partCard(id) {
+    const p = S.parts[id];
+    let h = kvTable([
+      ["Value", esc(p.value)],
+      ["Symbol", esc(p.lib)],
+      ["Footprint", p.fp ? esc(p.fp) : ""],
+      ["Was", p.before && p.before !== p.ref && p.st !== 1 ? `${esc(p.before)} (re-annotated)` : ""],
+    ]);
+    if (p.st === 1) h += `<div class="note">New part.</div>`;
+    if (p.st === 2) h += `<div class="note">Removed in the new revision.</div>`;
+    if (p.fields.length) h += `<h4>Changes</h4>` + diffTable(p.fields);
+    if (p.pins.length) h += `<h4>Pins on a different net</h4>` + diffTable(p.pins, ["Pin", "Old net", "New net"]);
+    if (p.moved) h += `<div class="note">Moved on the sheet.</div>`;
+    return h;
+  }
+
+  function netCard(id) {
+    const n = S.nets[id];
+    let h = kvTable([
+      ["Renamed", n.st === 3 && n.before && n.before !== n.name ? `${val(n.before)} → ${esc(n.name)}` : ""],
+      ["Merged into", n.merged ? esc(n.merged) : ""],
+      ["Wires", n.wa || n.wr ? `+${n.wa} −${n.wr}` : ""],
+    ]);
+    if (n.st === 1) h += `<div class="note">New net.</div>`;
+    if (n.joined.length) h += `<h4>${n.st === 1 ? "Pins" : "Pins that joined"}</h4>` + pinPills(n.joined, "joined");
+    if (n.left.length && !n.merged) h += `<h4>Pins that left</h4>` + pinPills(n.left, "left");
+    if (!n.el && n.st !== 3 && (n.wa || n.wr || n.la || n.lr))
+      h += `<div class="note">Wiring redrawn; connections unchanged.</div>`;
+    if (!h) h = `<div class="note">No changes.</div>`;
+    return h;
+  }
+
   function renderCard() {
     if (!pinned) { card.style.display = "none"; return; }
     const i = info(pinned);
-    let html = `<div class="t">${esc(i.title)} <span class="badge st${i.st}">${ST[i.st].toUpperCase()}</span></div>` +
-      `<div style="margin:8px 0;font-size:12px;color:var(--muted)">${i.lines.map((l) => `<div>${l}</div>`).join("")}</div>`;
+    let html = `<div class="t">${esc(i.title)}<span class="badge st${i.st}">${ST[i.st].toUpperCase()}</span></div>` +
+      (pinned.kind === "n" ? netCard(pinned.id) : partCard(pinned.id));
     if (pinned.kind === "n") {
       const sheets = [...netSheets[pinned.id]];
       if (sheets.length > 1)
-        html += `<div class="row sheets" style="margin-bottom:8px">` +
+        html += `<h4>On sheets</h4><div class="row sheets" style="margin-bottom:8px">` +
           sheets.map((s) => `<button data-sheet="${s}"${s === cur ? " disabled" : ""}>${esc(sheetName(s))}</button>`).join("") + `</div>`;
     }
-    html += `<div class="row"><button id="schZoom">Zoom to</button><button id="schClear">Clear</button></div>`;
+    html += `<div class="row" style="margin-top:10px"><button id="schZoom">Zoom to</button><button id="schClear">Clear</button></div>`;
     card.innerHTML = html;
     card.style.display = "block";
     card.querySelectorAll("[data-sheet]").forEach((b) => (b.onclick = () => openSheet(+b.dataset.sheet, true)));

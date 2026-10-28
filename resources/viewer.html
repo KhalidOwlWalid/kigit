@@ -133,9 +133,32 @@ main { position: relative; min-width: 0; min-height: 0; overflow: hidden; }
 .badge.st3, .badge.st4 { background: color-mix(in srgb, var(--accent) 22%, transparent); color: var(--accent); }
 .badge.st5, .badge.st6 { background: #2a3039; color: var(--muted); }
 
-.card { position: absolute; top: 12px; right: 12px; z-index: 4; width: 280px; padding: 12px 14px;
-  background: rgba(22, 26, 32, .96); border: 1px solid var(--line); border-radius: 10px; display: none; }
-.card .t { font-weight: 700; font-size: 14px; word-break: break-all; }
+.card { position: absolute; top: 12px; right: 12px; z-index: 4; padding: 12px 14px;
+  /* Sized to its content: wider for long values, scrolls if tall. */
+  width: max-content; min-width: 300px; max-width: min(680px, 60vw); max-height: calc(100% - 24px); overflow: auto;
+  background: rgba(22, 26, 32, .97); border: 1px solid var(--line); border-radius: 10px; display: none;
+  box-shadow: 0 10px 30px rgba(0,0,0,.45); }
+.card h4 { margin: 12px 0 4px; font-size: 10px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+/* Details: label / value rows. */
+.card .kv { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 6px; }
+.card .kv th { text-align: left; color: var(--muted); font-weight: 500; padding: 3px 12px 3px 0; white-space: nowrap; vertical-align: top; }
+.card .kv td { padding: 3px 0; overflow-wrap: anywhere; color: var(--text); }
+/* Changes: field | old -> new. */
+.card .diff { width: 100%; border-collapse: separate; border-spacing: 0 5px; font-size: 12px; }
+.card .diff th { text-align: left; color: var(--faint); font-size: 10px; font-weight: 700; letter-spacing: .06em;
+  text-transform: uppercase; padding: 0 8px 0 0; }
+.card .diff td { vertical-align: middle; overflow-wrap: anywhere; }
+.card .diff .field { color: var(--muted); font-weight: 600; padding-right: 12px; white-space: nowrap; }
+.card .diff .old, .card .diff .new { border-radius: 6px; padding: 5px 9px; line-height: 1.35; min-width: 60px; }
+.card .diff .old { background: color-mix(in srgb, var(--removed) 15%, transparent); color: #ffc2ca; }
+.card .diff .new { background: color-mix(in srgb, var(--added) 15%, transparent); color: #b6f2d1; }
+.card .diff .arrow { color: var(--accent); font-size: 22px; font-weight: 700; line-height: 1; padding: 0 10px; text-align: center; }
+.card .diff .none { opacity: .6; font-style: italic; }
+.card .pins { display: flex; flex-wrap: wrap; gap: 4px; margin: 2px 0 4px; }
+.card .pins span { font-size: 11px; padding: 2px 7px; border-radius: 999px; background: var(--panel2); }
+.card .pins.joined span { color: var(--added); } .card .pins.left span { color: var(--removed); }
+.card .note { color: var(--muted); font-size: 12px; margin-top: 6px; }
+.card .t { font-weight: 700; font-size: 15px; overflow-wrap: anywhere; display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
 .card dl { display: grid; grid-template-columns: auto 1fr; gap: 3px 12px; margin: 10px 0; font-size: 12px; }
 .card dt { color: var(--muted); } .card dd { margin: 0; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
 .card .row { display: flex; gap: 8px; flex-wrap: wrap; }

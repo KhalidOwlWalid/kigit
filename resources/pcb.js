@@ -320,27 +320,56 @@
       `<span><div class="nm">${esc(f.ref)}</div><div class="d">${esc(fpDesc(f))}</div></span></button>`;
   }).join("");
   let fpPinned = null;
+  function zoomToFootprint(f) {
+    const els = fpEls.get(f) || [];
+    if (!els.length) return;
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (const el of els) {
+      const it = items[+el.dataset.i], rr = Math.max(it.sw, it.sh);
+      x0 = Math.min(x0, it.x - rr); y0 = Math.min(y0, it.y - rr); x1 = Math.max(x1, it.x + rr); y1 = Math.max(y1, it.y + rr);
+    }
+    fitBox({ x: x0, y: y0, width: x1 - x0, height: y1 - y0 }, 1.5);
+  }
+  function pinFootprint(f) {
+    fpPinned = f;
+    fpList.querySelectorAll(".pin").forEach((x) => x.classList.remove("pin"));
+    if (f !== null) fpList.querySelector(`[data-fp="${f}"]`)?.classList.add("pin");
+    setFootprint(f);
+    if (f === null) { renderCard(); return; } // back to the pinned net's card, if any
+    zoomToFootprint(f);
+    renderFootprintCard(f);
+  }
+  // The footprint's card: what it is, and what changed, as Old -> New rows.
+  function renderFootprintCard(f) {
+    const fp = footprints[f];
+    const val = (v) => (v ? esc(v) : `<span class="none">(none)</span>`);
+    const label = fp.st === 1 ? "ADDED" : fp.st === 2 ? "REMOVED" : "CHANGED";
+    const rows = [["Footprint", esc(fp.lib)]];
+    if (fp.st === 5) {
+      rows.push(["Pads", fp.pads ? "changed within the footprint (shape, size or place)" : "unchanged"]);
+      if (fp.gAdd || fp.gRem)
+        rows.push(["Graphics", `+${fp.gAdd} −${fp.gRem} <span class="none">silkscreen, fab, courtyard lines and texts</span>`]);
+      if (fp.moved) rows.push(["Position", "moved or rotated"]);
+    }
+    let h = `<div class="t">${esc(fp.ref)}<span class="badge st${BADGE[fp.st]}">${label}</span></div>` +
+      `<table class="kv">${rows.map(([k, v]) => `<tr><th>${k}</th><td>${v}</td></tr>`).join("")}</table>`;
+    if (fp.fields.length)
+      h += `<h4>Field changes</h4><table class="diff"><thead><tr><th>Field</th><th>Old</th><th></th><th>New</th></tr></thead><tbody>` +
+        fp.fields.map(([k, b, a]) => `<tr><td class="field">${esc(k)}</td><td class="old">${val(b)}</td>` +
+          `<td class="arrow">→</td><td class="new">${val(a)}</td></tr>`).join("") + `</tbody></table>`;
+    h += `<div class="row" style="margin-top:10px"><button id="fpZoom">Zoom to</button><button id="fpClose">Close</button></div>`;
+    card.innerHTML = h;
+    card.style.display = "block";
+    $("#fpZoom").onclick = () => zoomToFootprint(f);
+    $("#fpClose").onclick = () => pinFootprint(null);
+  }
   fpList.addEventListener("mouseover", (e) => { const r = e.target.closest("[data-fp]"); if (r) setFootprint(+r.dataset.fp); });
   fpList.addEventListener("mouseleave", () => setFootprint(fpPinned));
   fpList.addEventListener("click", (e) => {
     const r = e.target.closest("[data-fp]");
     if (!r) return;
     const f = +r.dataset.fp;
-    fpPinned = fpPinned === f ? null : f;
-    fpList.querySelectorAll(".pin").forEach((x) => x.classList.remove("pin"));
-    if (fpPinned !== null) {
-      r.classList.add("pin");
-      const els = fpEls.get(f) || [];
-      if (els.length) {
-        let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
-        for (const el of els) {
-          const it = items[+el.dataset.i], rr = Math.max(it.sw, it.sh);
-          x0 = Math.min(x0, it.x - rr); y0 = Math.min(y0, it.y - rr); x1 = Math.max(x1, it.x + rr); y1 = Math.max(y1, it.y + rr);
-        }
-        fitBox({ x: x0, y: y0, width: x1 - x0, height: y1 - y0 }, 1.5);
-      }
-    }
-    setFootprint(fpPinned);
+    pinFootprint(fpPinned === f ? null : f);
   });
   $("#nRemoved").textContent = totalRem;
 
