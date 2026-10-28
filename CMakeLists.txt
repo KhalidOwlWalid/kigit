@@ -9,8 +9,9 @@ if(NOT DEFINED CMAKE_POLICY_VERSION_MINIMUM)
 endif()
 project(kigit VERSION 0.1.0 LANGUAGES CXX)
 
-# Linux, macOS and Windows (MSVC or MinGW) are all supported; everything
-# OS-specific in the code is in src/utils/platform.cpp.
+# Linux and Windows (MSVC or MinGW) are supported. macOS code is kept but
+# isn't built by CI for now. Everything OS-specific in the code is in
+# src/utils/platform.cpp.
 message(STATUS "kigit: building for ${CMAKE_SYSTEM_NAME} with ${CMAKE_CXX_COMPILER_ID} ${CMAKE_CXX_COMPILER_VERSION}")
 if(NOT (WIN32 OR APPLE OR UNIX))
   message(WARNING "kigit: ${CMAKE_SYSTEM_NAME} isn't a tested platform")

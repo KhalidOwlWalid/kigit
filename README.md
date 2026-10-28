@@ -18,7 +18,7 @@ downloads Python and the GUI's packages (once, about a minute); after that
 it starts straight away. A portable zip is there too: unzip it anywhere and
 run `bin\kigit.exe`.
 
-**Linux / macOS:** build from source (below).
+**Linux:** build from source (below). macOS isn't supported for now.
 
 ### Making a release
 
@@ -118,7 +118,7 @@ ctest --test-dir build -C Release
 build\Release\kigit.exe gui
 ```
 
-Every push is built and tested on Windows, Linux and macOS by GitHub Actions
+Every push is built and tested on Windows and Linux by GitHub Actions
 (`.github/workflows/ci.yml`).
 
 ## Usage

@@ -77,7 +77,7 @@ Other folders:
   `regression.sh`.
 - `gui/tests/`: pytest with NiceGUI's simulated `user` fixture.
 - `packaging/windows/kigit.iss`: Windows installer (Inno Setup).
-- `.github/workflows/`: `ci.yml` (build and test on Windows, Linux, macOS on
+- `.github/workflows/`: `ci.yml` (build and test on Windows and Linux on
   every push), `release.yml` (Windows release on a `v*` tag).
 
 ## Build and test
@@ -239,7 +239,8 @@ Python and NiceGUI).
 ## Status and open work
 
 Not verified yet: CI and the release workflow have never run on GitHub, so
-Windows and macOS builds are untested.
+the Windows build is untested. macOS isn't built by CI for now (the
+macOS code paths in `platform.cpp` stay, but nothing checks them).
 
 Open work:
 
@@ -248,4 +249,4 @@ Open work:
 - Fab and courtyard layers.
 - Pour outlines.
 - Developer mode (see `TODO.md`).
-- Linux/macOS packages.
+- Linux packages; macOS support (CI and packages) if it's wanted again.

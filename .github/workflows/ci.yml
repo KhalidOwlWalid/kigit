@@ -1,5 +1,6 @@
-# Builds kigit and runs every test on Windows, Linux and macOS, so the code
-# stays portable. (The KiCad comparison test is skipped: no KiCad on CI.)
+# Builds kigit and runs every test on Windows and Linux, so the code stays
+# portable. macOS isn't built for now. (The KiCad comparison test is skipped:
+# no KiCad on CI.)
 name: CI
 
 on:
@@ -16,7 +17,6 @@ jobs:
         include:
           - { name: "Windows (MSVC)", os: windows-latest }
           - { name: "Linux (GCC)", os: ubuntu-latest }
-          - { name: "macOS (Clang)", os: macos-latest }
     steps:
       - uses: actions/checkout@v4
 
