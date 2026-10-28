@@ -21,6 +21,7 @@ import os
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 from pathlib import Path
 
@@ -605,8 +606,28 @@ def main() -> None:
     os.environ["KIGIT_PROJECT"] = str(Path(args.project).expanduser().resolve())
     log_file = logs.start(args.log_dir, enabled=not args.no_log, debug=args.verbose)
     logs.log.info("session start: kigit gui | project %s | log %s", os.environ["KIGIT_PROJECT"], log_file or "(none)")
-    ui.run(title="kigit", port=args.port, show=not args.no_browser, reload=False, dark=True,
-           favicon="🦉", show_welcome_message=False)
+    # Ctrl+C must actually stop the GUI. The web server normally waits for
+    # open connections to close first, and the browser tab keeps one open, so
+    # it would wait forever (on Windows especially). Give it 2 seconds, and
+    # force the exit if shutting down still hangs.
+    def on_shutdown() -> None:
+        logs.log.info("shutting down")
+
+        def force_exit() -> None:
+            time.sleep(5)
+            logs.log.warning("shutdown took too long; exiting anyway")
+            os._exit(0)
+
+        threading.Thread(target=force_exit, daemon=True).start()
+
+    app.on_shutdown(on_shutdown)
+    try:
+        ui.run(title="kigit", port=args.port, show=not args.no_browser, reload=False, dark=True,
+               timeout_graceful_shutdown=2,
+               favicon="🦉", show_welcome_message=False)
+    except KeyboardInterrupt:
+        # Ctrl+C: the server has shut down already; no traceback.
+        logs.log.info("stopped (Ctrl+C)")
 
 
 if __name__ in {"__main__", "__mp_main__"}:

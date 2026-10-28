@@ -192,10 +192,37 @@ std::optional<fs::path> find_program(const std::string& name) {
     return std::nullopt;
 }
 
+namespace {
+
+// Ctrl+C reaches every process on the console. While a child (the GUI) runs,
+// kigit lets it handle Ctrl+C and shut down, and just waits for it; dying
+// first would leave the child running behind the prompt. A handler function,
+// unlike SetConsoleCtrlHandler(nullptr, TRUE), isn't inherited by the child.
+BOOL WINAPI let_child_handle_ctrl_c(DWORD type) { return type == CTRL_C_EVENT || type == CTRL_BREAK_EVENT; }
+
+} // namespace
+
 int run_program(const fs::path& program, const std::vector<std::string>& args) {
-    std::string cmd = quote(program.string());
-    for (const auto& a : args) cmd += " " + quote(a);
-    return std::system(("\"" + cmd + "\"").c_str());
+    // Started directly, not through cmd.exe, so there's no extra process in between.
+    std::string cmdline = quote(program.string());
+    for (const auto& a : args) cmdline += " " + quote(a);
+    std::wstring wcmd = widen(cmdline);
+    STARTUPINFOW si{};
+    si.cb = sizeof(si);
+    PROCESS_INFORMATION pi{};
+    SetConsoleCtrlHandler(let_child_handle_ctrl_c, TRUE);
+    if (!CreateProcessW(nullptr, wcmd.data(), nullptr, nullptr, FALSE, 0, nullptr, nullptr, &si, &pi)) {
+        SetConsoleCtrlHandler(let_child_handle_ctrl_c, FALSE);
+        std::fprintf(stderr, "kigit: failed to start %s (error %lu)\n", program.string().c_str(), GetLastError());
+        return 127;
+    }
+    WaitForSingleObject(pi.hProcess, INFINITE);
+    DWORD code = 1;
+    GetExitCodeProcess(pi.hProcess, &code);
+    CloseHandle(pi.hProcess);
+    CloseHandle(pi.hThread);
+    SetConsoleCtrlHandler(let_child_handle_ctrl_c, FALSE);
+    return static_cast<int>(code);
 }
 
 bool open_in_browser(const fs::path& file) {
