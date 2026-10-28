@@ -1,4 +1,4 @@
-#include "locate.hpp"
+#include "git/locate.hpp"
 
 #include <algorithm>
 #include <cstdio>

@@ -1,7 +1,7 @@
 // Shared helpers for the kigit tests.
 #pragma once
 
-#include "schematic.hpp"
+#include "sch/schematic.hpp"
 
 #include <filesystem>
 #include <string>

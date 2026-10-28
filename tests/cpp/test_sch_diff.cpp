@@ -1,5 +1,5 @@
 #include "helpers.hpp"
-#include "sch_diff.hpp"
+#include "sch/sch_diff.hpp"
 
 #include <doctest/doctest.h>
 

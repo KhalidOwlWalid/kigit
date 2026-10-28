@@ -43,7 +43,7 @@ class _Formatter(logging.Formatter):
 
 
 def default_dir() -> Path:
-    """Same rule as kigit (src/log.cpp + platform.cpp): $KIGIT_LOG_DIR, else the
+    """Same rule as kigit (src/utils/log.cpp + platform.cpp): $KIGIT_LOG_DIR, else the
     app data folder: %LOCALAPPDATA% (Windows), ~/Library/Application Support
     (macOS), $XDG_STATE_HOME or ~/.local/state (Linux); then kigit/log."""
     if os.environ.get("KIGIT_LOG_DIR"):

@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.16)
 project(kigit VERSION 0.1.0 LANGUAGES CXX)
 
 # Linux, macOS and Windows (MSVC or MinGW) are all supported; everything
-# OS-specific in the code is in src/platform.cpp.
+# OS-specific in the code is in src/utils/platform.cpp.
 message(STATUS "kigit: building for ${CMAKE_SYSTEM_NAME} with ${CMAKE_CXX_COMPILER_ID} ${CMAKE_CXX_COMPILER_VERSION}")
 if(NOT (WIN32 OR APPLE OR UNIX))
   message(WARNING "kigit: ${CMAKE_SYSTEM_NAME} isn't a tested platform")
@@ -51,28 +51,38 @@ file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/generated/viewer.html "${KIGIT_VIEWER_HTM
 file(READ ${CMAKE_CURRENT_BINARY_DIR}/generated/viewer.html viewer_hex HEX)
 string(REGEX REPLACE "(................................................................)" "\\1\n" viewer_hex "${viewer_hex}")
 string(REGEX REPLACE "([0-9a-f][0-9a-f])" "0x\\1," KIGIT_VIEWER_BYTES "${viewer_hex}")
-configure_file(src/viewer_template.hpp.in
+configure_file(src/report/viewer_template.hpp.in
                ${CMAKE_CURRENT_BINARY_DIR}/generated/viewer_template.hpp @ONLY)
 
 # Everything except main() is a library, so the tests can use it directly.
 add_library(kigit_core STATIC
-  src/sexpr.cpp
-  src/board.cpp
-  src/git.cpp
-  src/diff.cpp
-  src/html.cpp
-  src/locate.cpp
-  src/schematic.cpp
-  src/sch_diff.cpp
-  src/netcheck.cpp
-  src/log.cpp
-  src/platform.cpp
+  src/utils/sexpr.cpp
+  src/utils/log.cpp
+  src/utils/platform.cpp
+  src/pcb/board.cpp
+  src/pcb/diff.cpp
+  src/sch/schematic.cpp
+  src/sch/sch_diff.cpp
+  src/sch/netcheck.cpp
+  src/git/git.cpp
+  src/git/locate.cpp
+  src/report/html.cpp
 )
-target_include_directories(kigit_core PUBLIC src ${CMAKE_CURRENT_BINARY_DIR}/generated)
+target_include_directories(kigit_core PUBLIC include ${CMAKE_CURRENT_BINARY_DIR}/generated)
 target_compile_definitions(kigit_core PUBLIC KIGIT_VERSION="${PROJECT_VERSION}")
 target_link_libraries(kigit_core PUBLIC nlohmann_json::nlohmann_json spdlog::spdlog)
 
-add_executable(kigit src/main.cpp)
+# The command line: main() and one file per command.
+add_executable(kigit
+  src/main.cpp
+  src/commands/options.cpp
+  src/commands/common.cpp
+  src/commands/summary.cpp
+  src/commands/diff.cpp
+  src/commands/history.cpp
+  src/commands/projects.cpp
+  src/commands/gui.cpp
+)
 target_link_libraries(kigit PRIVATE kigit_core)
 
 # Per-OS / per-compiler settings.

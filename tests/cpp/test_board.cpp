@@ -1,4 +1,4 @@
-#include "board.hpp"
+#include "pcb/board.hpp"
 #include "helpers.hpp"
 
 #include <doctest/doctest.h>

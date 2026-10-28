@@ -1,6 +1,6 @@
-#include "netcheck.hpp"
+#include "sch/netcheck.hpp"
 
-#include "sexpr.hpp"
+#include "utils/sexpr.hpp"
 
 #include <algorithm>
 #include <cstdio>

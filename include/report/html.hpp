@@ -1,9 +1,9 @@
 // Writes the self-contained HTML viewer.
 #pragma once
 
-#include "board.hpp"
-#include "diff.hpp"
-#include "git.hpp"
+#include "pcb/board.hpp"
+#include "pcb/diff.hpp"
+#include "git/git.hpp"
 
 #include <nlohmann/json_fwd.hpp>
 

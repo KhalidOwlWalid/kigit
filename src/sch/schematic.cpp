@@ -1,6 +1,6 @@
-#include "schematic.hpp"
+#include "sch/schematic.hpp"
 
-#include "sexpr.hpp"
+#include "utils/sexpr.hpp"
 
 #include <nlohmann/json.hpp>
 

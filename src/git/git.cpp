@@ -1,6 +1,6 @@
-#include "git.hpp"
+#include "git/git.hpp"
 
-#include "platform.hpp"
+#include "utils/platform.hpp"
 
 #include <spdlog/spdlog.h>
 

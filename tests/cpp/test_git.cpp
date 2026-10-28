@@ -1,7 +1,7 @@
 // Integration tests on a throwaway git repo (see make_fixture_repo in helpers.cpp).
-#include "git.hpp"
+#include "git/git.hpp"
 #include "helpers.hpp"
-#include "locate.hpp"
+#include "git/locate.hpp"
 
 #include <doctest/doctest.h>
 

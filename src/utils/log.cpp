@@ -1,6 +1,6 @@
-#include "log.hpp"
+#include "utils/log.hpp"
 
-#include "platform.hpp"
+#include "utils/platform.hpp"
 
 #include <spdlog/sinks/basic_file_sink.h>
 #include <spdlog/sinks/null_sink.h>

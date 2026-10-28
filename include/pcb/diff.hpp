@@ -1,7 +1,7 @@
 // Comparison of two boards: copper per net, footprints and pours.
 #pragma once
 
-#include "board.hpp"
+#include "pcb/board.hpp"
 
 #include <array>
 #include <map>

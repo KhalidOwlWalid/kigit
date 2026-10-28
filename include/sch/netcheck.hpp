@@ -2,7 +2,7 @@
 // (kicad-cli sch export netlist), to verify the connectivity rules.
 #pragma once
 
-#include "schematic.hpp"
+#include "sch/schematic.hpp"
 
 #include <string>
 

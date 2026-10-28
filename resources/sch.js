@@ -14,7 +14,7 @@
   const svg = $("#sch"), tip = $("#stip"), card = $("#scard");
   const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const n4 = (v) => Math.round(v * 1e4) / 1e4;
-  // Status codes from the backend (html.cpp).
+  // Status codes from the backend (src/report/html.cpp).
   const ST = ["unchanged", "added", "removed", "changed", "fields changed", "moved", "old position"];
   const LABEL_KIND = ["label", "global label", "hierarchical label", "sheet pin"];
 

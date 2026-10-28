@@ -1,5 +1,5 @@
 #include "helpers.hpp"
-#include "schematic.hpp"
+#include "sch/schematic.hpp"
 
 #include <doctest/doctest.h>
 

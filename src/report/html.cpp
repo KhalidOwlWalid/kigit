@@ -1,8 +1,8 @@
-#include "html.hpp"
+#include "report/html.hpp"
 
 #include "viewer_template.hpp"
-#include "sch_diff.hpp"
-#include "schematic.hpp"
+#include "sch/sch_diff.hpp"
+#include "sch/schematic.hpp"
 
 #include <nlohmann/json.hpp>
 

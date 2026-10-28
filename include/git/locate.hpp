@@ -1,8 +1,8 @@
 // Finding the board file in a revision, even if it was moved or renamed.
 #pragma once
 
-#include "board.hpp"
-#include "git.hpp"
+#include "pcb/board.hpp"
+#include "git/git.hpp"
 
 #include <optional>
 #include <string>

@@ -6,7 +6,7 @@
 // out real changes.
 #pragma once
 
-#include "schematic.hpp"
+#include "sch/schematic.hpp"
 
 #include <string>
 #include <vector>

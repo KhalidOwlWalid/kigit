@@ -6,7 +6,7 @@
 // following KiCad's rules for labels, power symbols and sheet hierarchy.
 #pragma once
 
-#include "board.hpp" // Point
+#include "pcb/board.hpp" // Point
 
 #include <functional>
 #include <map>
