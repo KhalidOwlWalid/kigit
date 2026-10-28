@@ -49,6 +49,13 @@ aside h3 { margin: 0 0 8px; font-size: 11px; font-weight: 600; letter-spacing: .
 .chip:has(input:not(:checked)) { opacity: .45; }
 .chip .n { color: var(--muted); font-variant-numeric: tabular-nums; }
 
+.section-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.head-buttons { display: flex; gap: 4px; }
+.head-buttons button { border: 1px solid var(--line); background: var(--panel2); border-radius: 6px; padding: 1px 8px;
+  font-size: 11px; color: var(--muted); cursor: pointer; }
+.head-buttons button:hover { color: var(--text); border-color: var(--accent); }
+.hint-small { color: var(--faint); font-size: 11px; margin: -4px 0 6px; }
+.layers label { user-select: none; }
 .layers label { display: flex; align-items: center; gap: 8px; padding: 3px 0; cursor: pointer; }
 .layers .sw { width: 12px; height: 12px; border-radius: 3px; }
 .layers .canon { color: var(--faint); margin-left: auto; font-size: 11px; }
@@ -267,7 +274,14 @@ body[data-tab="pcb"] [data-pane="sch"], body[data-tab="sch"] [data-pane="pcb"] {
       </div>
     </section>
     <section>
-      <h3>Copper layers</h3>
+      <div class="section-head">
+        <h3>Copper layers</h3>
+        <span class="head-buttons">
+          <button id="layersAll" title="Show every copper layer">All</button>
+          <button id="layersNone" title="Hide every copper layer">None</button>
+        </span>
+      </div>
+      <div class="hint-small">Double-click a layer to show only that one.</div>
       <div class="layers" id="layers"></div>
     </section>
     <section class="fp-section">

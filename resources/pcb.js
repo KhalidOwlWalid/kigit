@@ -364,6 +364,22 @@
     syncLayers();
   });
 
+  // All / None, and double-click a layer to show only that one.
+  function setLayers(on) {
+    on.forEach((v, i) => (layerOn[i] = v));
+    document.querySelectorAll("#layers input[data-layer]").forEach((cb) => (cb.checked = layerOn[+cb.dataset.layer]));
+    syncLayers();
+  }
+  $("#layersAll").addEventListener("click", () => setLayers(layers.map(() => true)));
+  $("#layersNone").addEventListener("click", () => setLayers(layers.map(() => false)));
+  $("#layers").addEventListener("dblclick", (e) => {
+    const label = e.target.closest("label");
+    const cb = label && label.querySelector("input[data-layer]");
+    if (!cb) return;
+    e.preventDefault();
+    setLayers(layers.map((_, i) => i === +cb.dataset.layer));
+  });
+
   // ---------- net list ----------
   const order = nets.map((_, i) => i).sort((a, b) => {
     const ca = changeCount(nets[a]), cb = changeCount(nets[b]);
