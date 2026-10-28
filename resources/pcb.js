@@ -123,6 +123,37 @@
     netEls[n].push(el);
   });
 
+  // ---------- source panel (--source) ----------
+  // Each changed item, footprint and pour has `src`: its entry in DATA.src
+  // (old and new file text). Hovering shows the net's changes, the hovered
+  // item first; a footprint in the list shows the footprint's.
+  const srcPanel = DATA.src ? window.kigitSourcePanel.create($('.view[data-pane="pcb"]'), DATA.src, "pcb") : null;
+  const netSrc = nets.map(() => []);
+  if (srcPanel) {
+    items.forEach((it) => { if (it.src !== undefined) netSrc[it.n].push(it.src); });
+    const netByName = new Map(nets.map((s, i) => [s.name, i]));
+    for (const z of zoneChanges) if (z.src !== undefined && netByName.has(z.net)) netSrc[netByName.get(z.net)].push(z.src);
+  }
+  function showNetSource(n, it = null) {
+    if (!srcPanel || n === null) return;
+    const first = [];
+    if (it && it.src !== undefined) first.push(it.src);
+    // A pad: its footprint's change too (a moved footprint moves its pads),
+    // first if the pad's own text didn't change.
+    if (it && it.fp !== undefined && footprints[it.fp].src !== undefined) {
+      const own = it.src !== undefined ? DATA.src[it.src] : null;
+      const unchanged = own && own.o && own.n && own.o[2] === own.n[2];
+      if (unchanged) first.unshift(footprints[it.fp].src); else first.push(footprints[it.fp].src);
+    }
+    const what = it ? ` <span style="color:var(--muted);font-weight:400">· ${esc(describe(it))}</span>` : "";
+    srcPanel.show([...first, ...netSrc[n]], `net ${esc(netName(n))}${what}`, first.length ? first[0] : -1);
+  }
+  function showFootprintSource(f) {
+    if (!srcPanel || f === null) return;
+    const fp = footprints[f];
+    srcPanel.show(fp.src !== undefined ? [fp.src] : [], `footprint ${esc(fp.ref)} <span style="color:var(--muted);font-weight:400">· ${esc(fp.lib)}</span>`);
+  }
+
   // ---------- view box: zoom & pan ----------
   let vb = { x: 0, y: 0, w: 100, h: 100 };
   const applyVB = () => svg.setAttribute("viewBox", `${vb.x} ${vb.y} ${vb.w} ${vb.h}`);
@@ -201,6 +232,7 @@
     shown = null;
     svg.classList.remove("hl");
     if (f === null) { refreshHL(); return; }
+    showFootprintSource(f);
     (fpEls.get(f) || []).forEach((el) => el.classList.add("on"));
     svg.classList.add("hl");
   }
@@ -224,6 +256,7 @@
     }
     renderCard();
     refreshHL();
+    if (n !== null) showNetSource(n);
   }
 
   function netAt(e) {
@@ -256,9 +289,15 @@
   }
   function hover(e) {
     const el = e.target.closest && e.target.closest("[data-i]");
-    if (!el) { hideTip(); setHover(null); return; }
+    if (!el) {
+      hideTip();
+      setHover(null);
+      if (pinned !== null) showNetSource(pinned); // else keep the last one shown
+      return;
+    }
     const it = items[+el.dataset.i];
     setHover(it.n);
+    showNetSource(it.n, it);
     const s = nets[it.n];
     tip.innerHTML =
       `<div class="t">${esc(netName(it.n))}<span class="badge st${BADGE[it.s]}">${STATUS[it.s].toUpperCase()}</span></div>` +
@@ -475,7 +514,12 @@
         `<span class="r">${r ? "−" + r : ""}</span><span class="e">${e ? "~" + e : ""}</span><span class="len">${len}</span></button>`;
     }).join("") : `<div class="empty">No nets match.</div>`;
   }
-  list.addEventListener("mouseover", (e) => { const r = e.target.closest(".net"); if (r) setHover(+r.dataset.n); });
+  list.addEventListener("mouseover", (e) => {
+    const r = e.target.closest(".net");
+    if (!r) return;
+    setHover(+r.dataset.n);
+    showNetSource(+r.dataset.n);
+  });
   list.addEventListener("mouseleave", () => setHover(null));
   list.addEventListener("click", (e) => {
     const r = e.target.closest(".net");

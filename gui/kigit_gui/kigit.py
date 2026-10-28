@@ -135,16 +135,23 @@ async def history(project: str, max_count: int = 200, since: str = "", until: st
     )
 
 
-async def diff_html(project: str, old: str, new: str, out_file: Path, silkscreen: bool = False) -> list[str]:
-    """Writes the diff viewer page for old..new to out_file. Returns kigit's warnings."""
-    extra = ["--silkscreen"] if silkscreen else []
+def _view_options(silkscreen: bool, source: bool) -> list[str]:
+    return (["--silkscreen"] if silkscreen else []) + (["--source"] if source else [])
+
+
+async def diff_html(project: str, old: str, new: str, out_file: Path, silkscreen: bool = False,
+                    source: bool = False) -> list[str]:
+    """Writes the diff viewer page for old..new to out_file. Returns kigit's warnings.
+    silkscreen / source: kigit --silkscreen / --source."""
+    extra = _view_options(silkscreen, source)
     _, err = await _run("-C", project, "-n", "-q", *extra, "-o", str(out_file), f"{old}..{new}")
     return [line.removeprefix("warning: ") for line in err.splitlines() if line.startswith("warning:")]
 
 
-async def diff_files_html(old_board: str, new_board: str, out_file: Path, silkscreen: bool = False) -> list[str]:
+async def diff_files_html(old_board: str, new_board: str, out_file: Path, silkscreen: bool = False,
+                          source: bool = False) -> list[str]:
     """Writes the diff viewer page for two board files, no git involved (each
     board's schematic is read from its own folder). Returns kigit's warnings."""
-    extra = ["--silkscreen"] if silkscreen else []
+    extra = _view_options(silkscreen, source)
     _, err = await _run("-n", "-q", *extra, "-o", str(out_file), "--files", old_board, new_board)
     return [line.removeprefix("warning: ") for line in err.splitlines() if line.startswith("warning:")]

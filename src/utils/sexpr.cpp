@@ -75,16 +75,19 @@ public:
                 ++pos_;
                 Node& n = stack.back()->children.emplace_back();
                 n.is_list = true;
+                n.span.begin = pos_ - 1;
                 stack.push_back(&n);
             } else if (c == ')') {
                 ++pos_;
                 if (stack.size() == 1) fail("unexpected ')'");
+                stack.back()->span.end = pos_;
                 stack.pop_back();
             } else {
                 stack.back()->children.push_back(read_atom());
             }
         }
         if (stack.size() != 1) fail("unclosed '('");
+        root.span = {0, text_.size()};
         return root;
     }
 

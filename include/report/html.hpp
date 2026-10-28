@@ -8,6 +8,7 @@
 #include <nlohmann/json_fwd.hpp>
 
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace kigit {
@@ -16,6 +17,10 @@ struct ReportInfo {
     std::string board_name;
     git::Revision old_rev, new_rev;
     std::vector<std::string> warnings; // shown in the viewer, e.g. board moved
+    // --source: the boards' file texts, for the source panel (changed items'
+    // text, old and new). Without it the page has no source panel.
+    bool source = false;
+    std::string_view old_text, new_text;
 };
 
 struct Schematic;
@@ -33,7 +38,9 @@ nlohmann::json schematic_diff_json(const SchDiff& d);
 
 // Everything the schematic view draws: per sheet, wires/labels/parts with
 // their change status and net, plus symbol drawings, nets and parts.
-nlohmann::json schematic_view_json(const Schematic& old_sch, const Schematic& new_sch, const SchDiff& d);
+// With `source`, also the changed items' text (old and new) for the source panel.
+nlohmann::json schematic_view_json(const Schematic& old_sch, const Schematic& new_sch, const SchDiff& d,
+                                   bool source = false);
 
 // The full HTML page with `data` embedded.
 std::string render_html(const nlohmann::json& data);

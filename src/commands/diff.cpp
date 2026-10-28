@@ -142,7 +142,7 @@ int run_diff(const Options& o, const fs::path& project) {
     Diff diff = diff_boards(old_board, new_board);
     auto t3 = std::chrono::steady_clock::now();
 
-    ReportInfo info{file, old_rev, new_rev, warnings};
+    ReportInfo info{file, old_rev, new_rev, warnings, o.source, old_text, new_text};
     nlohmann::json data = report_data(old_board, new_board, diff, info);
     std::string body;
 
@@ -166,7 +166,7 @@ int run_diff(const Options& o, const fs::path& project) {
         data["schematic_diff"] = sch_diff ? schematic_diff_json(*sch_diff) : nlohmann::json(nullptr);
         body = data.dump();
     } else {
-        if (sch_diff) data["sch"] = schematic_view_json(*old_sch, *new_sch, *sch_diff);
+        if (sch_diff) data["sch"] = schematic_view_json(*old_sch, *new_sch, *sch_diff, o.source);
         body = render_html(data);
     }
     auto t4 = std::chrono::steady_clock::now();

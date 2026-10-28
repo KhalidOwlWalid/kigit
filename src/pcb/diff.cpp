@@ -180,8 +180,8 @@ Diff diff_boards(const Board& old_board, const Board& new_board) {
     for (const Item& it : old_board.items)
         if (it.kind != ItemKind::Zone) d.nets[it.net].length_old += it.length();
 
-    auto add = [&](const Item& it, Status st) {
-        d.items.push_back({&it, st});
+    auto add = [&](const Item& it, Status st, const Item* other = nullptr) {
+        d.items.push_back({&it, st, other});
         if (st != Status::OldPosition) count(d.nets[it.net], it, st);
     };
 
@@ -210,16 +210,16 @@ Diff diff_boards(const Board& old_board, const Board& new_board) {
         if (old.key() == it.key() && (it.kind != ItemKind::Pad || only_moved(old, it))) {
             add(it, Status::Same);
         } else if (only_moved(old, it)) {
-            add(it, Status::Moved);
-            add(old, Status::OldPosition);
+            add(it, Status::Moved, &old);
+            add(old, Status::OldPosition, &it);
             ++d.moved;
         } else if (old.net != it.net && old.key() != it.key()) {
             // Moved to another net: that's an electrical change, not an edit.
             add(it, Status::Added);
             add(old, Status::Removed);
         } else {
-            add(it, Status::Changed);
-            add(old, Status::OldPosition);
+            add(it, Status::Changed, &old);
+            add(old, Status::OldPosition, &it);
             ++d.changed;
         }
     }

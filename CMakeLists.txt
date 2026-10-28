@@ -56,9 +56,9 @@ add_subdirectory(${KIGIT_SUBMODULES}/spdlog EXCLUDE_FROM_ALL)
 # combined into one self-contained file.
 set(VIEWER_DIR ${CMAKE_CURRENT_SOURCE_DIR}/resources)
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
-  ${VIEWER_DIR}/viewer.html ${VIEWER_DIR}/pcb.js ${VIEWER_DIR}/sch.js ${VIEWER_DIR}/shell.js)
+  ${VIEWER_DIR}/viewer.html ${VIEWER_DIR}/source.js ${VIEWER_DIR}/pcb.js ${VIEWER_DIR}/sch.js ${VIEWER_DIR}/shell.js)
 file(READ ${VIEWER_DIR}/viewer.html KIGIT_VIEWER_HTML)
-foreach(part PCB SCH SHELL)
+foreach(part SOURCE PCB SCH SHELL)
   string(TOLOWER ${part} name)
   file(READ ${VIEWER_DIR}/${name}.js script)
   string(REPLACE "/*@KIGIT_${part}_JS@*/" "${script}" KIGIT_VIEWER_HTML "${KIGIT_VIEWER_HTML}")
@@ -84,6 +84,7 @@ add_library(kigit_core STATIC
   src/git/git.cpp
   src/git/locate.cpp
   src/report/html.cpp
+  src/report/source.cpp
 )
 target_include_directories(kigit_core PUBLIC include ${CMAKE_CURRENT_BINARY_DIR}/generated)
 target_compile_definitions(kigit_core PUBLIC KIGIT_VERSION="${PROJECT_VERSION}")

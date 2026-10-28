@@ -342,6 +342,7 @@ void read_footprint(const Node& fp, const Ctx& ctx, std::vector<Item>& items, st
 
     std::sort(info.graphics.begin(), info.graphics.end());
     std::sort(info.pads.begin(), info.pads.end());
+    info.src = fp.span;
     footprints.push_back(std::move(info));
 
     fp.each("pad", [&](const Node& pad) {
@@ -352,6 +353,7 @@ void read_footprint(const Node& fp, const Ctx& ctx, std::vector<Item>& items, st
         if (!fp_id.empty()) it.id = fp_id + "/" + it.pad_number;
         it.shape = std::string(pad.arg(2));
         it.ref = ref;
+        it.src = pad.span;
         it.net = net_of(pad, ctx);
         it.layers = copper_layers(pad.child("layers"), ctx);
         if (it.layers.empty()) return; // paste/mask-only pad
@@ -388,6 +390,11 @@ void read_zone(const Node& z, const Ctx& ctx, std::vector<Item>& items, std::vec
     z.each("filled_polygon", [&](const Node& p) { fill += sexpr::canonical(p); });
     info.outline = std::hash<std::string>{}(outline);
     info.fill = std::hash<std::string>{}(fill);
+    info.src = z.span;
+    if (const Node* first_fill = z.child("filled_polygon")) {
+        info.src.end = first_fill->span.begin;
+        info.src_cut = true;
+    }
     zones.push_back(std::move(info));
 
     // KiCad 5 zones are single-layer and give the layer on the zone itself.
@@ -530,6 +537,7 @@ Board load_board(std::string_view text, bool silkscreen) {
             it.mid = read_xy(n.child("mid"));
             if (const Node* w = n.child("width")) it.width = w->num(0);
             it.id = id_of(n);
+            it.src = n.span;
             board.items.push_back(std::move(it));
         } else if (kind == "via") {
             Item it;
@@ -540,6 +548,7 @@ Board load_board(std::string_view text, bool silkscreen) {
             if (const Node* d = n.child("drill")) it.drill = d->num(0);
             it.layers = via_span(n.child("layers"), ctx);
             it.id = id_of(n);
+            it.src = n.span;
             board.items.push_back(std::move(it));
         } else if (kind == "footprint" || kind == "module") {
             read_footprint(n, ctx, board.items, board.footprints, silkscreen ? &board.silk : nullptr);

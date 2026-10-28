@@ -82,6 +82,7 @@ struct SchSymbol {
     std::vector<SchPin> pins;
     std::string def;                 // key into Schematic::defs (drawing)
     std::vector<SchText> visible_fields; // reference, value, ... as shown on the sheet
+    Span src;                        // its text in its sheet's file
 };
 
 // A bus segment, and the little diagonal "bus entry" between a bus and a wire.
@@ -89,6 +90,7 @@ struct SchBus {
     int sheet = 0;
     Point a, b;
     int group = -1;                  // which bus (SchBusGroup) this segment is part of
+    Span src;                        // the (bus ...) it comes from (one per drawn bus, maybe several segments)
 };
 
 // One bus on a sheet: its connected segments and the names on it, and the
@@ -107,6 +109,7 @@ struct SchWire {
     int sheet = 0;
     Point a, b;
     int net = -1;
+    Span src;                        // its text in its sheet's file
 };
 
 enum class LabelKind { Local, Global, Hierarchical, SheetPin };
@@ -123,6 +126,7 @@ struct SchLabel {
     std::string shape;               // global/hierarchical/sheet pin: input, output, ...
     bool bus = false;                // a bus name (D[0..7], NAME{ALIAS}, {A B}), not a net
     int group = -1;                  // bus names: which bus (SchBusGroup) they sit on
+    Span src;                        // its text in its sheet's file (sheet pins: the pin in the parent's file)
 };
 
 // The box of a sub-sheet as drawn on its parent.
@@ -159,6 +163,9 @@ struct Schematic {
     std::map<std::string, SymbolDef> defs;
     std::vector<SchNet> nets;
     std::vector<std::string> warnings; // missing sheet files, etc.
+    // Text of every sheet file read (file name as in SheetInstance::file),
+    // for showing an item's source text (Span) in the viewer.
+    std::map<std::string, std::string> files;
 };
 
 // Reads a file by path relative to the root schematic's folder, or nullopt.

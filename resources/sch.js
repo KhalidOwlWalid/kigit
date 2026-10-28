@@ -74,12 +74,15 @@
 
   // ------------------------------------------------------------ drawing
 
+  // data-s: the element's entry in the source panel (--source), if it changed.
+  const sAttr = (s) => (s != null && s >= 0 ? ` data-s="${s}"` : "");
+
   function symbolSvg(sym, k) {
     const def = S.defs[sym.d];
     if (!def) return "";
     const m = matrix(sym);
     const data = sym.pw ? `data-n="${sym.pn[0] ?? -1}"` : `data-i="${sym.i}"`;
-    let out = `<g class="sym st${sym.st}${sym.pw ? " pw" : ""}" ${data} data-k="${k}">`;
+    let out = `<g class="sym st${sym.st}${sym.pw ? " pw" : ""}" ${data} data-k="${k}"${sAttr(sym.src)}>`;
     out += `<g transform="matrix(${m.join(" ")})">`;
     // Lines thicker than the default (capacitor plates, crystal electrodes)
     // keep their real width so they scale with zoom like in KiCad.
@@ -159,7 +162,7 @@
   }
 
   function labelSvg(l) {
-    const [kind, str, x, y, angle, size, shape, st, net, group] = l;
+    const [kind, str, x, y, angle, size, shape, st, net, group, src] = l;
     let d = dirOf(angle);
     if (kind === 3) d = [-d[0], -d[1]]; // sheet pin text points into the sheet box
     const vertical = d[0] === 0;
@@ -167,7 +170,7 @@
     const U = vertical ? [-1, 0] : [0, -1];
     const forward = d[0] * R[0] + d[1] * R[1] > 0;
     const textLen = textWidth(str, size);
-    let out = `<g class="lbl st${st}${net < 0 ? " buslbl" : ""}" data-n="${net}"` +
+    let out = `<g class="lbl st${st}${net < 0 ? " buslbl" : ""}" data-n="${net}"${sAttr(src)}` +
       (group != null && group >= 0 ? ` data-g="${group}">` : ">");
     if (kind === 0) {
       const at = [x + U[0] * 0.3, y + U[1] * 0.3];
@@ -232,9 +235,9 @@
     // Buses (thick) and bus entries (the short diagonals into them).
     for (const e of sh.entries || []) out += `<path class="bus-entry" d="M${e[0]} ${e[1]}L${e[2]} ${e[3]}"/>`;
     for (const b of [...(sh.buses || [])].sort((p, q) => order(p[4]) - order(q[4])))
-      out += `<path class="bus st${b[4]}" data-g="${b[5] ?? -1}" d="M${b[0]} ${b[1]}L${b[2]} ${b[3]}"/>`;
+      out += `<path class="bus st${b[4]}" data-g="${b[5] ?? -1}"${sAttr(b[6])} d="M${b[0]} ${b[1]}L${b[2]} ${b[3]}"/>`;
     for (const w of wires)
-      out += `<path class="wire st${w[4]}" data-n="${w[5]}" d="M${w[0]} ${w[1]}L${w[2]} ${w[3]}"/>`;
+      out += `<path class="wire st${w[4]}" data-n="${w[5]}"${sAttr(w[6])} d="M${w[0]} ${w[1]}L${w[2]} ${w[3]}"/>`;
     for (const j of sh.junctions) out += `<circle class="junction st${j[2]}" cx="${j[0]}" cy="${j[1]}" r="0.46"/>`;
     for (const [x, y] of sh.nc) {
       const s = 0.64;
@@ -242,8 +245,8 @@
     }
     for (const l of sh.labels) out += labelSvg(l);
     for (const b of sh.buses || [])
-      if (b[5] >= 0) out += `<path class="hit" data-g="${b[5]}" d="M${b[0]} ${b[1]}L${b[2]} ${b[3]}"/>`;
-    for (const w of sh.wires) out += `<path class="hit" data-n="${w[5]}" d="M${w[0]} ${w[1]}L${w[2]} ${w[3]}"/>`;
+      if (b[5] >= 0) out += `<path class="hit" data-g="${b[5]}"${sAttr(b[6])} d="M${b[0]} ${b[1]}L${b[2]} ${b[3]}"/>`;
+    for (const w of sh.wires) out += `<path class="hit" data-n="${w[5]}"${sAttr(w[6])} d="M${w[0]} ${w[1]}L${w[2]} ${w[3]}"/>`;
     svg.innerHTML = out + "</g>";
 
     netEls = new Map();
@@ -365,6 +368,42 @@
     return out;
   }
 
+  // ---------- source panel (--source) ----------
+  // Changed wires, labels, buses and parts carry their entry in S.src (old and
+  // new file text). Hovering shows the target's changes: a net's wires and
+  // labels on every sheet, a part's symbol, a bus's segments and labels. The
+  // element under the cursor comes first.
+  const srcPanel = S.src ? window.kigitSourcePanel.create($('.view[data-pane="sch"]'), S.src, "sch") : null;
+  const netSrc = new Map(), groupSrc = new Map();
+  const addSrc = (m, key, s) => {
+    if (s == null || s < 0 || key == null || key < 0) return;
+    if (!m.has(key)) m.set(key, []);
+    m.get(key).push(s);
+  };
+  if (srcPanel)
+    S.sheets.forEach((sh) => {
+      for (const w of sh.wires) addSrc(netSrc, w[5], w[6]);
+      for (const l of sh.labels) { addSrc(netSrc, l[8], l[10]); addSrc(groupSrc, l[9], l[10]); }
+      for (const b of sh.buses || []) addSrc(groupSrc, b[5], b[6]);
+      for (const s of sh.symbols) if (s.pw) addSrc(netSrc, s.pn[0], s.src); // power symbols name their net
+    });
+  function showSource(t, el = null) {
+    if (!srcPanel || !t) return;
+    const own = el && el.closest ? el.closest("[data-s]") : null;
+    const focus = own ? +own.dataset.s : -1;
+    const sub = (s) => ` <span style="color:var(--muted);font-weight:400">· ${esc(s)}</span>`;
+    if (t.kind === "n") {
+      const n = S.nets[t.id];
+      srcPanel.show(netSrc.get(t.id) || [], `net ${esc(n.name || "(unnamed net)")}`, focus);
+    } else if (t.kind === "p") {
+      const p = S.parts[t.id];
+      srcPanel.show(p.src !== undefined ? [p.src] : [], `part ${esc(p.ref)}${sub(p.value)}`, focus);
+    } else {
+      const g = groups[t.id];
+      srcPanel.show(groupSrc.get(t.id) || [], `bus ${esc(g.names.join(" · ") || "(bus)")}`, focus);
+    }
+  }
+
   let hovered = null, pinned = null, shown = null;
   const same = (a, b) => (a === b) || (a && b && a.kind === b.kind && a.id === b.id);
   function refreshHL() {
@@ -387,6 +426,7 @@
   const setHover = (t) => { hovered = t; refreshHL(); };
   function pin(t) {
     pinned = t;
+    showSource(t);
     document.querySelectorAll(".chg.pin").forEach((r) => r.classList.remove("pin"));
     if (t) document.querySelector(`.chg[data-kind="${t.kind}"][data-id="${t.id}"]`)?.classList.add("pin");
     renderCard();
@@ -454,8 +494,9 @@
   const hideTip = () => { tip.style.display = "none"; };
   function hover(e) {
     const t = targetOf(e.target);
-    if (!t) { hideTip(); setHover(null); return; }
+    if (!t) { hideTip(); setHover(null); if (pinned) showSource(pinned); return; }
     setHover(t);
+    showSource(t, e.target);
     const i = info(t);
     tip.innerHTML = `<div class="t">${esc(i.title)}<span class="badge st${i.st}">${ST[i.st].toUpperCase()}</span></div>` +
       i.lines.slice(0, t.kind === "g" ? 9 : 8).map((l) => `<div class="m">${l}</div>`).join("");
@@ -621,7 +662,13 @@
   $("#sheetList").addEventListener("click", (e) => { const b = e.target.closest("[data-sheet]"); if (b) openSheet(+b.dataset.sheet); });
   $("#crumbs").addEventListener("click", (e) => { const b = e.target.closest("[data-sheet]"); if (b) openSheet(+b.dataset.sheet); });
   const changes = $("#schChanges");
-  changes.addEventListener("mouseover", (e) => { const r = e.target.closest(".chg"); if (r) setHover({ kind: r.dataset.kind, id: +r.dataset.id }); });
+  changes.addEventListener("mouseover", (e) => {
+    const r = e.target.closest(".chg");
+    if (!r) return;
+    const t = { kind: r.dataset.kind, id: +r.dataset.id };
+    setHover(t);
+    showSource(t);
+  });
   changes.addEventListener("mouseleave", () => setHover(null));
   changes.addEventListener("click", (e) => {
     const r = e.target.closest(".chg");

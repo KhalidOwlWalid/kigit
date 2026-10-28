@@ -16,6 +16,7 @@ struct Options {
     bool files_mode = false;             // --files: two files, no git
     bool open = true, all_stats = false, swap = true, quiet = false, json_out = false;
     bool silkscreen = false;
+    bool source = false;                 // --source: changed items' file text in the viewer
     bool log_mode = false;               // --log
     git::LogQuery log_query;
     bool log_kicad_only = false;

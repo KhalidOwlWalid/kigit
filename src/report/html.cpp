@@ -1,6 +1,7 @@
 #include "report/html.hpp"
 
 #include "viewer_template.hpp"
+#include "report/source.hpp"
 #include "sch/sch_diff.hpp"
 #include "sch/schematic.hpp"
 
@@ -8,6 +9,8 @@
 
 #include <algorithm>
 #include <cmath>
+#include <filesystem>
+#include <memory>
 #include <stdexcept>
 #include <unordered_map>
 #include <unordered_set>
@@ -101,6 +104,28 @@ nlohmann::json report_data(const Board& old_board, const Board& new_board, const
         return ids;
     };
 
+    // --source: changed items' text in the old and new board files.
+    std::unique_ptr<SourceFile> old_src, new_src;
+    SourceTable src;
+    if (info.source) {
+        auto file_name = [](const git::Revision& r) {
+            return std::filesystem::path(r.board_rel.empty() ? r.path : r.board_rel).filename().string();
+        };
+        old_src = std::make_unique<SourceFile>(file_name(info.old_rev), info.old_text);
+        new_src = std::make_unique<SourceFile>(file_name(info.new_rev), info.new_text);
+    }
+    auto net_label = [](const std::string& net) { return net.empty() ? std::string("(no net)") : net; };
+    auto item_label = [&](const Item& it) {
+        switch (it.kind) {
+        case ItemKind::Track: return "track · " + net_label(it.net);
+        case ItemKind::Arc: return "arc · " + net_label(it.net);
+        case ItemKind::Via: return "via · " + net_label(it.net);
+        case ItemKind::Pad: return "pad " + it.ref + "." + it.pad_number + " · " + net_label(it.net);
+        case ItemKind::Zone: return "zone · " + net_label(it.net);
+        }
+        return std::string();
+    };
+
     // Footprint changes, and which one each pad belongs to (for highlighting).
     std::unordered_map<std::string, int> fp_index; // footprint ID (or ref) -> index in jfootprints
     json jfootprints = json::array();
@@ -119,18 +144,38 @@ nlohmann::json report_data(const Board& old_board, const Board& new_board, const
                                {"gAdd", fd.graphics_added},
                                {"gRem", fd.graphics_removed},
                                {"fields", fields}});
+        if (info.source) {
+            int s = src.add("footprint " + fd.ref(), old_src.get(), fd.old_fp ? fd.old_fp->src : Span{}, new_src.get(),
+                            fd.new_fp ? fd.new_fp->src : Span{});
+            if (s >= 0) jfootprints.back()["src"] = s;
+        }
     }
     json jzone_changes = json::array();
     for (const ZoneDiff& zd : diff.zone_changes) {
         const ZoneInfo* z = zd.new_zone ? zd.new_zone : zd.old_zone;
         static const char* kinds[] = {"added", "removed", "outline", "refilled"};
         jzone_changes.push_back({{"net", z->net}, {"name", z->name}, {"layers", z->layers}, {"kind", kinds[zd.kind]}});
+        if (info.source) {
+            bool cut = (zd.old_zone && zd.old_zone->src_cut) || (zd.new_zone && zd.new_zone->src_cut);
+            int s = src.add("zone · " + net_label(z->net) + (z->name.empty() ? "" : " (" + z->name + ")"), old_src.get(),
+                            zd.old_zone ? zd.old_zone->src : Span{}, new_src.get(), zd.new_zone ? zd.new_zone->src : Span{},
+                            cut);
+            if (s >= 0) jzone_changes.back()["src"] = s;
+        }
     }
 
     json jitems = json::array();
     for (const DiffItem& di : diff.items) {
         const Item& it = *di.item;
         json j = {{"s", static_cast<int>(di.status)}, {"n", net_index[it.net]}, {"l", layer_ids(it)}};
+        if (info.source && di.status != Status::Same && it.kind != ItemKind::Zone) {
+            // Which side each item is from: removed items and old positions are old.
+            bool is_old = di.status == Status::Removed || di.status == Status::OldPosition;
+            const Item* o = is_old ? &it : di.other;
+            const Item* n = is_old ? di.other : &it;
+            int s = src.add(item_label(it), old_src.get(), o ? o->src : Span{}, new_src.get(), n ? n->src : Span{});
+            if (s >= 0) j["src"] = s;
+        }
         switch (it.kind) {
         case ItemKind::Track:
             j["k"] = "t";
@@ -202,6 +247,7 @@ nlohmann::json report_data(const Board& old_board, const Board& new_board, const
         {"silk", silk_json(diff)},
         {"zone_changes", jzone_changes},
     };
+    if (info.source) data["src"] = src.entries();
 
     return data;
 }
@@ -323,7 +369,42 @@ std::string pos_key(const Schematic& s, int sheet, Point p) {
 
 } // namespace
 
-nlohmann::json schematic_view_json(const Schematic& a, const Schematic& b, const SchDiff& d) {
+nlohmann::json schematic_view_json(const Schematic& a, const Schematic& b, const SchDiff& d, bool source) {
+    // --source: each sheet file's text, old and new, for changed items' text.
+    std::map<std::string, std::unique_ptr<SourceFile>> old_files, new_files;
+    SourceTable src;
+    if (source) {
+        auto base = [](const std::string& f) { return std::filesystem::path(f).filename().string(); };
+        for (const auto& [f, text] : a.files) old_files[f] = std::make_unique<SourceFile>(base(f), text);
+        for (const auto& [f, text] : b.files) new_files[f] = std::make_unique<SourceFile>(base(f), text);
+    }
+    auto file_of = [](const std::map<std::string, std::unique_ptr<SourceFile>>& files, const Schematic& s,
+                      int sheet) -> const SourceFile* {
+        if (sheet < 0 || sheet >= static_cast<int>(s.sheets.size())) return nullptr;
+        auto f = files.find(s.sheets[sheet].file);
+        return f == files.end() ? nullptr : f->second.get();
+    };
+    // Entry for an old and/or new element (sheet index + span on each side); -1 without --source.
+    auto src_of = [&](const std::string& label, int old_sheet_i, Span old_span, int new_sheet_i, Span new_span) {
+        if (!source) return -1;
+        return src.add(label, old_sheet_i >= 0 ? file_of(old_files, a, old_sheet_i) : nullptr, old_span,
+                       new_sheet_i >= 0 ? file_of(new_files, b, new_sheet_i) : nullptr, new_span);
+    };
+    auto label_kind = [](const SchLabel& l) {
+        switch (l.kind) {
+        case LabelKind::Local: return std::string("label ");
+        case LabelKind::Global: return std::string("global label ");
+        case LabelKind::Hierarchical: return std::string("hierarchical label ");
+        case LabelKind::SheetPin: return std::string("sheet pin ");
+        }
+        return std::string();
+    };
+    // Rows get their source entry appended, only with --source.
+    auto with_src = [&](json row, int s) {
+        if (source) row.push_back(s);
+        return row;
+    };
+
     // Old sheet instance -> new one (same KiCad instance path).
     std::unordered_map<std::string, int> new_sheet_by_path;
     for (size_t i = 0; i < b.sheets.size(); ++i) new_sheet_by_path[b.sheets[i].uuid_path] = static_cast<int>(i);
@@ -372,14 +453,16 @@ nlohmann::json schematic_view_json(const Schematic& a, const Schematic& b, const
     for (size_t i = 0; i < b.wires.size(); ++i) {
         const auto& w = b.wires[i];
         int st = d.wires_new[i] == SchStatus::Added ? kAdded : kSame;
-        out[w.sheet].wires.push_back({r4s(w.a.x), r4s(w.a.y), r4s(w.b.x), r4s(w.b.y), st, w.net >= 0 ? net_new[w.net] : -1});
+        int s = st == kAdded ? src_of("wire", -1, {}, w.sheet, w.src) : -1;
+        out[w.sheet].wires.push_back(with_src({r4s(w.a.x), r4s(w.a.y), r4s(w.b.x), r4s(w.b.y), st, w.net >= 0 ? net_new[w.net] : -1}, s));
         note(w.sheet, st);
     }
     for (size_t i = 0; i < a.wires.size(); ++i) {
         const auto& w = a.wires[i];
         if (d.wires_old[i] != SchStatus::Removed || old_sheet[w.sheet] < 0) continue;
         int sh = old_sheet[w.sheet];
-        out[sh].wires.push_back({r4s(w.a.x), r4s(w.a.y), r4s(w.b.x), r4s(w.b.y), kRemoved, w.net >= 0 ? net_old[w.net] : -1});
+        int s = src_of("wire", w.sheet, w.src, -1, {});
+        out[sh].wires.push_back(with_src({r4s(w.a.x), r4s(w.a.y), r4s(w.b.x), r4s(w.b.y), kRemoved, w.net >= 0 ? net_old[w.net] : -1}, s));
         note(sh, kRemoved);
     }
 
@@ -414,13 +497,15 @@ nlohmann::json schematic_view_json(const Schematic& a, const Schematic& b, const
         for (const auto& bs : b.buses) {
             auto f = in_old.find(seg_key(b, bs.sheet, bs.a, bs.b));
             int st = (f != in_old.end() && f->second-- > 0) ? kSame : kAdded;
-            out[bs.sheet].buses.push_back({r4s(bs.a.x), r4s(bs.a.y), r4s(bs.b.x), r4s(bs.b.y), st, bs.group});
+            int s = st == kAdded ? src_of("bus", -1, {}, bs.sheet, bs.src) : -1;
+            out[bs.sheet].buses.push_back(with_src({r4s(bs.a.x), r4s(bs.a.y), r4s(bs.b.x), r4s(bs.b.y), st, bs.group}, s));
             note(bs.sheet, st);
         }
         for (const auto& bs : a.buses) {
             auto f = in_new.find(seg_key(a, bs.sheet, bs.a, bs.b));
             if ((f != in_new.end() && f->second-- > 0) || old_sheet[bs.sheet] < 0) continue;
-            out[old_sheet[bs.sheet]].buses.push_back({r4s(bs.a.x), r4s(bs.a.y), r4s(bs.b.x), r4s(bs.b.y), kRemoved, -1});
+            int s = src_of("bus", bs.sheet, bs.src, -1, {});
+            out[old_sheet[bs.sheet]].buses.push_back(with_src({r4s(bs.a.x), r4s(bs.a.y), r4s(bs.b.x), r4s(bs.b.y), kRemoved, -1}, s));
             note(old_sheet[bs.sheet], kRemoved);
         }
         for (const auto& e : b.bus_entries)
@@ -432,16 +517,45 @@ nlohmann::json schematic_view_json(const Schematic& a, const Schematic& b, const
         return json::array({static_cast<int>(l.kind), l.text, r4s(l.at.x), r4s(l.at.y), l.angle, r4s(l.size), l.shape, st, net,
                             group});
     };
+    // For the source panel, a label removed in one place and added in another
+    // (same kind and name, same sheet) is one label that moved: one entry.
+    std::vector<int> label_pair_new(b.labels.size(), -1), label_pair_old(a.labels.size(), -1);
+    if (source) {
+        auto key = [](int sheet, const SchLabel& l) {
+            return std::to_string(sheet) + "|" + std::to_string(static_cast<int>(l.kind)) + "|" + l.text;
+        };
+        std::unordered_map<std::string, std::vector<int>> added;
+        for (size_t i = 0; i < b.labels.size(); ++i)
+            if (d.labels_new[i] == SchStatus::Added) added[key(b.labels[i].sheet, b.labels[i])].push_back(static_cast<int>(i));
+        for (size_t i = 0; i < a.labels.size(); ++i) {
+            const auto& l = a.labels[i];
+            if (d.labels_old[i] != SchStatus::Removed || old_sheet[l.sheet] < 0) continue;
+            auto f = added.find(key(old_sheet[l.sheet], l));
+            if (f == added.end() || f->second.empty()) continue;
+            label_pair_old[i] = f->second.back();
+            label_pair_new[f->second.back()] = static_cast<int>(i);
+            f->second.pop_back();
+        }
+    }
+    auto label_src = [&](int old_i, int new_i) {
+        const SchLabel* o = old_i >= 0 ? &a.labels[old_i] : nullptr;
+        const SchLabel* n = new_i >= 0 ? &b.labels[new_i] : nullptr;
+        const SchLabel& l = n ? *n : *o;
+        return src_of(label_kind(l) + l.text, o ? o->sheet : -1, o ? o->src : Span{}, n ? n->sheet : -1,
+                      n ? n->src : Span{});
+    };
     for (size_t i = 0; i < b.labels.size(); ++i) {
         const auto& l = b.labels[i];
         int st = d.labels_new[i] == SchStatus::Added ? kAdded : kSame;
-        out[l.sheet].labels.push_back(label_json(l, st, l.net >= 0 ? net_new[l.net] : -1, l.group));
+        int s = st == kAdded ? label_src(label_pair_new[i], static_cast<int>(i)) : -1;
+        out[l.sheet].labels.push_back(with_src(label_json(l, st, l.net >= 0 ? net_new[l.net] : -1, l.group), s));
         note(l.sheet, st);
     }
     for (size_t i = 0; i < a.labels.size(); ++i) {
         const auto& l = a.labels[i];
         if (d.labels_old[i] != SchStatus::Removed || old_sheet[l.sheet] < 0) continue;
-        out[old_sheet[l.sheet]].labels.push_back(label_json(l, kRemoved, l.net >= 0 ? net_old[l.net] : -1, -1));
+        int s = label_src(static_cast<int>(i), label_pair_old[i]);
+        out[old_sheet[l.sheet]].labels.push_back(with_src(label_json(l, kRemoved, l.net >= 0 ? net_old[l.net] : -1, -1), s));
         note(old_sheet[l.sheet], kRemoved);
     }
 
@@ -459,6 +573,24 @@ nlohmann::json schematic_view_json(const Schematic& a, const Schematic& b, const
     auto power_key = [](const Schematic& s, const SchSymbol& sym) {
         return pos_key(s, sym.sheet, sym.at) + "|" + sym.lib_id + "|" + sym.value + "|" + std::to_string(sym.angle) +
                (sym.mirror_x ? "x" : "") + (sym.mirror_y ? "y" : "");
+    };
+    // A changed part's entry: its old and new text (by part diff index).
+    std::vector<int> part_src(d.symbols.size(), -2); // -2: not looked up yet
+    auto part_src_of = [&](int part) {
+        if (!source || part < 0) return -1;
+        if (part_src[part] == -2) {
+            const SymbolDiff& sd = d.symbols[part];
+            if (sd.status == SchStatus::Same) return part_src[part] = -1;
+            const SchSymbol* o = sd.old_index >= 0 ? &a.symbols[sd.old_index] : nullptr;
+            const SchSymbol* n = sd.new_index >= 0 ? &b.symbols[sd.new_index] : nullptr;
+            part_src[part] = src_of("symbol " + (n ? sd.ref_after : sd.ref_before), o ? o->sheet : -1,
+                                    o ? o->src : Span{}, n ? n->sheet : -1, n ? n->src : Span{});
+        }
+        return part_src[part];
+    };
+    auto add_src = [](json j, int s) {
+        if (s >= 0) j["src"] = s;
+        return j;
     };
     std::unordered_map<std::string, int> power_old, power_new;
     for (const auto& sym : a.symbols)
@@ -484,10 +616,13 @@ nlohmann::json schematic_view_json(const Schematic& a, const Schematic& b, const
             if (sd.moved && sd.old_index >= 0) {
                 const SchSymbol& os = a.symbols[sd.old_index];
                 if (old_sheet[os.sheet] >= 0 && !os.def.empty())
-                    out[old_sheet[os.sheet]].symbols.push_back(symbol_json(a, os, old_def_key(os.def), kGhost, part, net_old));
+                    out[old_sheet[os.sheet]].symbols.push_back(
+                        add_src(symbol_json(a, os, old_def_key(os.def), kGhost, part, net_old), part_src_of(part)));
             }
         }
-        out[sym.sheet].symbols.push_back(symbol_json(b, sym, sym.def, st, part, net_new));
+        int s = sym.power ? (st == kAdded ? src_of("power symbol " + sym.value, -1, {}, sym.sheet, sym.src) : -1)
+                          : part_src_of(part);
+        out[sym.sheet].symbols.push_back(add_src(symbol_json(b, sym, sym.def, st, part, net_new), s));
         note(sym.sheet, st);
     }
     for (size_t i = 0; i < a.symbols.size(); ++i) {
@@ -501,7 +636,9 @@ nlohmann::json schematic_view_json(const Schematic& a, const Schematic& b, const
             removed = part_old[i] >= 0 && d.symbols[part_old[i]].status == SchStatus::Removed;
         }
         if (!removed) continue;
-        out[old_sheet[sym.sheet]].symbols.push_back(symbol_json(a, sym, old_def_key(sym.def), kRemoved, part_old[i], net_old));
+        int s = sym.power ? src_of("power symbol " + sym.value, sym.sheet, sym.src, -1, {}) : part_src_of(part_old[i]);
+        out[old_sheet[sym.sheet]].symbols.push_back(
+            add_src(symbol_json(a, sym, old_def_key(sym.def), kRemoved, part_old[i], net_old), s));
         note(old_sheet[sym.sheet], kRemoved);
     }
 
@@ -554,7 +691,8 @@ nlohmann::json schematic_view_json(const Schematic& a, const Schematic& b, const
                         {"merged", n.merged_into}});
     }
     json parts = json::array();
-    for (const auto& p : d.symbols) {
+    for (size_t pi = 0; pi < d.symbols.size(); ++pi) {
+        const SymbolDiff& p = d.symbols[pi];
         const SchSymbol* sym = p.new_index >= 0 ? &b.symbols[p.new_index] : &a.symbols[p.old_index];
         json fields = json::array(), pins = json::array();
         for (const auto& f : p.fields) fields.push_back({f.field, f.before, f.after});
@@ -570,6 +708,7 @@ nlohmann::json schematic_view_json(const Schematic& a, const Schematic& b, const
                          {"fields", fields},
                          {"pins", pins},
                          {"moved", p.moved}});
+        if (int s = part_src_of(static_cast<int>(pi)); s >= 0) parts.back()["src"] = s;
     }
     // Buses of the new revision: their names and members (net = net diff index).
     json bus_groups = json::array();
@@ -578,7 +717,9 @@ nlohmann::json schematic_view_json(const Schematic& a, const Schematic& b, const
         for (const auto& [full, net] : g.members) members.push_back({full, net >= 0 ? net_new[net] : -1});
         bus_groups.push_back({{"names", g.names}, {"members", members}});
     }
-    return {{"sheets", sheets}, {"defs", defs}, {"nets", nets}, {"parts", parts}, {"busGroups", bus_groups}};
+    json view = {{"sheets", sheets}, {"defs", defs}, {"nets", nets}, {"parts", parts}, {"busGroups", bus_groups}};
+    if (source) view["src"] = src.entries();
+    return view;
 }
 
 std::string render_html(const nlohmann::json& data) {

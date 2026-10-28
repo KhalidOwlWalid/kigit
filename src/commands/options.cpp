@@ -49,6 +49,10 @@ OPTIONS
     -s, --stats         Print every changed net, not just the top 15
         --silkscreen    Also compare and draw the silkscreen (F/B.SilkS
                         shapes and text). Off by default: it makes pages bigger
+        --source        Add a source panel to the viewer: the old and new file
+                        text of each changed item (side by side, like a code
+                        diff), shown as you hover. Off by default: it makes
+                        pages bigger
         --no-swap       Keep the revision order as given
     -q, --quiet         Only print errors and the output path
     -V, --verbose       Also print the session log (with debug lines) to stderr
@@ -127,6 +131,8 @@ std::optional<int> parse_options(int argc, char** argv, Options& o) {
             o.log_mode = true;
         } else if (a == "--silkscreen") {
             o.silkscreen = true;
+        } else if (a == "--source") {
+            o.source = true;
         } else if (a == "--projects") {
             o.projects_mode = true;
         } else if (a == "--depth") {

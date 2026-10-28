@@ -159,6 +159,11 @@ def build(start_folder: str):
             silk = ui.checkbox("Include silkscreen", value=False).props("dense dark").classes("text-xs").tooltip(
                 "Also compare and draw the silkscreen (labels, outlines, logos). Applies to every comparison."
             ).mark("include-silkscreen")
+            # Off by default too: adds every changed item's file text to the page.
+            src = ui.checkbox("Include source", value=False).props("dense dark").classes("text-xs").tooltip(
+                "Add a source panel under the viewer: hover a trace, part or wire to see its text in the old and "
+                "new .kicad_pcb / .kicad_sch, side by side like a code diff. Applies to every comparison."
+            ).mark("include-source")
             # For when the list doesn't show the commit you're after: type any
             # two revisions git understands.
             with ui.expansion("Diff commits manually", icon="edit", value=False).props(
@@ -418,6 +423,14 @@ def build(start_folder: str):
         hint.set_visibility(state["history"] is not None)
 
     # ---------------------------------------------------------------- compare
+    # The viewer options (checkboxes): part of a cached page's name, and the log line.
+    def options_key() -> str:
+        return ("|silk" if silk.value else "") + ("|src" if src.value else "")
+
+    def options_note() -> str:
+        on = [n for n, v in (("silkscreen", silk.value), ("source", src.value)) if v]
+        return f" (with {', '.join(on)})" if on else ""
+
     async def compare() -> None:
         if len(table.selected) != 2:
             return
@@ -438,18 +451,18 @@ def build(start_folder: str):
         if not board:
             notify("Open a project first", type="warning")
             return
-        name = page_name(board + ("|silk" if silk.value else ""), a, b)
+        name = page_name(board + options_key(), a, b)
         out = CACHE / name
         # Only full hashes always mean the same commit; names like HEAD~1 or
         # a branch can move, and LOCAL changes as you edit, so re-diff those.
         cacheable = all(len(r) == 40 and all(c in "0123456789abcdef" for c in r) for r in (a, b))
         button.props("loading")
-        logs.log.info("compare %s .. %s%s", a, b, " (with silkscreen)" if silk.value else "")
+        logs.log.info("compare %s .. %s%s", a, b, options_note())
         status.text = "Comparing..."
         started = time.monotonic()
         try:
             if not (cacheable and out.exists()):
-                for w in await kigit.diff_html(board, a, b, out, silkscreen=silk.value):
+                for w in await kigit.diff_html(board, a, b, out, silkscreen=silk.value, source=src.value):
                     notify(w, type="warning", multi_line=True, close_button=True)
         except kigit.KigitError as e:
             status.text = ""
@@ -561,12 +574,13 @@ def build(start_folder: str):
 
     async def run_files_diff(old_board: str, new_board: str) -> None:
         # Always regenerated: files on disk can change between comparisons.
-        name = page_name("files" + ("|silk" if silk.value else ""), old_board, new_board)
+        name = page_name("files" + options_key(), old_board, new_board)
         status.text = "Comparing..."
         logs.log.info("compare files %s .. %s", old_board, new_board)
         started = time.monotonic()
         try:
-            for w in await kigit.diff_files_html(old_board, new_board, CACHE / name, silkscreen=silk.value):
+            for w in await kigit.diff_files_html(old_board, new_board, CACHE / name, silkscreen=silk.value,
+                                                 source=src.value):
                 notify(w, type="warning", multi_line=True, close_button=True)
         except kigit.KigitError as e:
             status.text = ""

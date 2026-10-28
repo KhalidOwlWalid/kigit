@@ -196,7 +196,51 @@ main { position: relative; min-width: 0; min-height: 0; overflow: hidden; }
 .tabs .n { font-size: 11px; font-weight: 600; color: var(--accent); margin-left: 4px; }
 /* The pane scrolls when its sections don't fit, so no list is ever squeezed to nothing. */
 .pane { display: flex; flex-direction: column; flex: 1; min-height: 0; overflow-y: auto; }
-.view { position: absolute; inset: 0; }
+.view { position: absolute; inset: 0; display: flex; flex-direction: column; }
+.stage { position: relative; flex: 1 1 auto; min-height: 0; }
+
+/* Source panel (--source): old | new file text of changed items, like a code diff. */
+:root { --src-del: rgba(255, 91, 111, .13); --src-del-ch: rgba(255, 91, 111, .38);
+  --src-ins: rgba(61, 220, 138, .12); --src-ins-ch: rgba(61, 220, 138, .36); }
+.srcdock { position: relative; flex: 0 0 auto; display: flex; flex-direction: column; min-height: 0;
+  background: var(--panel); border-top: 1px solid var(--line); }
+.srcdock.closed { height: auto !important; }
+.srcdock.closed .src-body, .srcdock.closed .src-grip { display: none; }
+.src-grip { position: absolute; left: 0; right: 0; top: -4px; height: 8px; cursor: ns-resize; z-index: 6; }
+.src-bar { display: flex; align-items: center; gap: 10px; padding: 5px 10px; border-bottom: 1px solid var(--line);
+  font-size: 12px; min-width: 0; }
+.src-toggle { border: 1px solid var(--line); background: var(--panel2); border-radius: 6px; padding: 1px 9px;
+  font-size: 11px; font-weight: 600; letter-spacing: .04em; color: var(--accent); cursor: pointer; }
+.src-toggle::after { content: " ▾"; } .srcdock.closed .src-toggle::after { content: " ▸"; }
+.src-title { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.src-files { color: var(--faint); margin-left: auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.src-body { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 8px 10px 14px; }
+.src-empty { color: var(--faint); padding: 14px 4px; }
+.src-entry { border: 1px solid var(--line); border-radius: 8px; margin-bottom: 10px; overflow: hidden; background: var(--bg); }
+.src-entry.focus { border-color: color-mix(in srgb, var(--accent) 70%, transparent); }
+.src-head { display: flex; align-items: center; gap: 8px; padding: 5px 10px; background: var(--panel2);
+  border-bottom: 1px solid var(--line); font-size: 12px; }
+.src-head .k { font-weight: 600; }
+.src-head .where { margin-left: auto; color: var(--muted); font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 11px; }
+.src-head .where .o { color: var(--removed); } .src-head .where .n { color: var(--added); }
+.src-note { padding: 5px 10px; color: var(--muted); font-size: 11px; border-bottom: 1px solid var(--line); }
+table.sd { width: 100%; border-collapse: collapse; table-layout: fixed;
+  font: 12px/1.5 ui-monospace, "JetBrains Mono", "Fira Code", Menlo, Consolas, monospace; tab-size: 4; }
+table.sd col.c-ln { width: 52px; }
+table.sd td { padding: 0 8px; vertical-align: top; }
+table.sd td.ln { color: var(--faint); text-align: right; user-select: none; font-size: 11px; }
+table.sd td.tx { white-space: pre-wrap; word-break: break-all; }
+table.sd tr > td:nth-child(3) { border-left: 1px solid var(--line); }
+table.sd td.del { background: var(--src-del); } table.sd td.ins { background: var(--src-ins); }
+table.sd td.ln.del { color: var(--removed); } table.sd td.ln.ins { color: var(--added); }
+table.sd td.del .ch { background: var(--src-del-ch); border-radius: 2px; }
+table.sd td.ins .ch { background: var(--src-ins-ch); border-radius: 2px; }
+table.sd td.fill { background: repeating-linear-gradient(135deg, transparent 0 5px, rgba(255,255,255,.035) 5px 10px); }
+table.sd tr.folded td { text-align: center; color: var(--muted); background: var(--panel2); cursor: pointer;
+  font-family: system-ui, sans-serif; font-size: 11px; padding: 2px; }
+table.sd tr.folded:hover td { color: var(--text); }
+.src-more { display: block; margin: 4px auto; border: 1px solid var(--line); background: var(--panel2);
+  color: var(--text); border-radius: 6px; padding: 4px 12px; cursor: pointer; }
 body[data-tab="pcb"] [data-pane="sch"], body[data-tab="sch"] [data-pane="pcb"] { display: none; }
 
 /* schematic sidebar */
@@ -370,36 +414,43 @@ body[data-tab="pcb"] [data-pane="sch"], body[data-tab="sch"] [data-pane="pcb"] {
   </aside>
   <main>
     <div class="view" data-pane="pcb">
-      <svg id="board" xmlns="http://www.w3.org/2000/svg"></svg>
-      <div id="tip" class="tip"></div>
-      <div id="card" class="card"></div>
-      <div class="legend">
-        <span style="--c:var(--added)">Added</span>
-        <span style="--c:var(--removed)">Removed</span>
-        <span style="--c:var(--accent)">Changed</span>
-        <span style="--c:var(--moved)">Moved</span>
-        <span style="--c:var(--same)">Unchanged</span>
+      <div class="stage">
+        <svg id="board" xmlns="http://www.w3.org/2000/svg"></svg>
+        <div id="tip" class="tip"></div>
+        <div id="card" class="card"></div>
+        <div class="legend">
+          <span style="--c:var(--added)">Added</span>
+          <span style="--c:var(--removed)">Removed</span>
+          <span style="--c:var(--accent)">Changed</span>
+          <span style="--c:var(--moved)">Moved</span>
+          <span style="--c:var(--same)">Unchanged</span>
+        </div>
+        <div class="hint">Scroll to zoom · drag to pan · click to pin a net · F to fit · Esc to clear</div>
       </div>
-      <div class="hint">Scroll to zoom · drag to pan · click to pin a net · F to fit · Esc to clear</div>
     </div>
     <div class="view" data-pane="sch">
-      <svg id="sch" xmlns="http://www.w3.org/2000/svg"></svg>
-      <div class="crumbs" id="crumbs"></div>
-      <div id="stip" class="tip"></div>
-      <div id="scard" class="card"></div>
-      <div class="legend">
-        <span style="--c:var(--added)">Added</span>
-        <span style="--c:var(--removed)">Removed</span>
-        <span style="--c:var(--accent)">Changed</span>
-        <span style="--c:var(--same)">Unchanged</span>
+      <div class="stage">
+        <svg id="sch" xmlns="http://www.w3.org/2000/svg"></svg>
+        <div class="crumbs" id="crumbs"></div>
+        <div id="stip" class="tip"></div>
+        <div id="scard" class="card"></div>
+        <div class="legend">
+          <span style="--c:var(--added)">Added</span>
+          <span style="--c:var(--removed)">Removed</span>
+          <span style="--c:var(--accent)">Changed</span>
+          <span style="--c:var(--same)">Unchanged</span>
+        </div>
+        <div class="hint">Hover a wire or part · click to pin · double-click a sheet to open it · Backspace: up · F: fit</div>
       </div>
-      <div class="hint">Hover a wire or part · click to pin · double-click a sheet to open it · Backspace: up · F: fit</div>
     </div>
   </main>
 </div>
 
 <script>
 const DATA = /*KIGIT_DATA*/null;
+</script>
+<script>
+/*@KIGIT_SOURCE_JS@*/
 </script>
 <script>
 /*@KIGIT_PCB_JS@*/

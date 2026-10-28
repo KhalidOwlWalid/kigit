@@ -229,6 +229,30 @@ changed, grey unchanged.
 default). The drawing is kigit's own, not KiCad's export: close to KiCad but
 with a different font, and images and text boxes aren't drawn yet.
 
+### Source panel
+
+`--source` (or "Include source" in the GUI; off by default, it makes pages
+bigger) adds a panel under the drawing, on both tabs: the text of what changed
+in the `.kicad_pcb` / `.kicad_sch` files, old on the left and new on the
+right, like a side-by-side code diff. Removed lines are red, added lines
+green, and the changed part of a line is marked; long unchanged stretches are
+folded (click to unfold).
+
+| Hover | The panel shows |
+| --- | --- |
+| A trace, via or pad | Its own change first, then every other changed item on its net (and the net's pours) |
+| A pad of a moved or edited footprint | The footprint's change first |
+| A footprint in the sidebar list | That footprint |
+| A wire, label or pin (schematic) | The net's changed wires and labels, on every sheet |
+| A part | Its symbol's text |
+| A bus | Its changed segments and bus labels |
+
+Each change says where it is (`owl_v1.kicad_pcb:722 → :722`), so you can find
+it in an editor. Clicking pins the target, so you can move into the panel and
+scroll. The panel can be resized (drag its top edge) or collapsed (the
+**Source** button). Only changed items' text goes into the page, not whole
+files; a pour's text stops before KiCad's computed fill.
+
 ## Schematic nets (work in progress)
 
 kigit also reads the schematic next to the board (all sheets, including
@@ -362,18 +386,20 @@ expected nets in the schematic tests are KiCad's own netlist for those files.
 
 ## Layout
 
+Headers in `include/<dir>/`, sources in `src/<dir>/`:
+
 ```
-src/sexpr.*    S-expression parser (KiCad's file syntax)
-src/board.*    .kicad_pcb -> tracks, arcs, vias, pads, zones, outline
-src/git.*      git show / rev-parse wrapper
-src/diff.*     per-net matching and stats
-src/html.*     JSON payload + viewer template
-src/schematic.*         .kicad_sch -> sheets, parts, wires, labels, nets
-src/sch_diff.*          schematic diff (parts, nets, wires, labels)
-tests/                  C++ tests, fixtures, fixture-repo script, regression check
-gui/tests/              GUI tests
-resources/viewer.html   page shell + styles; pcb.js, sch.js, shell.js are
-                        combined into it at build time (one HTML file)
+utils/      platform (OS-specific code), log, sexpr (KiCad's file syntax)
+git/        git (log, show, revisions), locate (boards moved in history)
+pcb/        board (.kicad_pcb -> tracks, vias, pads, zones, ...), diff
+sch/        schematic (.kicad_sch -> sheets, parts, wires, nets), sch_diff, netcheck
+report/     html (JSON for the viewer), source (file text for the source panel)
+commands/   the command line: one file per command (src/main.cpp runs them)
+submodules/             json, spdlog, doctest (git submodules)
+tests/                  C++ tests, fixtures, regression check
+gui/                    the NiceGUI app and its tests
+resources/viewer.html   page shell + styles; source.js, pcb.js, sch.js,
+                        shell.js are combined into it at build time (one HTML file)
 ```
 
 ## Limitations

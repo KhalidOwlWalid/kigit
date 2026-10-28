@@ -39,8 +39,8 @@ Pieces:
   Messages go to stderr and the log.
 - **Keep the tests passing** (`ctest`). Add a test with each feature or fix.
 - **No premature optimization.** Simple and correct first.
-- **Silkscreen stays off by default**, both `--silkscreen` and the GUI's
-  "Include silkscreen" checkbox.
+- **Silkscreen and source stay off by default**: `--silkscreen` / `--source`
+  and the GUI's "Include silkscreen" / "Include source" checkboxes.
 - **Schematic nets must match KiCad's netlist exactly**: names and members.
   Check against `kicad-cli sch export netlist` (`--check-netlist`, or the
   regression test) when touching `src/sch/schematic.cpp`.
@@ -69,7 +69,7 @@ static library, which the tests link against. `commands/` is part of the
 Other folders:
 
 - `resources/`: the viewer: `viewer.html` (page and CSS), `shell.js` (tabs),
-  `pcb.js`, `sch.js`. CMake combines them into one page and embeds it in the
+  `source.js` (the source panel, shared by both tabs), `pcb.js`, `sch.js`. CMake combines them into one page and embeds it in the
   binary as a byte array. MSVC limits string literal length, hence bytes.
 - `gui/kigit_gui/`: `app.py` (the UI), `kigit.py` (runs the CLI with
   `asyncio.to_thread(subprocess.run)`), `logs.py`, `folder_picker.py`.
@@ -130,7 +130,7 @@ kigit gui [PROJECT_DIR]
 - No revisions means HEAD vs `LOCAL` (the working tree). If OLD is newer than
   NEW they're swapped (`--no-swap` to keep the order).
 - `-C/--kicad-repo DIR`, `-o FILE` (`-` = stdout), `-n` no browser, `-s` all
-  stats, `--json`, `--silkscreen`, `-q`, `-V/--verbose` (not `-v`, which is
+  stats, `--json`, `--silkscreen`, `--source`, `-q`, `-V/--verbose` (not `-v`, which is
   `--version`).
 - Used by the GUI: `--log` (history JSON; `--max`, `--since`, `--until`
   where a bare date means the whole day, `--kicad-only`), `--projects`
@@ -205,12 +205,38 @@ kigit gui [PROJECT_DIR]
   bus); `elsFor(t)` is what lights up; `info`/`renderCard` build the tooltip
   and the pinned card (tables `.kv` and `.diff`).
 
+### Source panel (`--source`)
+
+- The parser records each list's byte span (`sexpr::Node::span`, `Span`
+  in `utils/sexpr.hpp`). Items, pads, footprints and zones keep theirs
+  (`src`); a zone's stops before its first `filled_polygon` (`src_cut`).
+  Schematic symbols, wires, labels, sheet pins and buses keep theirs, and
+  `Schematic::files` holds every sheet file's text.
+- `report/source.*`: `SourceFile` turns a span into whole lines plus the
+  first line number; `SourceTable` collects entries
+  `{k: label, o: [file, line, text] | null, n: [...] | null, cut?}` with one
+  entry per old/new pair. `DiffItem::other` pairs a moved/changed item with
+  its old self.
+- JSON: PCB `src` (entries) plus `src` on items, footprints and
+  zone_changes. Schematic `sch.src`, with the entry appended to rows:
+  `wires[6]`, `labels[10]`, `buses[6]`, and `src` on symbols and parts.
+  Without `--source` none of this is in the page.
+- A removed and an added label with the same kind, name and sheet are paired
+  into one entry (a moved label).
+- `resources/source.js` (`kigitSourcePanel.create(view, entries, key)`):
+  LCS line diff, side-by-side rows, changed characters marked, unchanged runs
+  folded beyond 3 lines of context, 25 entries then "show more". Its height
+  and open state are remembered in localStorage. `pcb.js`
+  (`showNetSource`, `showFootprintSource`) and `sch.js` (`showSource`) call
+  `show(list, heading, focus)` on hover and pin; `data-s` on schematic
+  elements gives the hovered element's own entry.
+
 ### GUI (`gui/`)
 
 - Browse a folder; projects are detected up to 2 levels down. The commit
   list starts with the working tree, has filters (limit, dates, KiCad-only)
   and a manual revision entry. "Compare folders" works without git.
-  There's a log viewer and an "Include silkscreen" checkbox.
+  There's a log viewer and "Include silkscreen" / "Include source" checkboxes.
 - Dialogs are created inside `dialog_host`.
 - Window: native (pywebview, `ui.run(native=True)`) by default on Windows,
   browser elsewhere; `--native` / `--browser` override. `choose_window()`
@@ -281,5 +307,4 @@ Open work:
 - A net filter on the schematic tab.
 - Fab and courtyard layers.
 - Pour outlines.
-- Developer mode (see `TODO.md`).
 - Linux packages; macOS support (CI and packages) if it's wanted again.

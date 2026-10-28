@@ -213,3 +213,30 @@ async def test_include_silkscreen_checkbox(user: User, monkeypatch) -> None:
     box.value = True
     page = await compare()
     assert '"silk":[' in page
+
+
+async def test_include_source_checkbox(user: User, monkeypatch) -> None:
+    """Off by default; when ticked, the page has the changed items' file text."""
+    await open_at(user, monkeypatch, PROJECT)
+    await user.should_see("Pick two commits on the left", retries=50)
+    box = user.find(marker="include-source").elements.pop()
+    assert box.value is False
+    rows = commit_table(user).rows
+
+    async def compare() -> str:
+        frame = next(e for e in user.client.elements.values() if e.tag == "iframe")  # hidden at first
+        before = frame.props.get("src")
+        await select(user, [rows[1], rows[-1]])
+        user.find("Compare").click()
+        for _ in range(100):  # until the viewer shows the new page
+            if frame.props.get("src") != before:
+                break
+            await asyncio.sleep(0.1)
+        src = frame.props["src"]
+        return (app.CACHE / src.split("/diffs/")[1].split("?")[0]).read_text()
+
+    assert '"src":[' not in await compare()
+    box.value = True
+    page = await compare()
+    assert '"src":[{' in page
+    assert "demo.kicad_pcb" in page

@@ -23,6 +23,7 @@ enum class Status { Same = 0, Added = 1, Removed = 2, Moved = 3, OldPosition = 4
 struct DiffItem {
     const Item* item;
     Status status;
+    const Item* other = nullptr; // Moved/Changed: the old item; OldPosition: the new one
 };
 
 struct NetStats {

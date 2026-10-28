@@ -18,6 +18,7 @@ add_executable(kigit_tests
   cpp/test_sch_diff.cpp
   cpp/test_git.cpp
   cpp/test_cli.cpp
+  cpp/test_source.cpp
 )
 target_link_libraries(kigit_tests PRIVATE kigit_core doctest::doctest)
 # DOCTEST_CONFIG_USE_STD_HEADERS: include the real <tuple> etc. instead of

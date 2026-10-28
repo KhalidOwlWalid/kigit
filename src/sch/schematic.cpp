@@ -277,6 +277,7 @@ public:
 
 private:
     void load_sheet(int index, const std::string& text, int depth) {
+        sch_.files.try_emplace(sch_.sheets[index].file, text);
         Node doc = sexpr::parse(text);
         const Node* top = nullptr;
         for (const Node& c : doc.children)
@@ -311,7 +312,7 @@ private:
                 if (!pts) continue;
                 std::vector<Point> p;
                 pts->each("xy", [&](const Node& q) { p.push_back(xy(&q)); });
-                if (p.size() == 2) sch_.wires.push_back({index, p[0], p[1], -1});
+                if (p.size() == 2) sch_.wires.push_back({index, p[0], p[1], -1, n.span});
             } else if (kind == "junction") {
                 sch_.junctions.emplace_back(index, xy(n.child("at")));
             } else if (kind == "no_connect") {
@@ -341,6 +342,7 @@ private:
                 }
                 if (const Node* sh = n.child("shape")) l.shape = std::string(sh->arg(0));
                 l.size = text_size(&n);
+                l.src = n.span;
                 sch_.labels.push_back(std::move(l));
             } else if (kind == "sheet") {
                 SheetInstance child;
@@ -386,13 +388,14 @@ private:
                     l.shape = std::string(p.arg(1));
                     l.size = text_size(&p);
                     l.child = child_index;
+                    l.src = p.span;
                     sch_.labels.push_back(std::move(l));
                 });
                 children.emplace_back(child_index, child.file);
             } else if (kind == "bus") {
                 std::vector<Point> p;
                 if (const Node* pts = n.child("pts")) pts->each("xy", [&](const Node& q) { p.push_back(xy(&q)); });
-                for (size_t i = 1; i < p.size(); ++i) sch_.buses.push_back({index, p[i - 1], p[i]});
+                for (size_t i = 1; i < p.size(); ++i) sch_.buses.push_back({index, p[i - 1], p[i], -1, n.span});
             } else if (kind == "bus_entry") {
                 Point at = xy(n.child("at")), size = xy(n.child("size"));
                 sch_.bus_entries.push_back({index, at, {at.x + size.x, at.y + size.y}});
@@ -421,6 +424,7 @@ private:
     void read_symbol(const Node& n, int index, const SheetInstance& sheet, const LibMap& lib) {
         SchSymbol s;
         s.sheet = index;
+        s.src = n.span;
         if (const Node* id = n.child("lib_id")) s.lib_id = sexpr::unescape(id->arg(0));
         std::string lib_key = s.lib_id;
         if (const Node* ln = n.child("lib_name")) lib_key = sexpr::unescape(ln->arg(0));

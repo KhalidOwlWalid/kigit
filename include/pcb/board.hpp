@@ -1,6 +1,8 @@
 // Board model: the net-carrying copper items of a .kicad_pcb file.
 #pragma once
 
+#include "utils/sexpr.hpp" // Span
+
 #include <map>
 #include <string>
 #include <string_view>
@@ -54,6 +56,8 @@ struct Item {
     // Zone: filled polygons, each closed.
     std::vector<std::vector<Point>> polygons;
 
+    Span src;                        // its text in the .kicad_pcb (pads: the pad)
+
     // Copper length in mm (tracks and arcs only, 0 otherwise).
     double length() const;
 
@@ -73,6 +77,7 @@ struct Footprint {
     std::map<std::string, std::string> fields; // Value, Description, ..., "3D model"
     std::vector<std::string> graphics;  // non-copper drawings, canonical form, footprint frame
     std::vector<std::string> pads;      // pad shapes and places, canonical form, footprint frame
+    Span src;                           // its text in the .kicad_pcb
 };
 
 // A copper pour, for telling a real edit (outline) from a refill.
@@ -81,6 +86,8 @@ struct ZoneInfo {
     std::vector<std::string> layers;
     size_t outline = 0;                 // hash of the outline the user drew
     size_t fill = 0;                    // hash of KiCad's computed fill
+    Span src;                           // its text, up to the fill (KiCad's computed polygons: long, not shown)
+    bool src_cut = false;               // src stops before the fill
 };
 
 // A silkscreen line/shape or text, in board coordinates.

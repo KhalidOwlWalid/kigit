@@ -4,9 +4,20 @@
 // Atoms are views into the source text, so the text must outlive the tree.
 #pragma once
 
+#include <cstddef>
 #include <string>
 #include <string_view>
 #include <vector>
+
+namespace kigit {
+
+// Where something is in its file: byte offsets [begin, end). Empty if unknown.
+struct Span {
+    size_t begin = 0, end = 0;
+    bool empty() const { return end <= begin; }
+};
+
+} // namespace kigit
 
 namespace kigit::sexpr {
 
@@ -15,6 +26,7 @@ struct Node {
     std::vector<Node> children; // list items
     bool is_list = false;
     bool quoted = false;        // atom was written as "..."
+    Span span;                  // lists: from "(" to just after ")" in the parsed text
 
     // Name of a list: its first atom, e.g. "segment" for (segment ...).
     std::string_view name() const;
