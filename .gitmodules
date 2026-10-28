@@ -1,0 +1,12 @@
+[submodule "submodules/json"]
+	path = submodules/json
+	url = https://github.com/nlohmann/json.git
+	shallow = true
+[submodule "submodules/spdlog"]
+	path = submodules/spdlog
+	url = https://github.com/gabime/spdlog.git
+	shallow = true
+[submodule "submodules/doctest"]
+	path = submodules/doctest
+	url = https://github.com/doctest/doctest.git
+	shallow = true

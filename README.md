@@ -51,10 +51,14 @@ from the run's artifacts.
 
 ## Build
 
-Needs a C++20 compiler and CMake 3.16+. `nlohmann_json` is used from the
-system if installed, otherwise downloaded automatically.
+Needs a C++20 compiler and CMake 3.16+. The libraries (nlohmann_json,
+spdlog, doctest) are git submodules in `submodules/`, so clone with them:
 
 ```sh
+git clone --recursive https://github.com/KhalidOwlWalid/kigit.git
+# or, in an existing clone:
+git submodule update --init
+
 cmake -S . -B build
 cmake --build build -j
 # optional: install to ~/.local/bin

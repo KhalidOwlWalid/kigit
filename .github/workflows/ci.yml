@@ -19,6 +19,8 @@ jobs:
           - { name: "Linux (GCC)", os: ubuntu-latest }
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: true # libraries in submodules/
 
       # For the GUI tests (ctest -L gui).
       - uses: astral-sh/setup-uv@v5

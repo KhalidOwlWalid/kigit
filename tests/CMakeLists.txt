@@ -4,11 +4,9 @@
 #   ctest -L gui             the NiceGUI app (needs uv)
 #   ctest -L regression      real-repo netlist checks (needs env, see regression.sh)
 
-include(FetchContent)
-FetchContent_Declare(doctest
-  URL https://github.com/doctest/doctest/archive/refs/tags/v2.4.11.tar.gz)
-set(DOCTEST_NO_INSTALL ON CACHE BOOL "" FORCE)
-FetchContent_MakeAvailable(doctest)
+# doctest: the submodule in submodules/doctest.
+set(DOCTEST_NO_INSTALL ON CACHE INTERNAL "")
+add_subdirectory(${KIGIT_SUBMODULES}/doctest ${CMAKE_BINARY_DIR}/doctest EXCLUDE_FROM_ALL)
 
 add_executable(kigit_tests
   cpp/main.cpp
@@ -31,7 +29,7 @@ target_compile_definitions(kigit_tests PRIVATE
 add_dependencies(kigit_tests kigit) # the CLI tests run the real binary
 
 # One ctest entry per TEST_CASE.
-include(${doctest_SOURCE_DIR}/scripts/cmake/doctest.cmake)
+include(${KIGIT_SUBMODULES}/doctest/scripts/cmake/doctest.cmake)
 doctest_discover_tests(kigit_tests PROPERTIES LABELS unit)
 
 # The GUI tests (pytest, simulated user) against the same fixture repo.

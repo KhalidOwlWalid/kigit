@@ -1,8 +1,8 @@
 # 3.16 or newer; the "...3.31" opts into newer CMake's behaviour where it's
-# available (e.g. CMP0135: downloaded files get the extraction time).
+# available.
 cmake_minimum_required(VERSION 3.16...3.31)
 
-# Downloaded dependencies (doctest) still declare CMake < 3.5, which CMake 4
+# Some submodules (doctest) still declare CMake < 3.5, which CMake 4
 # refuses. Treat them as 3.5. (Ignored by CMake older than 4.)
 if(NOT DEFINED CMAKE_POLICY_VERSION_MINIMUM)
   set(CMAKE_POLICY_VERSION_MINIMUM 3.5 CACHE STRING "Minimum CMake policy version for dependencies")
@@ -26,9 +26,8 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
   set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type" FORCE)
 endif()
 
-# KIGIT_PORTABLE (release builds): a kigit that runs on other machines.
-# Libraries are downloaded and built in, never taken from this system, and
-# on Linux the C++ runtime is linked in too, so only glibc is needed.
+# KIGIT_PORTABLE (release builds): a kigit that runs on other machines. On
+# Linux the C++ runtime is linked in, so only glibc is needed.
 option(KIGIT_PORTABLE "Build a self-contained kigit for distribution" OFF)
 
 # MSVC: link the C++ runtime into kigit.exe, so it runs on any Windows
@@ -36,27 +35,22 @@ option(KIGIT_PORTABLE "Build a self-contained kigit for distribution" OFF)
 # libraries below so they're built the same way.)
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 
-# nlohmann_json: use the system package if present, otherwise download it.
-if(NOT KIGIT_PORTABLE)
-  find_package(nlohmann_json 3.2 QUIET)
-endif()
-if(NOT nlohmann_json_FOUND)
-  include(FetchContent)
-  FetchContent_Declare(json
-    URL https://github.com/nlohmann/json/releases/download/v3.11.3/json.tar.xz)
-  FetchContent_MakeAvailable(json)
-endif()
+# Libraries: git submodules in submodules/, pinned to a release each
+# (nlohmann_json, spdlog, and doctest for the tests). Built in, never taken
+# from the system. After cloning: git submodule update --init
+set(KIGIT_SUBMODULES ${CMAKE_CURRENT_SOURCE_DIR}/submodules)
+foreach(lib json spdlog doctest)
+  if(NOT EXISTS ${KIGIT_SUBMODULES}/${lib}/CMakeLists.txt)
+    message(FATAL_ERROR "submodules/${lib} is missing. Run:\n  git submodule update --init")
+  endif()
+endforeach()
 
-# spdlog: use the system package if present, otherwise download it.
-if(NOT KIGIT_PORTABLE)
-  find_package(spdlog 1.9 QUIET)
-endif()
-if(NOT spdlog_FOUND)
-  include(FetchContent)
-  FetchContent_Declare(spdlog
-    URL https://github.com/gabime/spdlog/archive/refs/tags/v1.14.1.tar.gz)
-  FetchContent_MakeAvailable(spdlog)
-endif()
+set(JSON_BuildTests OFF CACHE INTERNAL "")
+set(JSON_Install OFF CACHE INTERNAL "")
+add_subdirectory(${KIGIT_SUBMODULES}/json EXCLUDE_FROM_ALL)
+
+set(SPDLOG_INSTALL OFF CACHE INTERNAL "")
+add_subdirectory(${KIGIT_SUBMODULES}/spdlog EXCLUDE_FROM_ALL)
 
 # Embed the HTML viewer into the binary: the page shell plus its scripts,
 # combined into one self-contained file.

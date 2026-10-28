@@ -73,6 +73,7 @@ Other folders:
   binary as a byte array. MSVC limits string literal length, hence bytes.
 - `gui/kigit_gui/`: `app.py` (the UI), `kigit.py` (runs the CLI with
   `asyncio.to_thread(subprocess.run)`), `logs.py`, `folder_picker.py`.
+- `submodules/`: the libraries (json, spdlog, doctest) as pinned git submodules.
 - `tests/`: `cpp/` (doctest), `fixtures/` (demo v1/v2, hier, bus projects),
   `regression.sh`.
 - `gui/tests/`: pytest with NiceGUI's simulated `user` fixture.
@@ -83,6 +84,7 @@ Other folders:
 ## Build and test
 
 ```sh
+git submodule update --init       # once, after cloning
 cmake -S . -B build
 cmake --build build -j
 ctest --test-dir build            # everything that can run here
@@ -90,9 +92,15 @@ ctest --test-dir build -L unit    # C++ only
 ctest --test-dir build -L gui     # GUI (needs uv)
 ```
 
-- C++20, CMake 3.16+ (tested up to 4.x). nlohmann_json and spdlog are taken
-  from the system if present, else downloaded (FetchContent). doctest is
-  always downloaded.
+- C++20, CMake 3.16+ (tested up to 4.x).
+- Libraries are git submodules in `submodules/`, each pinned to a release
+  tag: `json` (nlohmann_json v3.11.3), `spdlog` (v1.14.1), `doctest`
+  (v2.4.11, tests only). They're built in with `add_subdirectory`; nothing is
+  taken from the system or downloaded at configure time. CMake stops with a
+  hint if one is missing. They're shallow (`shallow = true` in
+  `.gitmodules`). To update one:
+  `git -C submodules/spdlog fetch --depth 1 origin tag vX.Y.Z && git -C submodules/spdlog checkout vX.Y.Z`,
+  then commit the new submodule commit. CI checks out with `submodules: true`.
 - `CMAKE_POLICY_VERSION_MINIMUM` is set to 3.5 so CMake 4 accepts doctest,
   which declares an older CMake. The remaining "Compatibility with CMake <
   3.10" notice from doctest is harmless.
@@ -238,9 +246,9 @@ The tag must match the CMake version or the job fails. "Run workflow" by
 hand builds the files as artifacts without releasing. Published tags don't
 move: a fix gets a new version.
 
-`KIGIT_PORTABLE=ON` downloads nlohmann_json and spdlog instead of using the
-system's copies, and on Linux links libstdc++/libgcc statically, so the
-binary only needs glibc. `kigit gui` looks for uv next to the exe, then in
+`KIGIT_PORTABLE=ON` links libstdc++/libgcc statically on Linux, so the
+binary only needs glibc (the libraries are always built in from the
+submodules). `kigit gui` looks for uv next to the exe, then in
 `<prefix>/libexec/kigit/uv`, then on PATH.
 
 The installer is per-user (no admin): `%LOCALAPPDATA%\Programs\kigit`,
