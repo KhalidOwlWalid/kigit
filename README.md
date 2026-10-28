@@ -240,6 +240,36 @@ diffed, because refilling a pour changes its shape every time.
 **Schematic.** Parts are matched by KiCad ID (then reference), nets by label
 name or shared pins, wires and labels by position; see "Schematic diff".
 
+## Logs
+
+Every run keeps a log, named after when it started, so you can look back at
+what happened (and send it along with a bug report):
+
+| Platform | Default folder |
+| --- | --- |
+| Linux | `~/.local/state/kigit/log/` |
+| macOS | `~/Library/Application Support/kigit/log/` |
+| Windows | `%LOCALAPPDATA%\kigit\log\` |
+
+Change it with `--log-dir DIR` (or `KIGIT_LOG_DIR`); `--no-log` turns it off.
+Old logs are kept.
+
+- **Command line:** `kigit_<date>_<time>_<pid>.log`: what was compared, timings,
+  how much changed, warnings, errors, exit code. `-V` also prints the log to
+  the console, with debug lines (every git command and its duration).
+- **GUI:** `kigit-gui_<date>_<time>_<pid>.log` holds the whole session: what
+  you opened and compared, every message the GUI showed you, the kigit calls
+  it made (their own lines included), and any error in the GUI. The same lines
+  go to the console you ran `kigit gui` from, and the **log** button in the
+  GUI's header shows the file and its latest lines.
+
+```
+[2026-10-28 01:25:56.785] [kigit-gui] [info] found 1 KiCad project(s): owl_v1 (/home/me/Kicad/owl/owl_v1)
+[2026-10-28 01:25:56.792] [kigit] [info] run: kigit -C .../owl_v1.kicad_pcb --log --max 200 ...
+[2026-10-28 01:25:56.826] [kigit] [info] done: exit 0 in 34 ms
+[2026-10-28 01:25:56.827] [kigit-gui] [info] loaded .../owl_v1.kicad_pcb: 39 of 39 commits listed
+```
+
 ## Testing
 
 ```sh

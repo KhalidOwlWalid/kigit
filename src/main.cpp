@@ -938,13 +938,18 @@ int main(int argc, char** argv) {
     std::string args;
     for (int i = 1; i < argc; ++i) args += std::string(i > 1 ? " " : "") + argv[i];
     std::error_code ec;
-    spdlog::info("session start: kigit {} | cwd {} | args: {}", KIGIT_VERSION, fs::current_path(ec).string(), args);
+    // Appending to someone else's log (the GUI's session): this run is one
+    // step in that session, not a session of its own.
+    bool step = !lo.file.empty();
+    if (step) spdlog::info("run: kigit {}", args);
+    else spdlog::info("session start: kigit {} | cwd {} | args: {}", KIGIT_VERSION, fs::current_path(ec).string(), args);
     if (!log_path.empty()) spdlog::debug("log file: {}", log_path);
 
     auto started = std::chrono::steady_clock::now();
     int code = run(argc, argv);
-    spdlog::info("session end: exit {} after {:.0f} ms", code,
-                 std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - started).count());
+    double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - started).count();
+    if (step) spdlog::info("done: exit {} in {:.0f} ms", code, ms);
+    else spdlog::info("session end: exit {} after {:.0f} ms", code, ms);
     logging::stop();
     return code;
 }

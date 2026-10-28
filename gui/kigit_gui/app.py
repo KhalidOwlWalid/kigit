@@ -16,7 +16,10 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import logging
 import os
+import subprocess
+import sys
 import tempfile
 import time
 from pathlib import Path
@@ -79,6 +82,50 @@ def short_rev(rev: str) -> str:
     return rev[:7] if len(rev) == 40 else rev
 
 
+def notify(message: str, type: str = "info", **kwargs) -> None:
+    """Shows a message to the user and writes it to the session log.
+    Problems are logged as warnings (they're the user's situation, e.g. no
+    git history, not faults in the GUI)."""
+    level = logging.WARNING if type in ("negative", "warning") else logging.INFO
+    logs.log.log(level, "shown to user: %s", message)
+    ui.notify(message, type=type, **kwargs)
+
+
+def open_folder_in_os(folder: Path) -> None:
+    """Opens a folder in the system file manager."""
+    if sys.platform == "win32":
+        os.startfile(folder)  # type: ignore[attr-defined]
+    else:
+        subprocess.Popen(["open" if sys.platform == "darwin" else "xdg-open", str(folder)],
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
+def show_log() -> None:
+    """A dialog with this session's log: where it is, and its latest lines."""
+    with ui.dialog() as dialog, ui.card().classes("w-[60rem] max-w-full bg-[#161a20] gap-2"):
+        ui.label("Session log").classes("text-base font-semibold")
+        if not logs.session_file:
+            ui.label("Logging to a file is off for this session (started with --no-log).").classes("text-gray-400")
+        else:
+            with ui.row().classes("w-full items-center gap-2 no-wrap"):
+                ui.label(str(logs.session_file)).classes("text-xs text-gray-400 truncate flex-grow")
+                ui.button("Open folder", icon="folder",
+                          on_click=lambda: open_folder_in_os(logs.session_file.parent)).props("flat dense")
+            view = ui.log(max_lines=1000).classes("w-full h-[28rem] text-xs bg-[#0f1115]")
+
+            def refresh() -> None:
+                view.clear()
+                for line in logs.tail(500):
+                    view.push(line)
+
+            refresh()
+        with ui.row().classes("w-full justify-end gap-2"):
+            if logs.session_file:
+                ui.button("Refresh", icon="refresh", on_click=refresh).props("flat")
+            ui.button("Close", on_click=dialog.close).props("flat")
+    dialog.open()
+
+
 def build(start_folder: str):
     """Builds the page. Returns the coroutine that opens a folder, so the
     caller can open the starting folder once the page exists."""
@@ -95,6 +142,7 @@ def build(start_folder: str):
         ui.button("Browse", icon="folder_open", on_click=lambda: browse()).props("flat dense")
         ui.button("Open", on_click=lambda: open_folder(folder_input.value)).props("flat dense")
         status = ui.label("").classes("text-sm text-gray-400 ml-auto truncate")
+        ui.button(icon="receipt_long", on_click=show_log).props("flat dense round").tooltip("Session log").mark("log-button")
 
     # ----------------------------------------------------------- commit list
     with ui.left_drawer(value=True, bordered=True).props("width=480").classes("bg-[#161a20] p-0"):
@@ -192,7 +240,7 @@ def build(start_folder: str):
         if not Path(folder).is_dir():
             status.text = ""
             show_message("error_outline", f"{folder} isn't a folder.", tone="text-red-400")
-            ui.notify(f"{folder} isn't a folder", type="negative")
+            notify(f"{folder} isn't a folder", type="negative")
             return
         logs.log.info("open folder %s", folder)
         status.text = "Looking for a KiCad project..."
@@ -209,7 +257,7 @@ def build(start_folder: str):
             show_message("search_off", "No KiCad project found.",
                          f"Looked in {folder} and {SEARCH_DEPTH} levels below it for a .kicad_pro or .kicad_pcb.",
                          "text-red-400")
-            ui.notify("No KiCad project found in this folder (searched 2 levels deep)", type="negative")
+            notify("No KiCad project found in this folder (searched 2 levels deep)", type="negative")
             return
         if not boards:
             names = ", ".join(p.name for p in found)
@@ -217,10 +265,13 @@ def build(start_folder: str):
             show_message("developer_board_off", "Found a KiCad project, but no board file.",
                          f"{names}: kigit compares projects through their .kicad_pcb, which isn't there.",
                          "text-red-400")
-            ui.notify("KiCad project has no .kicad_pcb", type="negative")
+            notify("KiCad project has no .kicad_pcb", type="negative")
             return
 
+        logs.log.info("found %d KiCad project(s): %s", len(found), ", ".join(f"{p.name} ({p.dir})" for p in found))
         project = boards[0] if len(boards) == 1 else await choose_project(folder, boards)
+        if project is not None:
+            logs.log.info("opening project %s (%s)", project.name, "in git" if project.git else "not in git")
         if project is None:
             status.text = ""
             show_message("folder_open", "Several projects here; none chosen.")
@@ -231,7 +282,7 @@ def build(start_folder: str):
                          "kigit compares commits, so the project needs git history. "
                          "(Two loose board files can be compared with `kigit --files OLD NEW`.)",
                          "text-red-400")
-            ui.notify(f"{project.name} isn't in a git repository", type="negative")
+            notify(f"{project.name} isn't in a git repository", type="negative")
             return
         await load_history(project)
 
@@ -262,7 +313,7 @@ def build(start_folder: str):
             return await kigit.history(board, max_count=limit.value or 0, since=since.value or "",
                                        until=until.value or "", kicad_only=only.value)
         except kigit.KigitError as e:
-            ui.notify(str(e), type="negative", multi_line=True, close_button=True)
+            notify(str(e), type="negative", multi_line=True, close_button=True)
             return None
 
     def show_count(h: kigit.History) -> None:
@@ -297,7 +348,7 @@ def build(start_folder: str):
 
     async def find() -> None:
         if not state["board"]:
-            ui.notify("Open a project first", type="warning")
+            notify("Open a project first", type="warning")
             return
         status.text = "Searching history..."
         h = await query(state["board"])
@@ -362,7 +413,7 @@ def build(start_folder: str):
     async def compare_manually() -> None:
         a, b = (old_rev.value or "").strip(), (new_rev.value or "").strip()
         if not a or not b:
-            ui.notify("Enter both an old and a new commit", type="warning")
+            notify("Enter both an old and a new commit", type="warning")
             return
         await run_diff(a, b, manual_btn)
 
@@ -371,7 +422,7 @@ def build(start_folder: str):
         history (older first); LOCAL is always the newest."""
         board = state["board"]
         if not board:
-            ui.notify("Open a project first", type="warning")
+            notify("Open a project first", type="warning")
             return
         name = page_name(board, a, b)
         out = CACHE / name
@@ -385,14 +436,15 @@ def build(start_folder: str):
         try:
             if not (cacheable and out.exists()):
                 for w in await kigit.diff_html(board, a, b, out):
-                    ui.notify(w, type="warning", multi_line=True, close_button=True)
+                    notify(w, type="warning", multi_line=True, close_button=True)
         except kigit.KigitError as e:
             status.text = ""
-            ui.notify(str(e), type="negative", multi_line=True, close_button=True)
+            notify(str(e), type="negative", multi_line=True, close_button=True)
             return
         finally:
             button.props(remove="loading")
         status.text = f"{short_rev(a)} ↔ {short_rev(b)} · {time.monotonic() - started:.1f} s"
+        logs.log.info("compared %s .. %s in %.2f s", a, b, time.monotonic() - started)
         # Open on the schematic; the cache-buster makes a regenerated page reload.
         frame.props(f'src="/diffs/{name}?t={int(time.time())}#sch"')
         placeholder.set_visibility(False)
@@ -400,6 +452,10 @@ def build(start_folder: str):
 
     on_select()
     return open_folder
+
+
+# Anything that goes wrong inside the GUI ends up in the session log, with its traceback.
+app.on_exception(lambda e: logs.log.error("unhandled error in the GUI", exc_info=e))
 
 
 @ui.page("/")
