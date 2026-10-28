@@ -758,6 +758,12 @@ void connect(Schematic& sch, const std::unordered_map<size_t, bool>& local_power
         Candidate name;
     };
     std::vector<BusOffer> bus_offers;
+    struct BusMemberNode {
+        int group;
+        std::string full;
+        int node;
+    };
+    std::vector<BusMemberNode> bus_member_nodes; // which net each bus's members end up on
     {
         DisjointSet bds;
         std::unordered_map<PointKey, int, PointKeyHash> bpoints;
@@ -789,14 +795,28 @@ void connect(Schematic& sch, const std::unordered_map<size_t, bool>& local_power
             for (int s2 = sheet; sch.sheets[s2].parent >= 0; s2 = sch.sheets[s2].parent) ++d;
             return d;
         };
+        // Number the buses: segments and names on the same bus share a group.
+        std::map<std::pair<int, int>, int> group_index;
+        auto group_for = [&](int sheet, int graph) {
+            auto [it, inserted] = group_index.try_emplace({sheet, graph}, static_cast<int>(sch.bus_groups.size()));
+            if (inserted) sch.bus_groups.push_back({sheet, {}, {}});
+            return it->second;
+        };
+        for (auto& b : sch.buses) b.group = group_for(b.sheet, bds.find(bpoint(b.sheet, b.a)));
+        std::set<std::pair<int, std::string>> seen_member; // (group, member key)
         for (size_t i = 0; i < sch.labels.size(); ++i) {
             const SchLabel& l = sch.labels[i];
             if (!l.bus) continue;
             std::string graph = std::to_string(l.sheet) + ":" + std::to_string(graph_of[i]) + ":";
+            int group = group_for(l.sheet, graph_of[i]);
+            sch.labels[i].group = group;
+            auto& names = sch.bus_groups[group].names;
+            if (std::find(names.begin(), names.end(), l.text) == names.end()) names.push_back(l.text);
             const std::string& path = sch.sheets[l.sheet].path;
             int d = depth_of_sheet(l.sheet);
             for (const BusMember& m : bus_members(l.text, sch.bus_aliases)) {
                 int member = name_node("B:" + graph + m.key); // this member, on this bus
+                if (seen_member.insert({group, m.key}).second) bus_member_nodes.push_back({group, m.full, member});
                 switch (l.kind) {
                 case LabelKind::Local:
                     ds.join(member, name_node("L:" + std::to_string(l.sheet) + ":" + m.full));
@@ -845,6 +865,7 @@ void connect(Schematic& sch, const std::unordered_map<size_t, bool>& local_power
 
     for (auto& w : sch.wires) w.net = net_for(point(w.sheet, w.a));
     for (const auto& o : bus_offers) offer(net_for(o.node), o.name);
+    for (const auto& m : bus_member_nodes) sch.bus_groups[m.group].members.emplace_back(m.full, net_for(m.node));
     for (auto& l : sch.labels) {
         if (l.bus) {
             l.net = -1; // a bus, not a net

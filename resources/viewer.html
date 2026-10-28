@@ -241,6 +241,9 @@ body[data-tab="pcb"] [data-pane="sch"], body[data-tab="sch"] [data-pane="pcb"] {
 #sch .bus.st1 { stroke: var(--added); } #sch .bus.st2 { stroke: var(--removed); stroke-dasharray: 6 4; }
 #sch .buslbl text { fill: #7fa8e6; } #sch .buslbl path { stroke: #4f86d6; }
 #sch.hl .bus, #sch.hl .bus-entry { opacity: .25; }
+#sch.hl .bus.on { opacity: 1; stroke-width: 4.4px; }
+#sch.hl .buslbl.on text { fill: #a9c6f2; }
+.bus-members tr.link { cursor: pointer; } .bus-members tr.link:hover td { background: rgba(127,168,230,.12); }
 #sch .nc { stroke: var(--s-faint); stroke-width: 1.2px; vector-effect: non-scaling-stroke; }
 #sch .sym path { stroke: var(--s-body); stroke-width: 1.1px; vector-effect: non-scaling-stroke; fill: none; pointer-events: all; }
 #sch .sym path.f1 { fill: var(--s-body); }

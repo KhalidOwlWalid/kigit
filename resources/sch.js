@@ -159,7 +159,7 @@
   }
 
   function labelSvg(l) {
-    const [kind, str, x, y, angle, size, shape, st, net] = l;
+    const [kind, str, x, y, angle, size, shape, st, net, group] = l;
     let d = dirOf(angle);
     if (kind === 3) d = [-d[0], -d[1]]; // sheet pin text points into the sheet box
     const vertical = d[0] === 0;
@@ -167,7 +167,8 @@
     const U = vertical ? [-1, 0] : [0, -1];
     const forward = d[0] * R[0] + d[1] * R[1] > 0;
     const textLen = textWidth(str, size);
-    let out = `<g class="lbl st${st}${net < 0 ? " buslbl" : ""}" data-n="${net}">`;
+    let out = `<g class="lbl st${st}${net < 0 ? " buslbl" : ""}" data-n="${net}"` +
+      (group != null && group >= 0 ? ` data-g="${group}">` : ">");
     if (kind === 0) {
       const at = [x + U[0] * 0.3, y + U[1] * 0.3];
       out += text(str, at[0], at[1], vertical, forward ? -1 : 1, 1, size);
@@ -200,7 +201,8 @@
   // ------------------------------------------------------------ state
 
   let cur = 0;                   // current sheet index
-  let netEls = new Map(), partEls = new Map();
+  let netEls = new Map(), partEls = new Map(), busEls = new Map();
+  const groups = S.busGroups || [];
   const views = new Map();       // sheet -> saved view box
 
   // Sheets each net appears on, for "also on" in tooltips.
@@ -230,7 +232,7 @@
     // Buses (thick) and bus entries (the short diagonals into them).
     for (const e of sh.entries || []) out += `<path class="bus-entry" d="M${e[0]} ${e[1]}L${e[2]} ${e[3]}"/>`;
     for (const b of [...(sh.buses || [])].sort((p, q) => order(p[4]) - order(q[4])))
-      out += `<path class="bus st${b[4]}" d="M${b[0]} ${b[1]}L${b[2]} ${b[3]}"/>`;
+      out += `<path class="bus st${b[4]}" data-g="${b[5] ?? -1}" d="M${b[0]} ${b[1]}L${b[2]} ${b[3]}"/>`;
     for (const w of wires)
       out += `<path class="wire st${w[4]}" data-n="${w[5]}" d="M${w[0]} ${w[1]}L${w[2]} ${w[3]}"/>`;
     for (const j of sh.junctions) out += `<circle class="junction st${j[2]}" cx="${j[0]}" cy="${j[1]}" r="0.46"/>`;
@@ -239,11 +241,20 @@
       out += `<path class="nc" d="M${x - s} ${y - s}L${x + s} ${y + s}M${x - s} ${y + s}L${x + s} ${y - s}"/>`;
     }
     for (const l of sh.labels) out += labelSvg(l);
+    for (const b of sh.buses || [])
+      if (b[5] >= 0) out += `<path class="hit" data-g="${b[5]}" d="M${b[0]} ${b[1]}L${b[2]} ${b[3]}"/>`;
     for (const w of sh.wires) out += `<path class="hit" data-n="${w[5]}" d="M${w[0]} ${w[1]}L${w[2]} ${w[3]}"/>`;
     svg.innerHTML = out + "</g>";
 
     netEls = new Map();
     partEls = new Map();
+    busEls = new Map();
+    svg.querySelectorAll("[data-g]").forEach((el) => {
+      const g = +el.dataset.g;
+      if (g < 0 || el.classList.contains("hit")) return;
+      if (!busEls.has(g)) busEls.set(g, []);
+      busEls.get(g).push(el);
+    });
     svg.querySelectorAll("[data-n]").forEach((el) => {
       const n = +el.dataset.n;
       if (n < 0 || el.classList.contains("hit")) return;
@@ -331,9 +342,11 @@
 
   // ------------------------------------------------------------ highlight
 
-  // A hover/pin target: a net (kind "n") or a part (kind "p").
+  // A hover/pin target: a net (kind "n"), a part (kind "p") or a bus (kind "g").
   function targetOf(el) {
     if (!el || !el.closest) return null;
+    const g = el.closest("[data-g]");
+    if (g && +g.dataset.g >= 0) return { kind: "g", id: +g.dataset.g };
     const n = el.closest("[data-n]");
     const p = el.closest(".sym[data-i]");
     // Pins and wires mean the net; a part's body means the part.
@@ -343,6 +356,15 @@
     return null;
   }
 
+  // What lights up for a target. A bus: its segments and names, and its members' nets.
+  function elsFor(t) {
+    if (t.kind === "n") return netEls.get(t.id) || [];
+    if (t.kind === "p") return partEls.get(t.id) || [];
+    const out = [...(busEls.get(t.id) || [])];
+    for (const [, net] of groups[t.id]?.members || []) if (net >= 0) out.push(...(netEls.get(net) || []));
+    return out;
+  }
+
   let hovered = null, pinned = null, shown = null;
   const same = (a, b) => (a === b) || (a && b && a.kind === b.kind && a.id === b.id);
   function refreshHL() {
@@ -350,8 +372,7 @@
     if (same(target, shown)) return;
     svg.querySelectorAll(".on").forEach((el) => el.classList.remove("on"));
     if (target) {
-      const els = (target.kind === "n" ? netEls : partEls).get(target.id) || [];
-      els.forEach((el) => {
+      elsFor(target).forEach((el) => {
         el.classList.add("on");
         // Light up the part a pin belongs to as well, without dimming its body.
         const g = el.closest(".sym");
@@ -407,7 +428,26 @@
     return { title: p.ref, st: p.st, lines };
   }
 
-  const info = (t) => (t.kind === "n" ? netInfo(t.id) : partInfo(t.id));
+  // A member net's status, the way the net's own tooltip shows it.
+  const netSt = (id) => { const n = S.nets[id]; return n.st === 0 && (n.wa || n.wr || n.la || n.lr) ? 5 : n.st; };
+
+  function busInfo(id) {
+    const g = groups[id];
+    const members = g.members;
+    const changed = members.filter(([, net]) => net >= 0 && netSt(net) !== 0);
+    const lines = [`${members.length} member${members.length === 1 ? "" : "s"}` +
+      (changed.length ? `, <span style="color:var(--accent)">${changed.length} changed</span>` : "")];
+    for (const [full, net] of members.slice(0, 7)) {
+      const n = net >= 0 ? S.nets[net] : null;
+      const name = n ? n.name || "(unnamed net)" : "(not connected)";
+      const st = n ? netSt(net) : 0;
+      lines.push(`<b>${esc(full)}</b> → ${esc(name)}${st ? ` <span class="badge st${st}">${ST[st].toUpperCase()}</span>` : ""}`);
+    }
+    if (members.length > 7) lines.push(`+${members.length - 7} more (click to see all)`);
+    return { title: g.names.join(" · ") || "(bus)", st: changed.length ? 3 : 0, lines };
+  }
+
+  const info = (t) => (t.kind === "n" ? netInfo(t.id) : t.kind === "p" ? partInfo(t.id) : busInfo(t.id));
 
   // ------------------------------------------------------------ tooltip & card
 
@@ -418,7 +458,7 @@
     setHover(t);
     const i = info(t);
     tip.innerHTML = `<div class="t">${esc(i.title)}<span class="badge st${i.st}">${ST[i.st].toUpperCase()}</span></div>` +
-      i.lines.slice(0, 8).map((l) => `<div class="m">${l}</div>`).join("");
+      i.lines.slice(0, t.kind === "g" ? 9 : 8).map((l) => `<div class="m">${l}</div>`).join("");
     tip.style.display = "block";
     const host = svg.getBoundingClientRect();
     let x = e.clientX - host.left + 14, y = e.clientY - host.top + 14;
@@ -429,7 +469,7 @@
   }
 
   function boxOf(t) {
-    const els = (t.kind === "n" ? netEls : partEls).get(t.id) || [];
+    const els = elsFor(t);
     let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
     for (const el of els) {
       const r = el.getBBox();
@@ -487,11 +527,25 @@
     return h;
   }
 
+  function busCard(id) {
+    const g = groups[id];
+    if (!g.members.length) return `<div class="note">No members.</div>`;
+    let h = `<h4>Members</h4><table class="diff bus-members"><thead><tr><th>Member</th><th>Net</th><th>Status</th></tr></thead><tbody>`;
+    for (const [full, net] of g.members) {
+      const n = net >= 0 ? S.nets[net] : null;
+      const st = n ? netSt(net) : 0;
+      const name = n ? val(n.name || "(unnamed net)") : `<span class="none">(not connected)</span>`;
+      h += `<tr${n ? ` data-net="${net}" class="link"` : ""}><td class="field">${esc(full)}</td><td>${name}</td>` +
+        `<td>${st ? `<span class="badge st${st}">${ST[st].toUpperCase()}</span>` : ""}</td></tr>`;
+    }
+    return h + `</tbody></table><div class="note">Click a member to show its net.</div>`;
+  }
+
   function renderCard() {
     if (!pinned) { card.style.display = "none"; return; }
     const i = info(pinned);
     let html = `<div class="t">${esc(i.title)}<span class="badge st${i.st}">${ST[i.st].toUpperCase()}</span></div>` +
-      (pinned.kind === "n" ? netCard(pinned.id) : partCard(pinned.id));
+      (pinned.kind === "n" ? netCard(pinned.id) : pinned.kind === "p" ? partCard(pinned.id) : busCard(pinned.id));
     if (pinned.kind === "n") {
       const sheets = [...netSheets[pinned.id]];
       if (sheets.length > 1)
@@ -502,6 +556,7 @@
     card.innerHTML = html;
     card.style.display = "block";
     card.querySelectorAll("[data-sheet]").forEach((b) => (b.onclick = () => openSheet(+b.dataset.sheet, true)));
+    card.querySelectorAll("tr[data-net]").forEach((r) => (r.onclick = () => pin({ kind: "n", id: +r.dataset.net })));
     $("#schZoom").onclick = () => { const b = boxOf(pinned); if (b) fitBox(b, 0.6); };
     $("#schClear").onclick = () => pin(null);
   }

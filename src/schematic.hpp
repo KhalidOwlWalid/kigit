@@ -88,6 +88,15 @@ struct SchSymbol {
 struct SchBus {
     int sheet = 0;
     Point a, b;
+    int group = -1;                  // which bus (SchBusGroup) this segment is part of
+};
+
+// One bus on a sheet: its connected segments and the names on it, and the
+// nets its members carry (for showing a bus's members).
+struct SchBusGroup {
+    int sheet = 0;
+    std::vector<std::string> names;  // bus labels / pins on it, e.g. "USB2C{USB}"
+    std::vector<std::pair<std::string, int>> members; // member net name ("USB2C.D_P"), net index
 };
 struct SchBusEntry {
     int sheet = 0;
@@ -113,6 +122,7 @@ struct SchLabel {
     double size = 1.27;
     std::string shape;               // global/hierarchical/sheet pin: input, output, ...
     bool bus = false;                // a bus name (D[0..7], NAME{ALIAS}, {A B}), not a net
+    int group = -1;                  // bus names: which bus (SchBusGroup) they sit on
 };
 
 // The box of a sub-sheet as drawn on its parent.
@@ -142,6 +152,7 @@ struct Schematic {
     std::vector<SchBus> buses;
     std::vector<SchBusEntry> bus_entries;
     std::map<std::string, std::vector<std::string>> bus_aliases; // name -> members
+    std::vector<SchBusGroup> bus_groups;
     std::vector<SchSheetBox> sheet_boxes;
     std::vector<std::pair<int, SchText>> texts;     // free text notes
     std::vector<std::pair<int, std::string>> drawings; // lines/boxes drawn on sheets (SVG path data)

@@ -414,13 +414,13 @@ nlohmann::json schematic_view_json(const Schematic& a, const Schematic& b, const
         for (const auto& bs : b.buses) {
             auto f = in_old.find(seg_key(b, bs.sheet, bs.a, bs.b));
             int st = (f != in_old.end() && f->second-- > 0) ? kSame : kAdded;
-            out[bs.sheet].buses.push_back({r4s(bs.a.x), r4s(bs.a.y), r4s(bs.b.x), r4s(bs.b.y), st});
+            out[bs.sheet].buses.push_back({r4s(bs.a.x), r4s(bs.a.y), r4s(bs.b.x), r4s(bs.b.y), st, bs.group});
             note(bs.sheet, st);
         }
         for (const auto& bs : a.buses) {
             auto f = in_new.find(seg_key(a, bs.sheet, bs.a, bs.b));
             if ((f != in_new.end() && f->second-- > 0) || old_sheet[bs.sheet] < 0) continue;
-            out[old_sheet[bs.sheet]].buses.push_back({r4s(bs.a.x), r4s(bs.a.y), r4s(bs.b.x), r4s(bs.b.y), kRemoved});
+            out[old_sheet[bs.sheet]].buses.push_back({r4s(bs.a.x), r4s(bs.a.y), r4s(bs.b.x), r4s(bs.b.y), kRemoved, -1});
             note(old_sheet[bs.sheet], kRemoved);
         }
         for (const auto& e : b.bus_entries)
@@ -428,19 +428,20 @@ nlohmann::json schematic_view_json(const Schematic& a, const Schematic& b, const
     }
 
     // Labels and sheet pins.
-    auto label_json = [&](const SchLabel& l, int st, int net) {
-        return json::array({static_cast<int>(l.kind), l.text, r4s(l.at.x), r4s(l.at.y), l.angle, r4s(l.size), l.shape, st, net});
+    auto label_json = [&](const SchLabel& l, int st, int net, int group) {
+        return json::array({static_cast<int>(l.kind), l.text, r4s(l.at.x), r4s(l.at.y), l.angle, r4s(l.size), l.shape, st, net,
+                            group});
     };
     for (size_t i = 0; i < b.labels.size(); ++i) {
         const auto& l = b.labels[i];
         int st = d.labels_new[i] == SchStatus::Added ? kAdded : kSame;
-        out[l.sheet].labels.push_back(label_json(l, st, l.net >= 0 ? net_new[l.net] : -1));
+        out[l.sheet].labels.push_back(label_json(l, st, l.net >= 0 ? net_new[l.net] : -1, l.group));
         note(l.sheet, st);
     }
     for (size_t i = 0; i < a.labels.size(); ++i) {
         const auto& l = a.labels[i];
         if (d.labels_old[i] != SchStatus::Removed || old_sheet[l.sheet] < 0) continue;
-        out[old_sheet[l.sheet]].labels.push_back(label_json(l, kRemoved, l.net >= 0 ? net_old[l.net] : -1));
+        out[old_sheet[l.sheet]].labels.push_back(label_json(l, kRemoved, l.net >= 0 ? net_old[l.net] : -1, -1));
         note(old_sheet[l.sheet], kRemoved);
     }
 
@@ -570,7 +571,14 @@ nlohmann::json schematic_view_json(const Schematic& a, const Schematic& b, const
                          {"pins", pins},
                          {"moved", p.moved}});
     }
-    return {{"sheets", sheets}, {"defs", defs}, {"nets", nets}, {"parts", parts}};
+    // Buses of the new revision: their names and members (net = net diff index).
+    json bus_groups = json::array();
+    for (const auto& g : b.bus_groups) {
+        json members = json::array();
+        for (const auto& [full, net] : g.members) members.push_back({full, net >= 0 ? net_new[net] : -1});
+        bus_groups.push_back({{"names", g.names}, {"members", members}});
+    }
+    return {{"sheets", sheets}, {"defs", defs}, {"nets", nets}, {"parts", parts}, {"busGroups", bus_groups}};
 }
 
 std::string render_html(const nlohmann::json& data) {

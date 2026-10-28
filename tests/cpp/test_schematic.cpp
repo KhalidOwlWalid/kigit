@@ -155,6 +155,27 @@ TEST_CASE("buses across the hierarchy: same as KiCad") {
     CHECK(bus_labels == 6); // 2 labels + 2 sheet pins + 2 hierarchical labels
 }
 
+TEST_CASE("buses are grouped, with their members' nets") {
+    Schematic s = load_schematic("bus.kicad_sch", folder_reader(fixture("bus")));
+    for (const auto& b : s.buses) {
+        REQUIRE(b.group >= 0);
+        CHECK(s.bus_groups[b.group].sheet == b.sheet);
+    }
+    for (const auto& l : s.labels)
+        if (l.bus) CHECK(l.group >= 0);
+    // Find the bus carrying MAIN{GRP} on the parent: members MAIN.SIG and MAIN.AUX.
+    const SchBusGroup* main = nullptr;
+    for (const auto& g : s.bus_groups)
+        for (const auto& n : g.names)
+            if (n == "MAIN{GRP}" && s.sheets[g.sheet].parent < 0) main = &g;
+    REQUIRE(main != nullptr);
+    std::map<std::string, std::string> members;
+    for (const auto& [full, net] : main->members) members[full] = net >= 0 ? s.nets[net].name : "";
+    REQUIRE(members.count("MAIN.SIG") == 1);
+    CHECK(members["MAIN.SIG"] == "/MAIN.SIG");
+    CHECK(members.count("MAIN.AUX") == 1);
+}
+
 TEST_CASE("missing sub-sheet file is a warning, not a failure") {
     FileReader dir = folder_reader(fixture("hier"));
     Schematic s = load_schematic("hier.kicad_sch", [&](const std::string& rel) -> std::optional<std::string> {
