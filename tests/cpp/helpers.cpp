@@ -1,14 +1,12 @@
 #include "helpers.hpp"
 
+#include "platform.hpp"
+
 #include <doctest/doctest.h>
 
-#include <array>
-#include <cstdio>
-#include <cstdlib>
 #include <fstream>
 #include <random>
 #include <sstream>
-#include <sys/wait.h>
 
 namespace kigit::test {
 
@@ -46,23 +44,16 @@ TempDir::~TempDir() {
     fs::remove_all(path_, ec);
 }
 
-std::string quote(const std::string& s) {
-    std::string out = "'";
-    for (char c : s) out += c == '\'' ? std::string("'\\''") : std::string(1, c);
-    return out + "'";
-}
+std::string quote(const std::string& s) { return platform::quote(s); }
 
 RunResult run(const std::string& command) {
+    // stderr into a file, which works the same in sh and cmd.exe.
     TempDir tmp;
     fs::path err_file = tmp / "stderr";
+    platform::CommandResult c = platform::run_shell(command + " 2>" + quote(err_file.string()), true);
     RunResult r;
-    FILE* p = popen((command + " 2>" + quote(err_file.string())).c_str(), "r");
-    REQUIRE(p != nullptr);
-    std::array<char, 1 << 16> buf;
-    size_t n;
-    while ((n = std::fread(buf.data(), 1, buf.size(), p)) > 0) r.out.append(buf.data(), n);
-    int status = pclose(p);
-    r.code = WIFEXITED(status) ? WEXITSTATUS(status) : -1;
+    r.code = c.code;
+    r.out = c.out;
     std::error_code ec;
     if (fs::exists(err_file, ec)) r.err = read_text(err_file);
     return r;
@@ -71,8 +62,53 @@ RunResult run(const std::string& command) {
 RunResult run_kigit(const std::string& args) { return run(quote(KIGIT_BIN) + " " + args); }
 
 void make_fixture_repo(const fs::path& dest) {
-    RunResult r = run("sh " + quote(KIGIT_MAKE_REPO) + " " + quote(dest.string()));
-    REQUIRE_MESSAGE(r.code == 0, "make_fixture_repo.sh failed: " << r.err);
+    // The demo project's history (fixed dates, so date filters are testable):
+    //   2025-01-10  v1: first board        hw/demo.kicad_{pro,pcb,sch} (v1)
+    //   2025-02-01  docs only              README.md
+    //   2025-03-01  v2: board changes      hw/ -> v2 files
+    //   2025-04-01  move project folder    hw/ -> board/
+    // gui/tests/fixture_repo.py builds the same history for the GUI tests.
+    auto git = [&](std::vector<std::string> args) {
+        args.insert(args.begin(), {"git", "-C", dest.string()});
+        platform::RunResult r = platform::run(args, true);
+        REQUIRE_MESSAGE(r.ok, "git " << args[3] << " failed: " << r.err);
+    };
+    auto commit = [&](const std::string& date, const std::string& message) {
+        platform::set_env("GIT_AUTHOR_DATE", date + "T12:00:00");
+        platform::set_env("GIT_COMMITTER_DATE", date + "T12:00:00");
+        git({"commit", "-q", "-m", message});
+    };
+    auto copy = [&](const std::string& from, const std::string& to) {
+        fs::create_directories((dest / to).parent_path());
+        fs::copy_file(fixture(from), dest / to, fs::copy_options::overwrite_existing);
+    };
+
+    fs::remove_all(dest);
+    fs::create_directories(dest);
+    git({"init", "-q"});
+    git({"checkout", "-q", "-b", "main"});
+    git({"config", "user.email", "tests@kigit.invalid"});
+    git({"config", "user.name", "kigit tests"});
+    git({"config", "commit.gpgsign", "false"});
+    git({"config", "core.autocrlf", "false"}); // keep the files byte-identical on Windows
+
+    copy("demo.kicad_pro", "hw/demo.kicad_pro");
+    copy("v1/demo.kicad_pcb", "hw/demo.kicad_pcb");
+    copy("v1/demo.kicad_sch", "hw/demo.kicad_sch");
+    git({"add", "-A"});
+    commit("2025-01-10", "v1: first board");
+
+    write_text(dest / "README.md", "Demo project for the kigit tests.\n");
+    git({"add", "-A"});
+    commit("2025-02-01", "docs only");
+
+    copy("v2/demo.kicad_pcb", "hw/demo.kicad_pcb");
+    copy("v2/demo.kicad_sch", "hw/demo.kicad_sch");
+    git({"add", "-A"});
+    commit("2025-03-01", "v2: add C1, move R2, widen a track");
+
+    git({"mv", "hw", "board"});
+    commit("2025-04-01", "move project folder");
 }
 
 FileReader folder_reader(const fs::path& dir) {

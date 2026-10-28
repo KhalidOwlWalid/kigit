@@ -1,7 +1,7 @@
 """Drives the GUI with NiceGUI's simulated user (no browser needed).
 
-By default the tests use the demo project from tests/make_fixture_repo.sh
-(built in a temporary folder) and kigit from ../build, so just:
+By default the tests use the demo project (fixture_repo.py, built in a
+temporary folder) and kigit from ../build, so just:
     uv run pytest
 Or point them at your own project and binary:
     KIGIT_BIN=../build/kigit KIGIT_PROJECT=~/my/board uv run pytest
@@ -12,7 +12,6 @@ folder to check the 2-level search).
 import atexit
 import os
 import shutil
-import subprocess
 import tempfile
 from pathlib import Path
 
@@ -23,23 +22,24 @@ from nicegui.testing import User
 
 from kigit_gui import app
 
+from fixture_repo import make_fixture_repo
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 def _default_bin() -> str:
-    built = REPO_ROOT / "build" / "kigit"
-    return str(built) if built.exists() else ""
+    for name in ("kigit", "kigit.exe", "Release/kigit.exe", "Debug/kigit.exe"):
+        built = REPO_ROOT / "build" / name
+        if built.exists():
+            return str(built)
+    return ""
 
 
 def _fixture_project() -> str:
     """Builds the demo repo once per test run and returns its project folder."""
-    script = os.environ.get("KIGIT_MAKE_REPO", str(REPO_ROOT / "tests" / "make_fixture_repo.sh"))
-    if not Path(script).exists():
-        return ""
     tmp = Path(tempfile.mkdtemp(prefix="kigit-gui-test-"))
     atexit.register(shutil.rmtree, tmp, True)
-    subprocess.run(["sh", script, str(tmp / "repo")], check=True, capture_output=True)
-    return str(tmp / "repo" / "board")
+    return str(make_fixture_repo(tmp / "repo"))
 
 
 os.environ.setdefault("KIGIT_BIN", _default_bin())

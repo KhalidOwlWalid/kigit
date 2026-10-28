@@ -1,4 +1,4 @@
-// Integration tests on a throwaway git repo (tests/make_fixture_repo.sh).
+// Integration tests on a throwaway git repo (see make_fixture_repo in helpers.cpp).
 #include "git.hpp"
 #include "helpers.hpp"
 #include "locate.hpp"

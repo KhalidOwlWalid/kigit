@@ -5,6 +5,7 @@
 #include "html.hpp"
 #include "locate.hpp"
 #include "log.hpp"
+#include "platform.hpp"
 #include "netcheck.hpp"
 #include "sch_diff.hpp"
 #include "schematic.hpp"
@@ -24,7 +25,6 @@
 #include <set>
 #include <sstream>
 #include <tuple>
-#include <unistd.h>
 #include <string>
 #include <vector>
 
@@ -113,10 +113,8 @@ bool is_board_arg(const std::string& a) {
 }
 
 std::string expand_home(std::string p) {
-    if (p == "~" || p.starts_with("~/")) {
-        const char* home = std::getenv("HOME");
-        p = std::string(home ? home : "") + p.substr(1);
-    }
+    if (p == "~" || p.starts_with("~/") || p.starts_with("~\\"))
+        p = platform::home_dir().string() + p.substr(1);
     return p;
 }
 
@@ -149,7 +147,7 @@ bool is_board_file(const fs::directory_entry& e) {
 }
 
 void warn(const std::string& msg) {
-    bool color = isatty(2);
+    bool color = platform::stderr_supports_color();
     std::fprintf(stderr, "%swarning:%s %s\n", color ? "\033[1;33m" : "", color ? "\033[0m" : "", msg.c_str());
     spdlog::warn("{}", msg);
 }
@@ -518,34 +516,11 @@ void print_projects(const fs::path& dir, int depth) {
     std::printf("%s\n", out.dump().c_str());
 }
 
-// Path of this executable (so the GUI can call the same kigit back).
-fs::path self_path(const char* argv0) {
-    std::error_code ec;
-    fs::path p = fs::read_symlink("/proc/self/exe", ec);
-    if (!ec) return p;
-    return fs::absolute(argv0);
-}
-
-bool on_path(const std::string& prog) {
-    const char* path = std::getenv("PATH");
-    if (!path) return false;
-    std::string s = path;
-    size_t start = 0;
-    while (start <= s.size()) {
-        size_t end = s.find(':', start);
-        fs::path cand = fs::path(s.substr(start, end == std::string::npos ? std::string::npos : end - start)) / prog;
-        if (::access(cand.c_str(), X_OK) == 0) return true;
-        if (end == std::string::npos) break;
-        start = end + 1;
-    }
-    return false;
-}
-
 // `kigit gui [args]`: starts the NiceGUI app. It lives next to the binary:
 // <repo>/gui when run from the build folder, <prefix>/share/kigit/gui when
 // installed, or wherever KIGIT_GUI_DIR points.
 int run_gui(const char* argv0, int argc, char** argv) {
-    fs::path exe = self_path(argv0);
+    fs::path exe = platform::executable_path(argv0);
     std::vector<fs::path> candidates;
     if (const char* env = std::getenv("KIGIT_GUI_DIR")) candidates.emplace_back(env);
     candidates.push_back(exe.parent_path().parent_path() / "gui");
@@ -562,19 +537,15 @@ int run_gui(const char* argv0, int argc, char** argv) {
         std::cerr << "). Set KIGIT_GUI_DIR to the kigit/gui folder.\n";
         return 1;
     }
-    if (!on_path("uv")) {
+    std::optional<fs::path> uv = platform::find_program("uv");
+    if (!uv) {
         std::cerr << "kigit: the GUI needs uv (https://docs.astral.sh/uv/) to run its Python environment.\n";
         return 1;
     }
-    ::setenv("KIGIT_BIN", exe.c_str(), 1);
-    std::vector<std::string> args = {"uv", "run", "--quiet", "--project", gui.string(), "kigit-gui"};
+    platform::set_env("KIGIT_BIN", exe.string()); // so the GUI calls this same kigit
+    std::vector<std::string> args = {"run", "--quiet", "--project", gui.string(), "kigit-gui"};
     for (int i = 0; i < argc; ++i) args.emplace_back(argv[i]);
-    std::vector<char*> cargs;
-    for (auto& a : args) cargs.push_back(a.data());
-    cargs.push_back(nullptr);
-    ::execvp("uv", cargs.data());
-    std::perror("kigit: failed to start uv");
-    return 1;
+    return platform::run_program(*uv, args);
 }
 
 int run(int argc, char** argv) {
@@ -907,6 +878,7 @@ int run(int argc, char** argv) {
         if (json_out && output.empty()) out.replace_extension(".json");
         if (output == "-") {
             // For other programs (the GUI): just the data, nothing else on stdout.
+            platform::binary_stdout();
             std::fwrite(body.data(), 1, body.size(), stdout);
             spdlog::info("wrote {} bytes to stdout", body.size());
             return 0;
@@ -932,13 +904,10 @@ int run(int argc, char** argv) {
             std::printf("\n");
         }
         std::printf("%s\n", out.string().c_str());
-        if (!open && !quiet && !json_out) std::printf("open it with: xdg-open '%s'\n", out.string().c_str());
+        if (!open && !quiet && !json_out) std::printf("open it in a browser to view it\n");
 
-        if (open && !json_out) {
-            std::string cmd = "xdg-open '" + out.string() + "' >/dev/null 2>&1 &";
-            if (std::system(cmd.c_str()) != 0 && !quiet)
-                std::fprintf(stderr, "kigit: could not open a browser, open the file above\n");
-        }
+        if (open && !json_out && !platform::open_in_browser(out) && !quiet)
+            std::fprintf(stderr, "kigit: could not open a browser, open the file above\n");
     } catch (const std::exception& e) {
         std::cerr << "kigit: " << e.what() << "\n";
         spdlog::error("{}", e.what());

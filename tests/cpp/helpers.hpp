@@ -31,7 +31,7 @@ private:
     fs::path path_;
 };
 
-// Builds the demo git repo (tests/make_fixture_repo.sh) in `dest`.
+// Builds the demo git repo in `dest`.
 // Layout afterwards: dest/board/demo.kicad_{pro,pcb,sch}; see the script
 // for the commit history.
 void make_fixture_repo(const fs::path& dest);

@@ -70,6 +70,22 @@ GUI tests (simulated user, no browser):
 cd gui && KIGIT_BIN=../build/kigit KIGIT_PROJECT=~/path/to/board uv run pytest
 ```
 
+### Windows
+
+kigit builds on Windows with MSVC (Visual Studio 2022) or MinGW-w64 GCC 11+;
+CMake detects the platform and compiler. It needs `git` on PATH (Git for
+Windows), and `uv` for the GUI.
+
+```bat
+cmake -S . -B build
+cmake --build build --config Release
+ctest --test-dir build -C Release
+build\Release\kigit.exe gui
+```
+
+Every push is built and tested on Windows, Linux and macOS by GitHub Actions
+(`.github/workflows/ci.yml`).
+
 ## Usage
 
 Run it inside a KiCad project folder:
@@ -234,8 +250,8 @@ ctest -L gui                 # the GUI (needs uv)
 ```
 
 The tests don't need any of your projects: `tests/fixtures/` holds a tiny
-KiCad project in two versions, and `tests/make_fixture_repo.sh` builds a
-throwaway git repo from it (four commits, including a folder rename). The
+KiCad project in two versions, and the tests build a throwaway git repo from
+it (`make_fixture_repo` in `tests/cpp/helpers.cpp`, `gui/tests/fixture_repo.py`) (four commits, including a folder rename). The
 expected nets in the schematic tests are KiCad's own netlist for those files.
 
 - `tests/cpp/`: parser, board, PCB diff, schematic nets, schematic diff, git

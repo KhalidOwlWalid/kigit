@@ -97,7 +97,7 @@ TEST_CASE("track identity ignores direction; arcs have their real length") {
     arc.a = {0, 0};
     arc.mid = {1, 1};
     arc.b = {2, 0};
-    CHECK(arc.length() == doctest::Approx(M_PI)); // half circle, radius 1
+    CHECK(arc.length() == doctest::Approx(3.14159265358979)); // half circle, radius 1
 }
 
 TEST_CASE("KiCad 5: arcs given as centre + angle") {

@@ -147,13 +147,14 @@ TEST_CASE("errors: clear message, non-zero exit") {
     make_fixture_repo(tmp / "repo");
     std::string board = quote((tmp / "repo/board/demo.kicad_pcb").string());
 
-    RunResult bad_rev = run_kigit("-n -o /dev/null -C " + board + " nope..HEAD");
+    std::string out = quote((tmp / "out.html").string());
+    RunResult bad_rev = run_kigit("-n -o " + out + " -C " + board + " nope..HEAD");
     CHECK(bad_rev.code == 1);
     CHECK(bad_rev.err.find("unknown revision 'nope'") != std::string::npos);
 
     // (A copy outside any git repo; tests/fixtures itself is inside kigit's repo.)
     write_text(tmp / "loose/demo.kicad_pcb", read_text(fixture("v1/demo.kicad_pcb")));
-    RunResult no_repo = run_kigit("-n -o /dev/null -C " + quote((tmp / "loose").string()));
+    RunResult no_repo = run_kigit("-n -o " + out + " -C " + quote((tmp / "loose").string()));
     CHECK(no_repo.code == 1);
     CHECK(no_repo.err.find("not in a git repository") != std::string::npos);
 

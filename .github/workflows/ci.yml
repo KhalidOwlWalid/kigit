@@ -1,0 +1,33 @@
+# Builds kigit and runs every test on Windows, Linux and macOS, so the code
+# stays portable. (The KiCad comparison test is skipped: no KiCad on CI.)
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build-and-test:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: "Windows (MSVC)", os: windows-latest }
+          - { name: "Linux (GCC)", os: ubuntu-latest }
+          - { name: "macOS (Clang)", os: macos-latest }
+    steps:
+      - uses: actions/checkout@v4
+
+      # For the GUI tests (ctest -L gui).
+      - uses: astral-sh/setup-uv@v5
+
+      - name: Configure
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build --config Release --parallel
+
+      - name: Test
+        run: ctest --test-dir build -C Release --output-on-failure

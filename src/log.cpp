@@ -1,5 +1,7 @@
 #include "log.hpp"
 
+#include "platform.hpp"
+
 #include <spdlog/sinks/basic_file_sink.h>
 #include <spdlog/sinks/null_sink.h>
 #include <spdlog/sinks/stdout_sinks.h>
@@ -9,7 +11,6 @@
 #include <cstdlib>
 #include <ctime>
 #include <filesystem>
-#include <unistd.h>
 
 namespace fs = std::filesystem;
 
@@ -27,20 +28,17 @@ struct Silence {
 } silence;
 
 std::string session_file_name(const std::string& name) {
-    std::time_t now = std::time(nullptr);
+    std::tm now = platform::local_time(std::time(nullptr));
     char stamp[32];
-    std::strftime(stamp, sizeof stamp, "%Y-%m-%d_%H-%M-%S", std::localtime(&now));
-    return name + "_" + stamp + "_" + std::to_string(::getpid()) + ".log";
+    std::strftime(stamp, sizeof stamp, "%Y-%m-%d_%H-%M-%S", &now);
+    return name + "_" + stamp + "_" + std::to_string(platform::process_id()) + ".log";
 }
 
 } // namespace
 
 std::string default_dir() {
     if (const char* env = std::getenv("KIGIT_LOG_DIR"); env && *env) return env;
-    if (const char* state = std::getenv("XDG_STATE_HOME"); state && *state)
-        return (fs::path(state) / "kigit" / "log").string();
-    const char* home = std::getenv("HOME");
-    return (fs::path(home ? home : "/tmp") / ".local" / "state" / "kigit" / "log").string();
+    return (platform::state_dir() / "kigit" / "log").string();
 }
 
 std::string start(const Options& o, const std::string& name) {

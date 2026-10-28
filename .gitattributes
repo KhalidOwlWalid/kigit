@@ -1,0 +1,4 @@
+# Keep test fixtures byte-for-byte identical on every OS (no CRLF conversion).
+tests/fixtures/** -text
+# Shell scripts must keep LF line endings to run.
+*.sh text eol=lf

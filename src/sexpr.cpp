@@ -3,9 +3,31 @@
 #include <algorithm>
 #include <charconv>
 #include <cstdio>
+#include <locale>
+#include <sstream>
 #include <stdexcept>
 
 namespace kigit::sexpr {
+
+namespace {
+
+// A whole atom as a number. std::from_chars where the standard library has
+// it for floating point (GCC, MSVC); a locale-independent stream otherwise
+// (Apple's libc++ only gained it recently).
+bool parse_number(std::string_view s, double& v) {
+    if (s.empty()) return false;
+#if defined(__cpp_lib_to_chars) && __cpp_lib_to_chars >= 201611L
+    auto [ptr, ec] = std::from_chars(s.data(), s.data() + s.size(), v);
+    return ec == std::errc{} && ptr == s.data() + s.size();
+#else
+    std::istringstream in{std::string(s)};
+    in.imbue(std::locale::classic());
+    in >> v;
+    return !in.fail() && in.peek() == std::char_traits<char>::eof();
+#endif
+}
+
+} // namespace
 
 std::string_view Node::name() const {
     if (!is_list || children.empty() || children[0].is_list) return {};
@@ -31,8 +53,7 @@ double Node::num(size_t i, double fallback) const {
     std::string_view s = arg(i);
     if (s.empty()) return fallback;
     double v = fallback;
-    auto [ptr, ec] = std::from_chars(s.data(), s.data() + s.size(), v);
-    return (ec == std::errc{} && ptr == s.data() + s.size()) ? v : fallback;
+    return parse_number(s, v) ? v : fallback;
 }
 
 namespace {
@@ -138,8 +159,7 @@ namespace {
 void write_canonical(const Node& n, const std::vector<std::string_view>& skip, std::string& out) {
     if (!n.is_list) {
         double v;
-        auto [ptr, ec] = std::from_chars(n.atom.data(), n.atom.data() + n.atom.size(), v);
-        if (!n.quoted && ec == std::errc{} && ptr == n.atom.data() + n.atom.size()) {
+        if (!n.quoted && parse_number(n.atom, v)) {
             char buf[32];
             int len = std::snprintf(buf, sizeof buf, "%.6f", v);
             std::string num(buf, len);

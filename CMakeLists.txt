@@ -1,6 +1,13 @@
 cmake_minimum_required(VERSION 3.16)
 project(kigit VERSION 0.1.0 LANGUAGES CXX)
 
+# Linux, macOS and Windows (MSVC or MinGW) are all supported; everything
+# OS-specific in the code is in src/platform.cpp.
+message(STATUS "kigit: building for ${CMAKE_SYSTEM_NAME} with ${CMAKE_CXX_COMPILER_ID} ${CMAKE_CXX_COMPILER_VERSION}")
+if(NOT (WIN32 OR APPLE OR UNIX))
+  message(WARNING "kigit: ${CMAKE_SYSTEM_NAME} isn't a tested platform")
+endif()
+
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
@@ -39,6 +46,11 @@ foreach(part PCB SCH SHELL)
   file(READ ${VIEWER_DIR}/${name}.js script)
   string(REPLACE "/*@KIGIT_${part}_JS@*/" "${script}" KIGIT_VIEWER_HTML "${KIGIT_VIEWER_HTML}")
 endforeach()
+# As a byte array (portable to every compiler; see viewer_template.hpp.in).
+file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/generated/viewer.html "${KIGIT_VIEWER_HTML}")
+file(READ ${CMAKE_CURRENT_BINARY_DIR}/generated/viewer.html viewer_hex HEX)
+string(REGEX REPLACE "(................................................................)" "\\1\n" viewer_hex "${viewer_hex}")
+string(REGEX REPLACE "([0-9a-f][0-9a-f])" "0x\\1," KIGIT_VIEWER_BYTES "${viewer_hex}")
 configure_file(src/viewer_template.hpp.in
                ${CMAKE_CURRENT_BINARY_DIR}/generated/viewer_template.hpp @ONLY)
 
@@ -54,6 +66,7 @@ add_library(kigit_core STATIC
   src/sch_diff.cpp
   src/netcheck.cpp
   src/log.cpp
+  src/platform.cpp
 )
 target_include_directories(kigit_core PUBLIC src ${CMAKE_CURRENT_BINARY_DIR}/generated)
 target_compile_definitions(kigit_core PUBLIC KIGIT_VERSION="${PROJECT_VERSION}")
@@ -62,9 +75,24 @@ target_link_libraries(kigit_core PUBLIC nlohmann_json::nlohmann_json spdlog::spd
 add_executable(kigit src/main.cpp)
 target_link_libraries(kigit PRIVATE kigit_core)
 
-if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+# Per-OS / per-compiler settings.
+if(WIN32)
+  # Plain C library calls without MSVC's "use the _s version" warnings; keep
+  # <windows.h> from defining min/max macros.
+  target_compile_definitions(kigit_core PUBLIC _CRT_SECURE_NO_WARNINGS NOMINMAX WIN32_LEAN_AND_MEAN)
+endif()
+if(MSVC)
+  # /utf-8: the sources contain UTF-8 text (arrows, dots in messages).
+  # /Zc:__cplusplus: report the real C++ standard. /EHsc: C++ exceptions.
+  target_compile_options(kigit_core PUBLIC /utf-8 /permissive- /Zc:__cplusplus /EHsc /W3 /bigobj)
+  target_compile_options(kigit PRIVATE /W3)
+elseif(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
   target_compile_options(kigit_core PRIVATE -Wall -Wextra -Wpedantic)
   target_compile_options(kigit PRIVATE -Wall -Wextra -Wpedantic)
+endif()
+if(MINGW)
+  # A kigit.exe that runs without MinGW's DLLs next to it.
+  target_link_options(kigit PRIVATE -static)
 endif()
 
 option(KIGIT_BUILD_TESTS "Build the test suite (ctest)" ON)

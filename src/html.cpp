@@ -523,7 +523,7 @@ std::string render_html(const nlohmann::json& data) {
         else safe += payload[i];
     }
 
-    std::string page = kViewerTemplate;
+    std::string page(viewer_template());
     const std::string marker = "/*KIGIT_DATA*/null";
     size_t at = page.find(marker);
     if (at == std::string::npos) throw std::runtime_error("viewer template has no data marker");

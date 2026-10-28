@@ -24,7 +24,6 @@ add_executable(kigit_tests
 target_link_libraries(kigit_tests PRIVATE kigit_core doctest::doctest)
 target_compile_definitions(kigit_tests PRIVATE
   KIGIT_FIXTURES="${CMAKE_CURRENT_SOURCE_DIR}/fixtures"
-  KIGIT_MAKE_REPO="${CMAKE_CURRENT_SOURCE_DIR}/make_fixture_repo.sh"
   KIGIT_BIN="$<TARGET_FILE:kigit>")
 add_dependencies(kigit_tests kigit) # the CLI tests run the real binary
 
@@ -39,10 +38,13 @@ if(UV_EXECUTABLE)
     COMMAND ${UV_EXECUTABLE} run --quiet --project ${PROJECT_SOURCE_DIR}/gui pytest -q -p no:warnings
     WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}/gui)
   set_tests_properties(gui PROPERTIES LABELS gui
-    ENVIRONMENT "KIGIT_BIN=$<TARGET_FILE:kigit>;KIGIT_MAKE_REPO=${CMAKE_CURRENT_SOURCE_DIR}/make_fixture_repo.sh")
+    ENVIRONMENT "KIGIT_BIN=$<TARGET_FILE:kigit>")
 endif()
 
 # Optional: check kigit's schematic nets against kicad-cli on real projects.
 # Skipped (exit 77) unless KIGIT_REGRESSION_PROJECTS is set; see regression.sh.
-add_test(NAME regression COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/regression.sh $<TARGET_FILE:kigit>)
-set_tests_properties(regression PROPERTIES LABELS regression SKIP_RETURN_CODE 77)
+# (A shell script, so Linux/macOS only.)
+if(UNIX)
+  add_test(NAME regression COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/regression.sh $<TARGET_FILE:kigit>)
+  set_tests_properties(regression PROPERTIES LABELS regression SKIP_RETURN_CODE 77)
+endif()

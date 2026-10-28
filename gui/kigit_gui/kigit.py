@@ -7,6 +7,7 @@ import json
 import os
 import re
 import shutil
+import subprocess
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -40,17 +41,19 @@ async def _run(*args: str) -> tuple[bytes, str]:
     session_log = os.environ.get(logs.SESSION_FILE_ENV)
     extra = ["--log-file", session_log, "--log-stderr"] if session_log else ["--no-log"]
     started = time.monotonic()
-    proc = await asyncio.create_subprocess_exec(
-        kigit_binary(), *args, *extra, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
-    )
-    out, err = await proc.communicate()
+    # subprocess in a worker thread: works the same on Windows, Linux and
+    # macOS (asyncio's own subprocess support depends on the event loop type).
+    cmd = [kigit_binary(), *args, *extra]
+    no_window = getattr(subprocess, "CREATE_NO_WINDOW", 0)  # no console flash on Windows
+    proc = await asyncio.to_thread(subprocess.run, cmd, capture_output=True, creationflags=no_window)
+    out, err = proc.stdout, proc.stderr
     lines = err.decode(errors="replace").splitlines()
     logs.echo_kigit_lines([l for l in lines if _LOG_LINE.match(l)])
     text = "\n".join(l for l in lines if not _LOG_LINE.match(l)).strip()
     logs.log.debug("kigit %s -> exit %d in %.2f s", " ".join(args), proc.returncode, time.monotonic() - started)
     if proc.returncode != 0:
         message = text.removeprefix("kigit: ") or f"kigit exited with {proc.returncode}"
-        logs.log.error("kigit %s failed: %s", " ".join(args), message)
+        logs.log.warning("kigit %s failed: %s", " ".join(args), message)  # a user-facing problem, not a GUI error
         raise KigitError(message)
     return out, text
 

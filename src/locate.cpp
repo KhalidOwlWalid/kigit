@@ -86,7 +86,7 @@ std::vector<std::string> list_boards(const std::string& root, const git::Revisio
             continue;
         }
         if (it->is_regular_file() && is_board_name(it->path().filename().string()))
-            out.push_back(fs::relative(it->path(), root).string());
+            out.push_back(fs::relative(it->path(), root).generic_string()); // git-style "a/b", also on Windows
     }
     std::sort(out.begin(), out.end());
     return out;

@@ -23,7 +23,7 @@ from pathlib import Path
 
 from nicegui import app, ui
 
-from . import kigit
+from . import kigit, logs
 from .folder_picker import FolderPicker
 
 LOCAL = "LOCAL"
@@ -194,6 +194,7 @@ def build(start_folder: str):
             show_message("error_outline", f"{folder} isn't a folder.", tone="text-red-400")
             ui.notify(f"{folder} isn't a folder", type="negative")
             return
+        logs.log.info("open folder %s", folder)
         status.text = "Looking for a KiCad project..."
         try:
             found = await kigit.projects(folder, SEARCH_DEPTH)
@@ -284,6 +285,7 @@ def build(start_folder: str):
             status.text = ""
             show_message("error_outline", "Couldn't read the history.", tone="text-red-400")
             return
+        logs.log.info("loaded %s: %d of %d commits listed", project.board, len(h.commits), h.total)
         state["board"], state["history"], state["name"] = project.board, h, project.name
         folder_input.value = project.dir
         project_label.text = project.name
@@ -377,6 +379,7 @@ def build(start_folder: str):
         # a branch can move, and LOCAL changes as you edit, so re-diff those.
         cacheable = all(len(r) == 40 and all(c in "0123456789abcdef" for c in r) for r in (a, b))
         button.props("loading")
+        logs.log.info("compare %s .. %s", a, b)
         status.text = "Comparing..."
         started = time.monotonic()
         try:
@@ -412,8 +415,13 @@ def main() -> None:
     parser.add_argument("project", nargs="?", default=".", help="KiCad project folder (default: current folder)")
     parser.add_argument("--port", type=int, default=8765, help="local port (default 8765)")
     parser.add_argument("--no-browser", action="store_true", help="don't open a browser window")
+    parser.add_argument("--log-dir", help="folder for the session log (default: $KIGIT_LOG_DIR, else the app data folder)")
+    parser.add_argument("--no-log", action="store_true", help="don't write a session log file")
+    parser.add_argument("-V", "--verbose", action="store_true", help="include debug lines in the log")
     args = parser.parse_args()
     os.environ["KIGIT_PROJECT"] = str(Path(args.project).expanduser().resolve())
+    log_file = logs.start(args.log_dir, enabled=not args.no_log, debug=args.verbose)
+    logs.log.info("session start: kigit gui | project %s | log %s", os.environ["KIGIT_PROJECT"], log_file or "(none)")
     ui.run(title="kigit", port=args.port, show=not args.no_browser, reload=False, dark=True,
            favicon="🦉", show_welcome_message=False)
 
