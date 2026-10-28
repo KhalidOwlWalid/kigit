@@ -1,4 +1,12 @@
-cmake_minimum_required(VERSION 3.16)
+# 3.16 or newer; the "...3.31" opts into newer CMake's behaviour where it's
+# available (e.g. CMP0135: downloaded files get the extraction time).
+cmake_minimum_required(VERSION 3.16...3.31)
+
+# Downloaded dependencies (doctest) still declare CMake < 3.5, which CMake 4
+# refuses. Treat them as 3.5. (Ignored by CMake older than 4.)
+if(NOT DEFINED CMAKE_POLICY_VERSION_MINIMUM)
+  set(CMAKE_POLICY_VERSION_MINIMUM 3.5 CACHE STRING "Minimum CMake policy version for dependencies")
+endif()
 project(kigit VERSION 0.1.0 LANGUAGES CXX)
 
 # Linux, macOS and Windows (MSVC or MinGW) are all supported; everything
