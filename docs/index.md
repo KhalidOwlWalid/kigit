@@ -1,8 +1,3 @@
----
-title: kigit
-permalink: /
----
-
 # kigit
 
 <!-- Mock-up: placeholder sections, nothing written yet. -->

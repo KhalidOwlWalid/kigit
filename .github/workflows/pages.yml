@@ -1,12 +1,12 @@
-# Builds the site in docs/ with Jekyll and publishes it to GitHub Pages
-# (https://khalidowlwalid.github.io/kigit/). Runs when docs/ changes on main,
-# or by hand from the Actions tab.
+# Builds the site in docs/ with MkDocs and publishes it to GitHub Pages
+# (https://khalidowlwalid.github.io/kigit/). Runs when the site changes on
+# main, or by hand from the Actions tab.
 name: Pages
 
 on:
   push:
     branches: [main]
-    paths: ["docs/**", ".github/workflows/pages.yml"]
+    paths: ["docs/**", "mkdocs.yml", ".github/workflows/pages.yml"]
   workflow_dispatch:
 
 permissions:
@@ -24,12 +24,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4 # no submodules needed for the site
+      - uses: astral-sh/setup-uv@v5
       - uses: actions/configure-pages@v5
-      - uses: actions/jekyll-build-pages@v1
-        with:
-          source: ./docs
-          destination: ./_site
+      # --strict: broken links and missing pages fail the build.
+      - run: uvx --with-requirements docs/requirements.txt mkdocs build --strict
       - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
 
   deploy:
     needs: build

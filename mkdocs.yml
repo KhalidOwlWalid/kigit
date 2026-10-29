@@ -1,0 +1,34 @@
+# The kigit website (https://khalidowlwalid.github.io/kigit/), built from docs/
+# by .github/workflows/pages.yml. Preview locally:
+#   uvx --with-requirements docs/requirements.txt mkdocs serve
+site_name: kigit
+site_description: Visual diffs of KiCad boards and schematics between git revisions.
+site_url: https://khalidowlwalid.github.io/kigit/
+repo_url: https://github.com/KhalidOwlWalid/kigit
+repo_name: KhalidOwlWalid/kigit
+edit_uri: edit/main/docs/
+
+# Build tools, not a page.
+exclude_docs: |
+  requirements.txt
+
+theme:
+  name: material
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      toggle: { icon: material/brightness-7, name: Dark mode }
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      toggle: { icon: material/brightness-4, name: Light mode }
+  features:
+    - navigation.instant
+    - content.code.copy
+
+markdown_extensions:
+  - admonition
+  - pymdownx.superfences
+  - pymdownx.tabbed: { alternate_style: true }
+
+nav:
+  - Home: index.md

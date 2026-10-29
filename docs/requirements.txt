@@ -1,0 +1,4 @@
+# The site's build tools. Local preview: uvx --with-requirements docs/requirements.txt mkdocs serve
+mkdocs-material==9.7.7
+# MkDocs 2.0 breaks Material (no plugins, new theming); stay on 1.x.
+mkdocs>=1.6,<2
