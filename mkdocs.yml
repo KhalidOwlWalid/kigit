@@ -1,34 +1,83 @@
-# The kigit website (https://khalidowlwalid.github.io/kigit/), built from docs/
-# by .github/workflows/pages.yml. Preview locally:
-#   uvx --with-requirements docs/requirements.txt mkdocs serve
 site_name: kigit
-site_description: Visual diffs of KiCad boards and schematics between git revisions.
+site_description: Visual diff of KiCad boards and schematics between git revisions
+site_author: KhalidOwlWalid
 site_url: https://khalidowlwalid.github.io/kigit/
-repo_url: https://github.com/KhalidOwlWalid/kigit
 repo_name: KhalidOwlWalid/kigit
-edit_uri: edit/main/docs/
-
-# Build tools, not a page.
-exclude_docs: |
-  requirements.txt
+repo_url: https://github.com/KhalidOwlWalid/kigit
 
 theme:
   name: material
   palette:
-    - media: "(prefers-color-scheme: light)"
-      scheme: default
-      toggle: { icon: material/brightness-7, name: Dark mode }
-    - media: "(prefers-color-scheme: dark)"
-      scheme: slate
-      toggle: { icon: material/brightness-4, name: Light mode }
+    - scheme: slate
+      primary: deep purple
+      accent: cyan
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+    - scheme: default
+      primary: deep purple
+      accent: cyan
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+  font:
+    text: Roboto
+    code: Roboto Mono
   features:
-    - navigation.instant
+    - navigation.tabs
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - search.highlight
+    - search.suggest
     - content.code.copy
-
-markdown_extensions:
-  - admonition
-  - pymdownx.superfences
-  - pymdownx.tabbed: { alternate_style: true }
+    - content.code.annotate
+  icon:
+    repo: fontawesome/brands/github
 
 nav:
   - Home: index.md
+  - Getting Started:
+    - Introduction: introduction.md
+    - Installation: installation.md
+  - How to Use:
+    - Overview: how-to-use/overview.md
+    - GUI: how-to-use/gui.md
+    - Command Line: how-to-use/command-line.md
+    - PCB Viewer: how-to-use/pcb-viewer.md
+    - Schematic Viewer: how-to-use/schematic-viewer.md
+    - Source Panel: how-to-use/source-panel.md
+  - Examples:
+    - Compare Two Commits: examples/compare-two-commits.md
+    - Moved or Renamed Boards: examples/moved-board.md
+    - Without Git: examples/without-git.md
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.tabbed:
+      alternate_style: true
+  - attr_list
+  - md_in_html
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - tables
+  - toc:
+      permalink: true
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/KhalidOwlWalid/kigit
