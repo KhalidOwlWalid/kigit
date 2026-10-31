@@ -13,11 +13,7 @@ Have a look at the demo below to get a feel for it.
 
 ## Demonstration
 
-<video autoplay loop muted controls width="100%">
-  <source src="https://github.com/user-attachments/assets/a7a2acdf-94fa-4d13-9619-224367c1c7df" type="video/mp4">
-</video>
-
-![Example](https://github.com/user-attachments/assets/a7a2acdf-94fa-4d13-9619-224367c1c7df)
+https://github.com/user-attachments/assets/f906914c-ffff-49df-a43d-28ec8a625058
 
 ---
 
