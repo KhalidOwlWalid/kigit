@@ -2,50 +2,54 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
     <url>
          <loc>https://khalidowlwalid.github.io/kigit/</loc>
-         <lastmod>2026-10-29</lastmod>
+         <lastmod>2026-10-31</lastmod>
+    </url>
+    <url>
+         <loc>https://khalidowlwalid.github.io/kigit/architecture/</loc>
+         <lastmod>2026-10-31</lastmod>
     </url>
     <url>
          <loc>https://khalidowlwalid.github.io/kigit/installation/</loc>
-         <lastmod>2026-10-29</lastmod>
+         <lastmod>2026-10-31</lastmod>
     </url>
     <url>
          <loc>https://khalidowlwalid.github.io/kigit/introduction/</loc>
-         <lastmod>2026-10-29</lastmod>
+         <lastmod>2026-10-31</lastmod>
     </url>
     <url>
          <loc>https://khalidowlwalid.github.io/kigit/examples/compare-two-commits/</loc>
-         <lastmod>2026-10-29</lastmod>
+         <lastmod>2026-10-31</lastmod>
     </url>
     <url>
          <loc>https://khalidowlwalid.github.io/kigit/examples/moved-board/</loc>
-         <lastmod>2026-10-29</lastmod>
+         <lastmod>2026-10-31</lastmod>
     </url>
     <url>
          <loc>https://khalidowlwalid.github.io/kigit/examples/without-git/</loc>
-         <lastmod>2026-10-29</lastmod>
+         <lastmod>2026-10-31</lastmod>
     </url>
     <url>
          <loc>https://khalidowlwalid.github.io/kigit/how-to-use/command-line/</loc>
-         <lastmod>2026-10-29</lastmod>
+         <lastmod>2026-10-31</lastmod>
     </url>
     <url>
          <loc>https://khalidowlwalid.github.io/kigit/how-to-use/gui/</loc>
-         <lastmod>2026-10-29</lastmod>
-    </url>
-    <url>
-         <loc>https://khalidowlwalid.github.io/kigit/how-to-use/overview/</loc>
-         <lastmod>2026-10-29</lastmod>
+         <lastmod>2026-10-31</lastmod>
     </url>
     <url>
          <loc>https://khalidowlwalid.github.io/kigit/how-to-use/pcb-viewer/</loc>
-         <lastmod>2026-10-29</lastmod>
+         <lastmod>2026-10-31</lastmod>
     </url>
     <url>
          <loc>https://khalidowlwalid.github.io/kigit/how-to-use/schematic-viewer/</loc>
-         <lastmod>2026-10-29</lastmod>
+         <lastmod>2026-10-31</lastmod>
     </url>
     <url>
          <loc>https://khalidowlwalid.github.io/kigit/how-to-use/source-panel/</loc>
-         <lastmod>2026-10-29</lastmod>
+         <lastmod>2026-10-31</lastmod>
+    </url>
+    <url>
+         <loc>https://khalidowlwalid.github.io/kigit/how-to-use/ui-overview/</loc>
+         <lastmod>2026-10-31</lastmod>
     </url>
 </urlset>

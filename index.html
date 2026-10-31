@@ -50,6 +50,8 @@
       
     
     
+      <link rel="stylesheet" href="stylesheets/diff.css">
+    
     <script>__md_scope=new URL(".",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
     
       
@@ -258,7 +260,7 @@
     
     
       <li class="md-tabs__item">
-        <a href="how-to-use/overview/" class="md-tabs__link">
+        <a href="how-to-use/overview.md" class="md-tabs__link">
           
   
   How to Use
@@ -385,6 +387,15 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#demonstration" class="md-nav__link">
+    <span class="md-ellipsis">
+      Demonstration
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#what-you-get" class="md-nav__link">
     <span class="md-ellipsis">
       What you get
@@ -394,9 +405,9 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#demonstration" class="md-nav__link">
+  <a href="#what-kigit-is-not" class="md-nav__link">
     <span class="md-ellipsis">
-      Demonstration
+      What kigit is not
     </span>
   </a>
   
@@ -503,6 +514,27 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="architecture/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Architecture
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -559,7 +591,7 @@
   
   
     <li class="md-nav__item">
-      <a href="how-to-use/overview/" class="md-nav__link">
+      <a href="how-to-use/overview.md" class="md-nav__link">
         
   
   <span class="md-ellipsis">
@@ -824,6 +856,15 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#demonstration" class="md-nav__link">
+    <span class="md-ellipsis">
+      Demonstration
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#what-you-get" class="md-nav__link">
     <span class="md-ellipsis">
       What you get
@@ -833,9 +874,9 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#demonstration" class="md-nav__link">
+  <a href="#what-kigit-is-not" class="md-nav__link">
     <span class="md-ellipsis">
-      Demonstration
+      What kigit is not
     </span>
   </a>
   
@@ -869,7 +910,21 @@
 
 
 <h1 id="kigit">kigit<a class="headerlink" href="#kigit" title="Permanent link">&para;</a></h1>
-<p><strong>kigit</strong> shows what changed in a KiCad project between two git revisions. It reads the <code>.kicad_pcb</code> and <code>.kicad_sch</code> files straight out of git, matches every track, via, pad, part, wire and label, and writes a single self-contained HTML page where you can hover a trace to see its whole net: what was added, what was removed, and what moved.</p>
+<p><strong>kigit</strong> utilizes the use of git logs in order to allow user to perform diffs between their pcb and schematic files. It provides a proper visual feedback which helps in identifying changes made per commit basis. Hence where its name came from, combination of Ki from KiCAD and git itself (kigit!). </p>
+<p>What it can do:</p>
+<ul>
+<li>Compare your PCB between any two commits, visually</li>
+<li>Show what changed on your symbols and their fields</li>
+<li>Show your buses and where they're routed</li>
+<li>Work without git too: just point it at two folders (see <a href="examples/without-git/">Without Git</a>)</li>
+</ul>
+<p>Have a look at the demo below to get a feel for it.</p>
+<h2 id="demonstration">Demonstration<a class="headerlink" href="#demonstration" title="Permanent link">&para;</a></h2>
+<video autoplay loop muted controls width="100%">
+  <source src="blobs/demo.mp4" type="video/mp4">
+</video>
+
+<hr />
 <h2 id="what-you-get">What you get<a class="headerlink" href="#what-you-get" title="Permanent link">&para;</a></h2>
 <div class="grid cards">
 <ul>
@@ -896,24 +951,28 @@
 </ul>
 </div>
 <hr />
-<h2 id="demonstration">Demonstration<a class="headerlink" href="#demonstration" title="Permanent link">&para;</a></h2>
-<!-- TODO: add a screen recording to docs/img/ and embed it here, e.g.
-<video autoplay loop muted controls width="100%">
-  <source src="img/vid/demo.mp4" type="video/mp4">
-</video>
--->
-
-<div class="admonition note">
-<p class="admonition-title">Note</p>
-<p>Screenshots and a demo video are coming.</p>
+<h2 id="what-kigit-is-not">What kigit is not<a class="headerlink" href="#what-kigit-is-not" title="Permanent link">&para;</a></h2>
+<p>kigit is an application that was built out of frustration of not having a kind of proper "git diff" for kicad for myself. Having came from a software background and being used to utilizing git versioning for all of my projects, not being able to do the same in a manner that I can compare my pcb and schematic visually between different commits without having to diff the .kicad_pcb and .kicad_sch files really frustates me. I am aware of the fact that there are other resources out there as shown below:</p>
+<ul>
+<li><a href="https://github.com/leoheck/kiri">KiRI</a></li>
+<li><a href="https://krishna-swaroop.github.io/KiCAD-Prism/get-started/what-is-prism/">KiCAD-Prism</a></li>
+<li><a href="https://kihub.dev/">KiHub</a></li>
+</ul>
+<p>They all have their pros and cons. KiRI is what got me excited about diffing schematics in the first place, and honestly, huge respect to the folks behind it. It's a great community effort, built well before AI was a thing.</p>
+<p>The other two I didn't even know existed when I started. Funnily enough, not even Claude mentioned them when I first went looking for alternatives.</p>
+<p>KiCAD-Prism and KiHub are in the same space and cover a lot of what kigit does. KiCAD-Prism is a whole package: free, open source, and the demos look amazing. But it needs a fair bit of Docker setup, which can be a turn-off if you're a hobbyist who just wants to design boards. KiHub needs a login, doesn't run offline, and is really aimed at teams collaborating (PR reviews and that kind of thing).</p>
+<p>Me? I'm a hobbyist who only recently got into PCB design and out of this frustration, I figured: why not just make my own PCB diff that does just enough for what I need? Nothing fancy. It runs locally, it's a simple download, and it works on Linux and Windows. (Sorry macOS folks, I'm broke and not about to buy a Mac just for this.)</p>
+<p>So, what kigit is <strong>not</strong> is a collaboration tool. It's for people who wants a simple app they can download, or open in a browser, to check what changed in their PCB designs. That's it.</p>
+<div class="admonition warning">
+<p class="admonition-title">Disclaimer</p>
+<p>When I say "I built it", it was mostly my best mate, Claude.</p>
 </div>
-<hr />
 <h2 id="quick-start">Quick start<a class="headerlink" href="#quick-start" title="Permanent link">&para;</a></h2>
 <div class="language-sh highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nb">cd</span><span class="w"> </span>path/to/my-board<span class="w">        </span><span class="c1"># a KiCad project in a git repository</span>
 </span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>kigit<span class="w"> </span>HEAD~1<span class="w">               </span><span class="c1"># the last commit vs your working tree</span>
 </span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>kigit<span class="w"> </span>gui<span class="w">                  </span><span class="c1"># or pick commits in the GUI</span>
 </span></code></pre></div>
-<p>See <a href="installation/">Installation</a> to get kigit, and <a href="how-to-use/overview/">Overview</a> for how it works.</p>
+<p>See <a href="installation/">Installation</a> to get kigit, and <a href="how-to-use/overview.md">Overview</a> for how it works.</p>
 
 
 

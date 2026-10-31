@@ -1,0 +1,43 @@
+/* Side-by-side file diffs in the docs, styled like the viewer's source panel
+   (resources/viewer.html, table.sd). Translucent colours so they work in
+   both the light and dark theme. */
+.kd {
+  --kd-del: rgba(255, 91, 111, .14);   --kd-del-ch: rgba(255, 91, 111, .38);
+  --kd-ins: rgba(61, 220, 138, .14);   --kd-ins-ch: rgba(61, 220, 138, .38);
+  --kd-removed: #e5485d;  --kd-added: #23b26d;  --kd-moved: #4f8fd6;
+  border: 1px solid var(--md-default-fg-color--lightest);
+  border-radius: 6px; overflow: hidden; margin: 1em 0;
+}
+.kd-head {
+  display: flex; justify-content: space-between; gap: 1em; flex-wrap: wrap;
+  padding: .4em .8em; font-size: .7rem;
+  background: var(--md-code-bg-color); border-bottom: 1px solid var(--md-default-fg-color--lightest);
+}
+.kd-head .where { font-family: var(--md-code-font-family); color: var(--md-default-fg-color--light); }
+.kd-badge { font-weight: 700; font-size: .6rem; letter-spacing: .04em; padding: .1em .45em; border-radius: 3px; color: #fff; }
+.kd-badge.changed { background: #c98a12; }
+.kd-badge.added { background: var(--kd-added); }
+.kd-badge.removed { background: var(--kd-removed); }
+.kd-badge.moved { background: var(--kd-moved); }
+.md-typeset table.kd-t:not([class*="highlight"]) {
+  display: table; width: 100%; margin: 0; border: 0; border-radius: 0;
+  table-layout: fixed; border-collapse: collapse;
+  font-family: var(--md-code-font-family); font-size: .68rem; line-height: 1.5;
+}
+.md-typeset table.kd-t col.ln { width: 4.5em; }
+.md-typeset table.kd-t td { padding: 0 .6em; border: 0; vertical-align: top; }
+.md-typeset table.kd-t td.ln { color: var(--md-default-fg-color--lighter); text-align: right; user-select: none; white-space: nowrap; }
+.md-typeset table.kd-t td.tx { white-space: pre-wrap; word-break: break-all; }
+.md-typeset table.kd-t td:nth-child(3) { border-left: 1px solid var(--md-default-fg-color--lightest); }
+.md-typeset table.kd-t td.del { background: var(--kd-del); }
+.md-typeset table.kd-t td.ins { background: var(--kd-ins); }
+.md-typeset table.kd-t td.ln.del { color: var(--kd-removed); }
+.md-typeset table.kd-t td.ln.ins { color: var(--kd-added); }
+.md-typeset table.kd-t td.del .ch { background: var(--kd-del-ch); border-radius: 2px; }
+.md-typeset table.kd-t td.ins .ch { background: var(--kd-ins-ch); border-radius: 2px; }
+.md-typeset table.kd-t td.fill {
+  background: repeating-linear-gradient(135deg, transparent 0 5px, var(--md-default-fg-color--lightest) 5px 6px);
+}
+.md-typeset table.kd-t tr:hover { background: none; }
+.kd-result { padding: .45em .8em; font-size: .7rem; border-top: 1px solid var(--md-default-fg-color--lightest); }
+.md-typeset table.kd-t td.fold { text-align: center; color: var(--md-default-fg-color--light); background: var(--md-code-bg-color); font-style: italic; }

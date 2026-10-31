@@ -1,0 +1,1750 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Visual diff of KiCad boards and schematics between git revisions">
+      
+      
+        <meta name="author" content="KhalidOwlWalid">
+      
+      
+        <link rel="canonical" href="https://khalidowlwalid.github.io/kigit/architecture/">
+      
+      
+        <link rel="prev" href="../installation/">
+      
+      
+        <link rel="next" href="../how-to-use/gui/">
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.5.46">
+    
+    
+      
+        <title>Architecture - kigit</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.6f8fc17f.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.06af60db.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../stylesheets/diff.css">
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="slate" data-md-color-primary="deep-purple" data-md-color-accent="cyan">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#architecture" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="kigit" class="md-header__button md-logo" aria-label="kigit" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            kigit
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Architecture
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="deep-purple" data-md-color-accent="cyan"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="deep-purple" data-md-color-accent="cyan"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      <label class="md-header__button md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+      </label>
+      <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/KhalidOwlWalid/kigit" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 496 512"><!--! Font Awesome Free 6.7.1 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2024 Fonticons, Inc.--><path d="M165.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M244.8 8C106.1 8 0 113.3 0 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C428.2 457.8 496 362.9 496 252 496 113.3 383.5 8 244.8 8M97.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    KhalidOwlWalid/kigit
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href=".." class="md-tabs__link">
+        
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../introduction/" class="md-tabs__link">
+          
+  
+  Getting Started
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../how-to-use/overview.md" class="md-tabs__link">
+          
+  
+  How to Use
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../examples/compare-two-commits/" class="md-tabs__link">
+          
+  
+  Examples
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="kigit" class="md-nav__button md-logo" aria-label="kigit" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    kigit
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/KhalidOwlWalid/kigit" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 496 512"><!--! Font Awesome Free 6.7.1 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2024 Fonticons, Inc.--><path d="M165.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M244.8 8C106.1 8 0 113.3 0 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C428.2 457.8 496 362.9 496 252 496 113.3 383.5 8 244.8 8M97.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    KhalidOwlWalid/kigit
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Home
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  <span class="md-ellipsis">
+    Getting Started
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            Getting Started
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../introduction/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Introduction
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../installation/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Installation
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  <span class="md-ellipsis">
+    Architecture
+  </span>
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  <span class="md-ellipsis">
+    Architecture
+  </span>
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#birds-eye-view" class="md-nav__link">
+    <span class="md-ellipsis">
+      Bird's-eye view
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-pipeline" class="md-nav__link">
+    <span class="md-ellipsis">
+      The pipeline
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="The pipeline">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#nodes" class="md-nav__link">
+    <span class="md-ellipsis">
+      Nodes
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#from-nodes-to-structs" class="md-nav__link">
+    <span class="md-ellipsis">
+      From nodes to structs
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#code-map" class="md-nav__link">
+    <span class="md-ellipsis">
+      Code map
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Code map">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#utils" class="md-nav__link">
+    <span class="md-ellipsis">
+      utils/
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#git" class="md-nav__link">
+    <span class="md-ellipsis">
+      git/
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#pcb" class="md-nav__link">
+    <span class="md-ellipsis">
+      pcb/
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#sch" class="md-nav__link">
+    <span class="md-ellipsis">
+      sch/
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#report" class="md-nav__link">
+    <span class="md-ellipsis">
+      report/
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#commands" class="md-nav__link">
+    <span class="md-ellipsis">
+      commands/
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#resources-the-viewer" class="md-nav__link">
+    <span class="md-ellipsis">
+      resources/ (the viewer)
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#gui" class="md-nav__link">
+    <span class="md-ellipsis">
+      gui/
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#rules-that-hold-everywhere" class="md-nav__link">
+    <span class="md-ellipsis">
+      Rules that hold everywhere
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#build-and-dependencies" class="md-nav__link">
+    <span class="md-ellipsis">
+      Build and dependencies
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#where-to-start" class="md-nav__link">
+    <span class="md-ellipsis">
+      Where to start
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  <span class="md-ellipsis">
+    How to Use
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            How to Use
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../how-to-use/overview.md" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Overview
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../how-to-use/gui/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    GUI
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../how-to-use/command-line/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Command Line
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../how-to-use/pcb-viewer/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    PCB Viewer
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../how-to-use/schematic-viewer/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Schematic Viewer
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../how-to-use/source-panel/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Source Panel
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  <span class="md-ellipsis">
+    Examples
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            Examples
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../examples/compare-two-commits/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Compare Two Commits
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../examples/moved-board/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Moved or Renamed Boards
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../examples/without-git/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Without Git
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#birds-eye-view" class="md-nav__link">
+    <span class="md-ellipsis">
+      Bird's-eye view
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-pipeline" class="md-nav__link">
+    <span class="md-ellipsis">
+      The pipeline
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="The pipeline">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#nodes" class="md-nav__link">
+    <span class="md-ellipsis">
+      Nodes
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#from-nodes-to-structs" class="md-nav__link">
+    <span class="md-ellipsis">
+      From nodes to structs
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#code-map" class="md-nav__link">
+    <span class="md-ellipsis">
+      Code map
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Code map">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#utils" class="md-nav__link">
+    <span class="md-ellipsis">
+      utils/
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#git" class="md-nav__link">
+    <span class="md-ellipsis">
+      git/
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#pcb" class="md-nav__link">
+    <span class="md-ellipsis">
+      pcb/
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#sch" class="md-nav__link">
+    <span class="md-ellipsis">
+      sch/
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#report" class="md-nav__link">
+    <span class="md-ellipsis">
+      report/
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#commands" class="md-nav__link">
+    <span class="md-ellipsis">
+      commands/
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#resources-the-viewer" class="md-nav__link">
+    <span class="md-ellipsis">
+      resources/ (the viewer)
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#gui" class="md-nav__link">
+    <span class="md-ellipsis">
+      gui/
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#rules-that-hold-everywhere" class="md-nav__link">
+    <span class="md-ellipsis">
+      Rules that hold everywhere
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#build-and-dependencies" class="md-nav__link">
+    <span class="md-ellipsis">
+      Build and dependencies
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#where-to-start" class="md-nav__link">
+    <span class="md-ellipsis">
+      Where to start
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+  
+  
+
+
+<h1 id="architecture">Architecture<a class="headerlink" href="#architecture" title="Permanent link">&para;</a></h1>
+<p>This page is for anyone who wants to read or change kigit's code. It explains how the pieces fit together and where to find things. It doesn't go into every function: for that, the headers in <code>include/</code> are short and commented.</p>
+<h2 id="birds-eye-view">Bird's-eye view<a class="headerlink" href="#birds-eye-view" title="Permanent link">&para;</a></h2>
+<p>kigit takes two versions of a KiCad project, works out what changed, and writes one HTML page that shows it.</p>
+<p>It's built from four parts:</p>
+<table>
+<thead>
+<tr>
+<th>Part</th>
+<th>Language</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Core</strong> (<code>kigit_core</code>)</td>
+<td>C++20</td>
+<td>Reads, parses, matches and diffs the files, and builds the data for the page</td>
+</tr>
+<tr>
+<td><strong>Command line</strong> (<code>kigit</code>)</td>
+<td>C++20</td>
+<td>Parses options, runs the core, prints the summary, writes the page</td>
+</tr>
+<tr>
+<td><strong>Viewer</strong> (<code>resources/</code>)</td>
+<td>HTML + JS</td>
+<td>Draws the board and schematic in the browser from that data</td>
+</tr>
+<tr>
+<td><strong>GUI</strong> (<code>gui/</code>)</td>
+<td>Python (NiceGUI)</td>
+<td>A front end that calls the <code>kigit</code> command line</td>
+</tr>
+</tbody>
+</table>
+<p>The core never draws anything, and the viewer never reads KiCad files. They only meet through JSON.</p>
+<h2 id="the-pipeline">The pipeline<a class="headerlink" href="#the-pipeline" title="Permanent link">&para;</a></h2>
+<p>Every comparison runs the same steps:</p>
+<pre class="mermaid"><code>flowchart TD
+    subgraph UI["① User interaction"]
+        direction LR
+        GUI["GUI (NiceGUI)&lt;br/&gt;open a project, pick two commits"] --&gt;|runs| CLI["kigit command&lt;br/&gt;kigit A..B"]
+    end
+
+    subgraph BE["② Backend: kigit (C++)"]
+        direction LR
+        R["Read&lt;br/&gt;git show / files"] --&gt; P["Parse&lt;br/&gt;s-expressions"]
+        P --&gt; M["Model&lt;br/&gt;Board + Schematic"]
+        M --&gt; D["Diff&lt;br/&gt;match old vs new"]
+        D --&gt; RP["Report&lt;br/&gt;JSON → HTML"]
+    end
+
+    subgraph FE["③ Frontend: viewer (browser)"]
+        direction LR
+        V["viewer.html&lt;br/&gt;embedded JSON"] --&gt; PCB["PCB tab&lt;br/&gt;pcb.js"]
+        V --&gt; SCH["Schematic tab&lt;br/&gt;sch.js"]
+        V --&gt; SRC["Source panel&lt;br/&gt;source.js"]
+    end
+
+    UI --&gt;|two revisions| BE
+    BE --&gt;|one HTML file| FE</code></pre>
+<p>The backend also prints a summary to the terminal straight from the diff, and the GUI shows the finished page in its own window. In the viewer, hovering, pinning and zooming all happen in the browser: nothing goes back to the backend.</p>
+<table>
+<thead>
+<tr>
+<th>Layer</th>
+<th>What it is</th>
+<th>Where</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>① User interaction</strong></td>
+<td>How you ask for a comparison: a <code>kigit</code> command, or the GUI, which runs that same command for you</td>
+<td><code>src/commands/</code>, <code>gui/</code></td>
+</tr>
+<tr>
+<td><strong>② Backend</strong></td>
+<td>Everything that touches KiCad files: read, parse, model, diff, and write the page. Never draws anything</td>
+<td><code>src/git/</code>, <code>src/utils/</code>, <code>src/pcb/</code>, <code>src/sch/</code>, <code>src/report/</code></td>
+</tr>
+<tr>
+<td><strong>③ Frontend</strong></td>
+<td>The page in the browser: draws the board and schematic from the JSON and handles hover, pinning and zoom. Never reads KiCad files</td>
+<td><code>resources/</code></td>
+</tr>
+</tbody>
+</table>
+<p>The backend's steps in more detail:</p>
+<table>
+<thead>
+<tr>
+<th>Step</th>
+<th>What happens</th>
+<th>Where</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1. Read</td>
+<td><code>git show &lt;rev&gt;:&lt;path&gt;</code> for the board and every schematic sheet, or the file on disk for <code>LOCAL</code> / <code>--files</code>. If the board moved in history, it finds the most similar board in that revision.</td>
+<td><code>git/git.cpp</code>, <code>git/locate.cpp</code></td>
+</tr>
+<tr>
+<td>2. Parse</td>
+<td>The text becomes a tree of <code>Node</code>s (lists and atoms). The parser knows nothing about KiCad; it also records each list's byte span in the file.</td>
+<td><code>utils/sexpr.cpp</code></td>
+</tr>
+<tr>
+<td>3. Model</td>
+<td>The tree becomes KiCad things: a <code>Board</code> (tracks, arcs, vias, pads, footprints, zones) and a <code>Schematic</code> (sheets, symbols, wires, labels, buses), whose nets kigit works out itself.</td>
+<td><code>pcb/board.cpp</code>, <code>sch/schematic.cpp</code></td>
+</tr>
+<tr>
+<td>4. Diff</td>
+<td>Old and new are matched (by KiCad ID, then by geometry) and every item gets a status. Totals are summed per net.</td>
+<td><code>pcb/diff.cpp</code>, <code>sch/sch_diff.cpp</code></td>
+</tr>
+<tr>
+<td>5. Report</td>
+<td>The diff becomes JSON for the viewer, plus the old and new text of changed items with <code>--source</code>.</td>
+<td><code>report/html.cpp</code>, <code>report/source.cpp</code></td>
+</tr>
+<tr>
+<td>6. Page</td>
+<td>The JSON is put into the viewer template, which is compiled into the binary, and written as one file.</td>
+<td><code>report/html.cpp</code> (<code>render_html</code>)</td>
+</tr>
+<tr>
+<td>7. Draw</td>
+<td>The browser runs the page's JS, which draws SVG from the JSON.</td>
+<td><code>resources/*.js</code></td>
+</tr>
+</tbody>
+</table>
+<p>The terminal summary (the nets table, the schematic changes) is printed from the diff in step 4, not from the JSON. With <code>--json</code>, steps 6 and 7 are skipped and the JSON is written instead.</p>
+<p>The node trees and how they become <code>Board</code> and <code>Schematic</code> are shown in detail under <a href="#from-nodes-to-structs">From nodes to structs</a>.</p>
+<h3 id="nodes">Nodes<a class="headerlink" href="#nodes" title="Permanent link">&para;</a></h3>
+<p>The parser only knows two shapes of node, and every KiCad file is built from them:</p>
+<table>
+<thead>
+<tr>
+<th>Shape</th>
+<th>Looks like</th>
+<th>In <code>Node</code></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>List</strong></td>
+<td><code>(width 0.25)</code>, <code>(segment ...)</code></td>
+<td><code>is_list = true</code>; <code>name()</code> is its first atom (<code>"width"</code>), <code>children</code> holds the rest</td>
+</tr>
+<tr>
+<td><strong>Atom</strong></td>
+<td><code>width</code>, <code>0.25</code>, <code>"F.Cu"</code></td>
+<td><code>atom</code> holds the text; <code>quoted = true</code> if it was written in quotes</td>
+</tr>
+</tbody>
+</table>
+<p>So <code>(layer "F.Cu")</code> is a list named <code>layer</code> with one quoted atom, and <code>node.arg(0)</code> returns <code>F.Cu</code>. Lists also carry their <code>span</code>, so the source panel can show the exact lines later.</p>
+<h3 id="from-nodes-to-structs">From nodes to structs<a class="headerlink" href="#from-nodes-to-structs" title="Permanent link">&para;</a></h3>
+<p>The KiCad meaning comes in step 3, where each kind of list is turned into a field of <code>Board</code> or <code>Schematic</code>:</p>
+<div class="tabbed-set tabbed-alternate" data-tabs="1:2"><input checked="checked" id="__tabbed_1_1" name="__tabbed_1" type="radio" /><input id="__tabbed_1_2" name="__tabbed_1" type="radio" /><div class="tabbed-labels"><label for="__tabbed_1_1">.kicad_pcb → Board</label><label for="__tabbed_1_2">.kicad_sch → Schematic</label></div>
+<div class="tabbed-content">
+<div class="tabbed-block">
+<pre class="mermaid"><code>flowchart LR
+    P0["(kicad_pcb)"]
+    P0 --&gt; P1["(segment)"]
+    P0 --&gt; P2["(arc)"]
+    P0 --&gt; P3["(via)"]
+    P0 --&gt; P4["(footprint)"]
+    P4 --&gt; P5["(pad)"]
+    P4 --&gt; P6["(property)"]
+    P4 --&gt; P7["(fp_line) (fp_arc) (fp_rect)&lt;br/&gt;(fp_circle) (fp_poly) (fp_text)"]
+    P0 --&gt; P8["(zone)"]
+    P8 --&gt; P9["(polygon)"]
+    P8 --&gt; P10["(filled_polygon)"]
+    P0 --&gt; P11["(gr_line) (gr_arc) (gr_rect)&lt;br/&gt;(gr_circle) (gr_poly) (gr_text)"]
+    P0 --&gt; P12["(net)"]
+
+    P1 -.-&gt; I["items"]
+    P2 -.-&gt; I
+    P3 -.-&gt; I
+    P5 -.-&gt; I
+    P4 -.-&gt; FP["footprints"]
+    P6 -.-&gt; FP
+    P7 -.-&gt; SK["silk&lt;br/&gt;(--silkscreen)"]
+    P9 -.-&gt; Z["zones"]
+    P10 -.-&gt; X["skipped"]
+    P11 -.-&gt; O["outline&lt;br/&gt;(Edge.Cuts)"]
+    P11 -.-&gt; SK
+    P12 -.-&gt; N["net names"]
+
+    classDef field fill:#7e57c2,stroke:#7e57c2,color:#fff
+    classDef skip stroke-dasharray:4 3
+    class I,FP,SK,Z,O,N field
+    class X skip</code></pre>
+<p>Solid lines are the file's nesting; dotted lines show which <code>Board</code> field each node ends up in.</p>
+<table>
+<thead>
+<tr>
+<th>Node</th>
+<th>Becomes</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>(segment)</code></td>
+<td><code>items</code>, kind Track</td>
+<td></td>
+</tr>
+<tr>
+<td><code>(arc)</code></td>
+<td><code>items</code>, kind Arc</td>
+<td></td>
+</tr>
+<tr>
+<td><code>(via)</code></td>
+<td><code>items</code>, kind Via</td>
+<td></td>
+</tr>
+<tr>
+<td><code>(pad)</code> inside <code>(footprint)</code></td>
+<td><code>items</code>, kind Pad</td>
+<td>Position made absolute from the footprint's <code>(at)</code></td>
+</tr>
+<tr>
+<td><code>(footprint)</code></td>
+<td><code>footprints</code></td>
+<td>Reference and value from its <code>(property)</code> lists; its <code>fp_*</code> graphics are compared too</td>
+</tr>
+<tr>
+<td><code>(zone)</code></td>
+<td><code>zones</code></td>
+<td>Its <code>(filled_polygon)</code> lists are skipped: KiCad recomputes them on every refill</td>
+</tr>
+<tr>
+<td><code>(gr_*)</code> on Edge.Cuts</td>
+<td><code>outline</code></td>
+<td>The board shape</td>
+</tr>
+<tr>
+<td><code>(gr_*)</code> / <code>(fp_*)</code> on silkscreen</td>
+<td><code>silk</code></td>
+<td>Only with <code>--silkscreen</code></td>
+</tr>
+<tr>
+<td><code>(net)</code></td>
+<td>Net names</td>
+<td>Older files list nets by number at the top</td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="tabbed-block">
+<pre class="mermaid"><code>flowchart LR
+    S0["(kicad_sch)"]
+    S0 --&gt; S1["(lib_symbols)"]
+    S1 --&gt; S2["(symbol)&lt;br/&gt;part definition"]
+    S0 --&gt; S3["(symbol)&lt;br/&gt;placed part"]
+    S0 --&gt; S4["(wire)"]
+    S0 --&gt; S5["(junction)&lt;br/&gt;(no_connect)"]
+    S0 --&gt; S6["(label) (global_label)&lt;br/&gt;(hierarchical_label)"]
+    S0 --&gt; S7["(bus) (bus_entry)&lt;br/&gt;(bus_alias)"]
+    S0 --&gt; S8["(sheet)"]
+    S8 --&gt; S9["(pin)"]
+    S0 --&gt; S10["(text)"]
+    S0 --&gt; S11["(polyline) (rectangle)&lt;br/&gt;(circle) (arc) (bezier)"]
+
+    S2 -.-&gt; D["defs"]
+    S3 -.-&gt; SY["symbols"]
+    S4 -.-&gt; W["wires"]
+    S5 -.-&gt; J["junctions&lt;br/&gt;no_connects"]
+    S6 -.-&gt; L["labels"]
+    S9 -.-&gt; L
+    S7 -.-&gt; B["buses, bus_entries&lt;br/&gt;bus_aliases"]
+    S8 -.-&gt; SB["sheet_boxes&lt;br/&gt;+ child sheet loaded"]
+    S10 -.-&gt; T["texts"]
+    S11 -.-&gt; DR["drawings"]
+
+    classDef field fill:#7e57c2,stroke:#7e57c2,color:#fff
+    class D,SY,W,J,L,B,SB,T,DR field</code></pre>
+<p>Solid lines are the file's nesting; dotted lines show which <code>Schematic</code> field each node ends up in.</p>
+<table>
+<thead>
+<tr>
+<th>Node</th>
+<th>Becomes</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>(lib_symbols)</code> → <code>(symbol)</code></td>
+<td><code>defs</code></td>
+<td>Each part type's pins and drawing, stored in the file</td>
+</tr>
+<tr>
+<td><code>(symbol)</code></td>
+<td><code>symbols</code></td>
+<td>A placed part. Power symbols (<code>+3.3V</code>, <code>GND</code>) are symbols too</td>
+</tr>
+<tr>
+<td><code>(wire)</code></td>
+<td><code>wires</code></td>
+<td></td>
+</tr>
+<tr>
+<td><code>(junction)</code>, <code>(no_connect)</code></td>
+<td><code>junctions</code>, <code>no_connects</code></td>
+<td></td>
+</tr>
+<tr>
+<td><code>(label)</code>, <code>(global_label)</code>, <code>(hierarchical_label)</code></td>
+<td><code>labels</code></td>
+<td>Their names join nets across wires and sheets</td>
+</tr>
+<tr>
+<td><code>(bus)</code>, <code>(bus_entry)</code>, <code>(bus_alias)</code></td>
+<td><code>buses</code>, <code>bus_entries</code>, <code>bus_aliases</code></td>
+<td></td>
+</tr>
+<tr>
+<td><code>(sheet)</code></td>
+<td><code>sheet_boxes</code>, and its file is loaded as a new sheet</td>
+<td>Through the <code>FileReader</code></td>
+</tr>
+<tr>
+<td><code>(pin)</code> inside <code>(sheet)</code></td>
+<td><code>labels</code>, kind SheetPin</td>
+<td>Connects the parent sheet to the child's hierarchical labels</td>
+</tr>
+<tr>
+<td><code>(text)</code></td>
+<td><code>texts</code></td>
+<td></td>
+</tr>
+<tr>
+<td><code>(polyline)</code>, <code>(rectangle)</code>, <code>(circle)</code>, <code>(arc)</code>, <code>(bezier)</code></td>
+<td><code>drawings</code></td>
+<td>Drawn only; they don't connect anything</td>
+</tr>
+</tbody>
+</table>
+<p>After every sheet is loaded, kigit works out <code>nets</code> from the wires, labels, pins and buses.</p>
+</div>
+</div>
+</div>
+<h2 id="code-map">Code map<a class="headerlink" href="#code-map" title="Permanent link">&para;</a></h2>
+<p>Headers live in <code>include/&lt;dir&gt;/</code>, and their sources in <code>src/&lt;dir&gt;/</code> with the same names.</p>
+<h3 id="utils"><code>utils/</code><a class="headerlink" href="#utils" title="Permanent link">&para;</a></h3>
+<p>The building blocks with no KiCad knowledge.</p>
+<ul>
+<li><strong><code>sexpr</code></strong>: the s-expression parser. <code>sexpr::parse(text)</code> returns a <code>Node</code> tree, with each list's <code>span</code> (where it starts and ends in the text).</li>
+<li><strong><code>platform</code></strong>: everything that differs between Windows and Linux: running programs, finding them on PATH, opening a browser, home and state folders.</li>
+<li><strong><code>log</code></strong>: the session log (spdlog), one file per run.</li>
+</ul>
+<h3 id="git"><code>git/</code><a class="headerlink" href="#git" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong><code>git</code></strong>: a thin wrapper around the <code>git</code> command line: resolve a revision, <code>show</code> a file at a revision, <code>log</code>, list files. kigit runs the real <code>git</code> program rather than a library, so it behaves exactly like the user's git.</li>
+<li><strong><code>locate</code></strong>: finding the board in a revision when it was moved or renamed (<code>find_similar_board</code>), by comparing footprints and nets.</li>
+</ul>
+<h3 id="pcb"><code>pcb/</code><a class="headerlink" href="#pcb" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong><code>board</code></strong>: <code>load_board(text)</code> turns a <code>.kicad_pcb</code> into a <code>Board</code>. Tracks, arcs, vias and pads are all one <code>Item</code> type with a <code>kind</code>, because the diff treats them the same way.</li>
+<li><strong><code>diff</code></strong>: <code>diff_boards(old, new)</code> matches items and footprints and returns a <code>Diff</code>: each item with its status, plus per-net and per-footprint totals.</li>
+</ul>
+<h3 id="sch"><code>sch/</code><a class="headerlink" href="#sch" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong><code>schematic</code></strong>: <code>load_schematic(root_file, reader)</code> loads a schematic and all its sheets, then works out the nets: which pins each wire, label, power symbol and bus connects. It reads sheets through a <code>FileReader</code> function, not from disk, so the same code works for a git revision, the working tree, or a folder.</li>
+<li><strong><code>sch_diff</code></strong>: <code>diff_schematics(old, new)</code> matches parts (by KiCad ID, then reference) and nets (by label, then shared pins), and sorts each change into electrical, fields only or cosmetic.</li>
+<li><strong><code>netcheck</code></strong>: <code>--check-netlist</code>, which compares kigit's nets with a netlist exported by KiCad. This is how the net logic is tested against KiCad itself.</li>
+</ul>
+<h3 id="report"><code>report/</code><a class="headerlink" href="#report" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong><code>html</code></strong>: turns boards, schematics and diffs into the viewer's JSON (<code>report_data</code>, <code>schematic_view_json</code>), and <code>render_html</code> puts that JSON into the page template.</li>
+<li><strong><code>source</code></strong>: the text snippets for the source panel. <code>SourceFile</code> turns a <code>Span</code> into whole lines with line numbers; <code>SourceTable</code> collects one entry per changed item.</li>
+</ul>
+<h3 id="commands"><code>commands/</code><a class="headerlink" href="#commands" title="Permanent link">&para;</a></h3>
+<p>The command line, one file per command, in namespace <code>kigit::cmd</code>. Only the <code>kigit</code> executable has these; they aren't part of <code>kigit_core</code>.</p>
+<table>
+<thead>
+<tr>
+<th>File</th>
+<th>Command</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>options</code></td>
+<td>Parsing the command line and <code>--help</code></td>
+</tr>
+<tr>
+<td><code>diff</code></td>
+<td>The main job: steps 1 to 6 above, plus <code>--check-netlist</code></td>
+</tr>
+<tr>
+<td><code>summary</code></td>
+<td>The tables printed to the terminal</td>
+</tr>
+<tr>
+<td><code>history</code></td>
+<td><code>--log</code>: the commit list for the GUI</td>
+</tr>
+<tr>
+<td><code>projects</code></td>
+<td><code>--projects</code>: KiCad projects in a folder, for the GUI</td>
+</tr>
+<tr>
+<td><code>gui</code></td>
+<td><code>kigit gui</code>: finds uv and starts the Python app</td>
+</tr>
+<tr>
+<td><code>common</code></td>
+<td>Helpers they share, like finding the project folder</td>
+</tr>
+</tbody>
+</table>
+<p><code>src/main.cpp</code> starts the log, then picks the command.</p>
+<h3 id="resources-the-viewer"><code>resources/</code> (the viewer)<a class="headerlink" href="#resources-the-viewer" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>File</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>viewer.html</code></td>
+<td>The page shell: layout, styles, and slots for the data and scripts</td>
+</tr>
+<tr>
+<td><code>pcb.js</code></td>
+<td>The PCB tab: drawing, hover, pinning, the net list</td>
+</tr>
+<tr>
+<td><code>sch.js</code></td>
+<td>The schematic tab: sheets, parts, wires, nets</td>
+</tr>
+<tr>
+<td><code>source.js</code></td>
+<td>The source panel: the side-by-side text diff (line diff done in JS)</td>
+</tr>
+<tr>
+<td><code>shell.js</code></td>
+<td>The tabs and everything shared between them</td>
+</tr>
+</tbody>
+</table>
+<p>At build time, CMake puts the four scripts into <code>viewer.html</code> and compiles the result into the binary as a byte array. At run time, <code>render_html</code> replaces the <code>/*KIGIT_DATA*/</code> slot with the JSON. That's why the output is a single file with no dependencies.</p>
+<h3 id="gui"><code>gui/</code><a class="headerlink" href="#gui" title="Permanent link">&para;</a></h3>
+<p>A NiceGUI app (<code>gui/kigit_gui/</code>). It doesn't link to the core: it runs the <code>kigit</code> command line (<code>kigit.py</code>) and uses its JSON output (<code>--projects</code>, <code>--log</code>, <code>--json</code>) or its page (<code>-o -</code>).</p>
+<ul>
+<li><code>app.py</code>: the screens (open a project, pick commits, compare).</li>
+<li><code>kigit.py</code>: calling the <code>kigit</code> binary.</li>
+<li><code>folder_picker.py</code>, <code>logs.py</code>: the folder dialog and the log view.</li>
+</ul>
+<p><code>kigit gui</code> starts it with uv, which sets up the Python environment on first run.</p>
+<h2 id="rules-that-hold-everywhere">Rules that hold everywhere<a class="headerlink" href="#rules-that-hold-everywhere" title="Permanent link">&para;</a></h2>
+<p>These are worth keeping when you change things.</p>
+<ul>
+<li><strong>The core doesn't draw, and the viewer doesn't parse.</strong> All drawing is in <code>resources/*.js</code>; all KiCad file reading is in C++. They only share JSON.</li>
+<li><strong>The parser knows nothing about KiCad.</strong> <code>sexpr</code> returns lists and atoms. Meaning (what a <code>segment</code> is) belongs in <code>pcb/</code> and <code>sch/</code>.</li>
+<li><strong>OS-specific code lives in <code>utils/platform</code> only.</strong> Everything else is plain C++ and builds the same on Windows and Linux.</li>
+<li><strong>git is only used through <code>git/</code>.</strong> Nothing else runs git.</li>
+<li><strong>Schematics are read through a <code>FileReader</code>.</strong> That keeps the loader independent of where the files come from.</li>
+<li><strong>stdout stays clean.</strong> With <code>-o -</code> the page or JSON goes to stdout, so messages go to stderr or the log.</li>
+<li><strong>The page is one self-contained file.</strong> No server, no external scripts. It must open from disk, years later.</li>
+<li><strong>Big extras are opt-in.</strong> Silkscreen (<code>--silkscreen</code>) and the source panel (<code>--source</code>) make pages bigger, so they're off by default.</li>
+</ul>
+<h2 id="build-and-dependencies">Build and dependencies<a class="headerlink" href="#build-and-dependencies" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong>CMake</strong> builds <code>kigit_core</code> (a static library with everything except the command line) and the <code>kigit</code> executable. Tests link <code>kigit_core</code> directly.</li>
+<li><strong>Libraries</strong> are git submodules in <code>submodules/</code>: nlohmann_json (JSON), spdlog (logging), doctest (tests).</li>
+<li><strong>CI</strong> (GitHub Actions) builds and tests on Windows (MSVC) and Linux (GCC) on every push. Tagged releases build the Windows installer, the Windows zip and the Linux tarball.</li>
+</ul>
+<h2 id="where-to-start">Where to start<a class="headerlink" href="#where-to-start" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>You want to...</th>
+<th>Look at</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Support a new KiCad item on the board</td>
+<td><code>pcb/board.cpp</code> (load it), <code>pcb/diff.cpp</code> (match it), <code>report/html.cpp</code> (send it), <code>resources/pcb.js</code> (draw it)</td>
+</tr>
+<tr>
+<td>Change how items are matched</td>
+<td><code>pcb/diff.cpp</code> or <code>sch/sch_diff.cpp</code></td>
+</tr>
+<tr>
+<td>Fix a schematic net that's wrong</td>
+<td><code>sch/schematic.cpp</code>, and test it with <code>--check-netlist</code> against KiCad's netlist</td>
+</tr>
+<tr>
+<td>Change what the terminal prints</td>
+<td><code>commands/summary.cpp</code></td>
+</tr>
+<tr>
+<td>Add a command-line option</td>
+<td><code>commands/options.cpp</code>, then use it in the command</td>
+</tr>
+<tr>
+<td>Change the look of the viewer</td>
+<td><code>resources/viewer.html</code> (styles) and the matching <code>.js</code> file</td>
+</tr>
+<tr>
+<td>Change the GUI</td>
+<td><code>gui/kigit_gui/app.py</code></td>
+</tr>
+</tbody>
+</table>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+        <div class="md-social">
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://github.com/KhalidOwlWalid/kigit" target="_blank" rel="noopener" title="github.com" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 496 512"><!--! Font Awesome Free 6.7.1 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2024 Fonticons, Inc.--><path d="M165.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M244.8 8C106.1 8 0 113.3 0 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C428.2 457.8 496 362.9 496 252 496 113.3 383.5 8 244.8 8M97.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    <script id="__config" type="application/json">{"base": "..", "features": ["navigation.tabs", "navigation.sections", "navigation.expand", "navigation.top", "search.highlight", "search.suggest", "content.code.copy", "content.code.annotate"], "search": "../assets/javascripts/workers/search.6ce7567c.min.js", "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.83f73b43.min.js"></script>
+      
+    
+  </body>
+</html>

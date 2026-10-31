@@ -18,7 +18,7 @@
         <link rel="prev" href="../introduction/">
       
       
-        <link rel="next" href="../how-to-use/overview/">
+        <link rel="next" href="../architecture/">
       
       
       <link rel="icon" href="../assets/images/favicon.png">
@@ -51,6 +51,8 @@
         <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
       
     
+    
+      <link rel="stylesheet" href="../stylesheets/diff.css">
     
     <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
     
@@ -260,7 +262,7 @@
     
     
       <li class="md-tabs__item">
-        <a href="../how-to-use/overview/" class="md-tabs__link">
+        <a href="../how-to-use/overview.md" class="md-tabs__link">
           
   
   How to Use
@@ -517,6 +519,27 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../architecture/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Architecture
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -573,7 +596,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../how-to-use/overview/" class="md-nav__link">
+      <a href="../how-to-use/overview.md" class="md-nav__link">
         
   
   <span class="md-ellipsis">
@@ -902,7 +925,13 @@
 <li>Download <code>kigit-&lt;version&gt;-setup.exe</code> from the <a href="https://github.com/KhalidOwlWalid/kigit/releases">Releases</a> page.</li>
 <li>Run it. No admin rights are needed.</li>
 </ol>
-<p>It adds <code>kigit</code> to your PATH and a <strong>kigit</strong> entry to the Start menu that opens the GUI. The first GUI start downloads Python and the GUI's packages (once, about a minute); after that it starts straight away.</p>
+<p>It adds <code>kigit</code> to your PATH and a <strong>kigit</strong> entry to the Start menu that opens the GUI. </p>
+<div class="admonition warning slow initial start">
+<p class="admonition-title">Warning</p>
+<p>The first <code>kigit gui</code> takes about a minute, since it grabs Python and the GUI's
+packages. After that, it's instant. (The command line doesn't need any of that, so it's
+quick from the start.)</p>
+</div>
 <div class="admonition tip">
 <p class="admonition-title">Portable</p>
 <p>The Releases page also has a zip. Unzip it anywhere and run <code>bin\kigit.exe</code>.</p>
@@ -911,22 +940,27 @@
 <p>Download <code>kigit-&lt;version&gt;-linux-x86_64.tar.gz</code> from the <a href="https://github.com/KhalidOwlWalid/kigit/releases">Releases</a> page and unpack it into <code>~/.local</code>:</p>
 <div class="language-sh highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>tar<span class="w"> </span>-xzf<span class="w"> </span>kigit-*-linux-x86_64.tar.gz<span class="w"> </span>-C<span class="w"> </span>~/.local<span class="w"> </span>--strip-components<span class="o">=</span><span class="m">1</span>
 </span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>kigit<span class="w"> </span>--version<span class="w">    </span><span class="c1"># ~/.local/bin must be on your PATH (it is on most distros)</span>
-</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>kigit<span class="w"> </span>gui
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>kigit<span class="w"> </span>--help<span class="w"> </span><span class="c1"># Shows all optional commands and some example</span>
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>kigit<span class="w"> </span>gui<span class="w"> </span><span class="c1"># Launches the GUI for kigit</span>
 </span></code></pre></div>
 <p>It brings its own copy of uv for the GUI (in <code>~/.local/libexec/kigit</code>), so a uv you already have isn't touched.</p>
-<p>To uninstall, delete <code>~/.local/bin/kigit</code>, <code>~/.local/share/kigit</code> and <code>~/.local/libexec/kigit</code>.</p>
+<p>To uninstall:</p>
+<div class="language-sh highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>rm<span class="w"> </span>~/.local/bin/kigit
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>rm<span class="w"> </span>-r<span class="w"> </span>~/.local/share/kigit<span class="w"> </span>~/.local/libexec/kigit
+</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>rm<span class="w"> </span>-r<span class="w"> </span>~/.local/state/kigit<span class="w">    </span><span class="c1"># optional: the GUI&#39;s Python environment and the logs</span>
+</span></code></pre></div>
 <h2 id="build-from-source">Build from source<a class="headerlink" href="#build-from-source" title="Permanent link">&para;</a></h2>
 <p>Needs a C++20 compiler and CMake 3.16+. The libraries (nlohmann_json, spdlog, doctest) are git submodules:</p>
-<div class="language-sh highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>git<span class="w"> </span>clone<span class="w"> </span>--recursive<span class="w"> </span>https://github.com/KhalidOwlWalid/kigit.git
-</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="nb">cd</span><span class="w"> </span>kigit
-</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>cmake<span class="w"> </span>-S<span class="w"> </span>.<span class="w"> </span>-B<span class="w"> </span>build
-</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>cmake<span class="w"> </span>--build<span class="w"> </span>build<span class="w"> </span>-j
-</span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>cmake<span class="w"> </span>--install<span class="w"> </span>build<span class="w"> </span>--prefix<span class="w"> </span>~/.local<span class="w">    </span><span class="c1"># optional</span>
+<div class="language-sh highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>git<span class="w"> </span>clone<span class="w"> </span>--recursive<span class="w"> </span>https://github.com/KhalidOwlWalid/kigit.git
+</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="nb">cd</span><span class="w"> </span>kigit
+</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>cmake<span class="w"> </span>-S<span class="w"> </span>.<span class="w"> </span>-B<span class="w"> </span>build
+</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>cmake<span class="w"> </span>--build<span class="w"> </span>build<span class="w"> </span>-j
+</span><span id="__span-2-5"><a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>cmake<span class="w"> </span>--install<span class="w"> </span>build<span class="w"> </span>--prefix<span class="w"> </span>~/.local<span class="w">    </span><span class="c1"># optional</span>
 </span></code></pre></div>
 <p>On Windows, MSVC (Visual Studio 2022) and MinGW-w64 GCC 11+ both work:</p>
-<div class="language-bat highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>cmake -S . -B build
-</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>cmake --build build --config Release
-</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>build\Release\kigit.exe gui
+<div class="language-bat highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>cmake -S . -B build
+</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>cmake --build build --config Release
+</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>build\Release\kigit.exe gui
 </span></code></pre></div>
 <p>The GUI also needs <a href="https://docs.astral.sh/uv/">uv</a> on your PATH when built from source.</p>
 
