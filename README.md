@@ -7,13 +7,22 @@ What it can do:
 - Compare your PCB between any two commits, visually
 - Show what changed on your symbols and their fields
 - Show your buses and where they're routed
-- Work without git too: just point it at two folders (see [Without Git](examples/without-git.md))
+- Works without git too: just point it at two folders
 
 Have a look at the demo below to get a feel for it.
 
 ## Demonstration
 
 https://github.com/user-attachments/assets/f906914c-ffff-49df-a43d-28ec8a625058
+
+Full documentation can be found here: https://khalidowlwalid.github.io/kigit/
+
+### PCB diff
+
+![pcb-diff example](docs/blobs/gifs/pcb-diff.gif)
+
+### Schematic diff
+![sch-diff example](docs/blobs/gifs/sch-diff.gif)
 
 ---
 
@@ -34,16 +43,3 @@ KiCAD-Prism and KiHub are in the same space and cover a lot of what kigit does. 
 Me? I'm a hobbyist who only recently got into PCB design and out of this frustration, I figured: why not just make my own PCB diff that does just enough for what I need? Nothing fancy. It runs locally, it's a simple download, and it works on Linux and Windows. (Sorry macOS folks, I'm broke and not about to buy a Mac just for this.)
 
 So, what kigit is **not** is a collaboration tool. It's for people who wants a simple app they can download, or open in a browser, to check what changed in their PCB designs. That's it.
-
-!!! warning "Disclaimer"
-    When I say "I built it", it was mostly my best mate, Claude.
-
-## Quick start
-
-```sh
-cd path/to/my-board        # a KiCad project in a git repository
-kigit HEAD~1               # the last commit vs your working tree
-kigit gui                  # or pick commits in the GUI
-```
-
-See [Installation](installation.md) to get kigit, and [Overview](how-to-use/overview.md) for how it works.
