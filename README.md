@@ -17,7 +17,7 @@ Have a look at the demo below to get a feel for it.
   <source src="blobs/demo.mp4" type="video/mp4">
 </video>
 
-![Example](docs/blobs/demo.mp4)
+![Example](https://github.com/user-attachments/assets/a7a2acdf-94fa-4d13-9619-224367c1c7df)
 
 ---
 
