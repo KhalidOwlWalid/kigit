@@ -1,409 +1,53 @@
 # kigit
 
-Per-net visual diff of a KiCad PCB between two git revisions.
+**kigit** utilizes the use of git logs in order to allow user to perform diffs between their pcb and schematic files. It provides a proper visual feedback which helps in identifying changes made per commit basis. Hence where its name came from, combination of Ki from KiCAD and git itself (kigit!). 
 
-`kigit` reads the `.kicad_pcb` file straight out of git, matches every track,
-arc, via and pad between the two revisions, and writes a single self-contained
-HTML page where you can hover a trace to highlight its whole net: what was
-added, what was removed, and how the net's copper length changed.
+What it can do:
 
-## Install
+- Compare your PCB between any two commits, visually
+- Show what changed on your symbols and their fields
+- Show your buses and where they're routed
+- Work without git too: just point it at two folders (see [Without Git](examples/without-git.md))
 
-**Windows:** download `kigit-<version>-setup.exe` from the
-[Releases](https://github.com/KhalidOwlWalid/kigit/releases) page and run
-it. No admin rights needed. It adds `kigit` to your PATH and a **kigit**
-entry to the Start menu that opens the GUI. Needs
-[Git for Windows](https://git-scm.com/download/win). The first GUI start
-downloads Python and the GUI's packages (once, about a minute); after that
-it starts straight away. A portable zip is there too: unzip it anywhere and
-run `bin\kigit.exe`.
+Have a look at the demo below to get a feel for it.
 
-**Linux** (x86-64; Ubuntu 22.04+, Debian 12+, Fedora 36+ or similar):
-download `kigit-<version>-linux-x86_64.tar.gz` from the Releases page and
-unpack it into `~/.local`:
+## Demonstration
 
-```sh
-tar -xzf kigit-*-linux-x86_64.tar.gz -C ~/.local --strip-components=1
-kigit --version    # ~/.local/bin must be on your PATH (it is on most distros)
-kigit gui
-```
+<video autoplay loop muted controls width="100%">
+  <source src="blobs/demo.mp4" type="video/mp4">
+</video>
 
-It brings its own copy of uv for the GUI (in `~/.local/libexec/kigit`, so a
-uv you already have isn't touched). Needs git. To uninstall, delete
-`~/.local/bin/kigit`, `~/.local/share/kigit` and `~/.local/libexec/kigit`.
-Or build from source (below). macOS isn't supported for now.
+![Example](docs/blobs/demo.mp4)
 
-### Making a release
+---
 
-Set the version in `CMakeLists.txt` (`project(kigit VERSION x.y.z)`), commit,
-then push a matching tag:
+## What kigit is not
 
-```sh
-git tag v0.1.0
-git push origin v0.1.0
-```
+kigit is an application that was built out of frustration of not having a kind of proper "git diff" for kicad for myself. Having came from a software background and being used to utilizing git versioning for all of my projects, not being able to do the same in a manner that I can compare my pcb and schematic visually between different commits without having to diff the .kicad_pcb and .kicad_sch files really frustates me. I am aware of the fact that there are other resources out there as shown below:
 
-GitHub Actions (`.github/workflows/release.yml`) builds and tests kigit on
-Windows and Linux, packages the Windows installer, the Windows zip and the
-Linux tarball, tries each one, and publishes a release with all three. To try a build without releasing, run
-the **Release** workflow by hand from the Actions tab and download the files
-from the run's artifacts.
+- [KiRI](https://github.com/leoheck/kiri)
+- [KiCAD-Prism](https://krishna-swaroop.github.io/KiCAD-Prism/get-started/what-is-prism/)
+- [KiHub](https://kihub.dev/)
 
-## Build
+They all have their pros and cons. KiRI is what got me excited about diffing schematics in the first place, and honestly, huge respect to the folks behind it. It's a great community effort, built well before AI was a thing.
 
-Needs a C++20 compiler and CMake 3.16+. The libraries (nlohmann_json,
-spdlog, doctest) are git submodules in `submodules/`, so clone with them:
+The other two I didn't even know existed when I started. Funnily enough, not even Claude mentioned them when I first went looking for alternatives.
+
+KiCAD-Prism and KiHub are in the same space and cover a lot of what kigit does. KiCAD-Prism is a whole package: free, open source, and the demos look amazing. But it needs a fair bit of Docker setup, which can be a turn-off if you're a hobbyist who just wants to design boards. KiHub needs a login, doesn't run offline, and is really aimed at teams collaborating (PR reviews and that kind of thing).
+
+Me? I'm a hobbyist who only recently got into PCB design and out of this frustration, I figured: why not just make my own PCB diff that does just enough for what I need? Nothing fancy. It runs locally, it's a simple download, and it works on Linux and Windows. (Sorry macOS folks, I'm broke and not about to buy a Mac just for this.)
+
+So, what kigit is **not** is a collaboration tool. It's for people who wants a simple app they can download, or open in a browser, to check what changed in their PCB designs. That's it.
+
+!!! warning "Disclaimer"
+    When I say "I built it", it was mostly my best mate, Claude.
+
+## Quick start
 
 ```sh
-git clone --recursive https://github.com/KhalidOwlWalid/kigit.git
-# or, in an existing clone:
-git submodule update --init
-
-cmake -S . -B build
-cmake --build build -j
-# optional: install to ~/.local/bin
-cmake --install build --prefix ~/.local
+cd path/to/my-board        # a KiCad project in a git repository
+kigit HEAD~1               # the last commit vs your working tree
+kigit gui                  # or pick commits in the GUI
 ```
 
-## GUI
-
-```sh
-kigit gui                  # start in the current folder
-kigit gui ~/path/to/board  # or any folder
-```
-
-On Windows the GUI opens in its own window (Edge WebView2, built into
-Windows 10/11); on Linux it opens in your web browser. `--native` and
-`--browser` choose; if a window can't be opened (no WebView2, or on Linux no
-GTK/Qt for Python), it says why and uses the browser. Either way it only
-listens on 127.0.0.1, so it isn't reachable from the network.
-
-1. **Open a project.** Type a folder or press **Browse** (folders holding
-   KiCad files are marked). kigit looks for a project in that folder and up
-   to two levels below. It tells you if it finds none, if the project has no
-   `.kicad_pcb`, or if it isn't in a git repository; if it finds several, it
-   asks which one.
-2. **Pick two commits.** All commits are listed, newest first, tagged PCB /
-   SCH when they changed the board or schematic. The top entry is your
-   working tree: HEAD plus any uncommitted changes. Hover a message to read
-   all of it. Nothing is rendered yet.
-
-   **Filter commits** (then **Find**): how many to list (last 100 ... all),
-   a date range, and "only commits that changed the board or schematic",
-   which searches the whole history. If the project folder was renamed or
-   moved, its history is followed through the old folders too.
-
-   **Diff commits manually** (collapsed under Compare): type any two
-   revisions git understands (hash, `HEAD~3`, branch, tag, or `LOCAL`) and
-   press **Find manually**, for when the commit you want isn't in the list.
-3. **Compare.** kigit diffs the two and the viewer opens on the schematic
-   (the PCB is one tab away).
-
-**No git?** Press **Compare folders** in the header to compare two copies of
-a project (an old backup, a colleague's version, ...): pick each copy's
-folder, kigit finds the board in each (and the schematic next to it), and the
-viewer opens as usual. Opening a project that isn't in git offers the same
-thing, with that project already filled in. (CLI: `kigit --files OLD NEW`.)
-
-The GUI is a small Python app ([NiceGUI](https://nicegui.io)) in `gui/`
-that drives the `kigit` command line, so it needs
-[uv](https://docs.astral.sh/uv/), which sets up its Python environment on
-first run. `kigit gui` finds it next to the binary (`<repo>/gui` from a
-build folder, `<prefix>/share/kigit/gui` when installed) or via
-`KIGIT_GUI_DIR`. Options: `--port N`, `--no-browser`.
-
-What the GUI uses from the CLI, if you want to script it yourself:
-
-```sh
-kigit --projects [--depth N]    # KiCad projects in the folder and below, as JSON
-kigit --log [--max N] [--since DATE] [--until DATE] [--kicad-only]
-                                # commits (+ uncommitted changes), as JSON
-kigit -n -o - A..B              # the viewer page on stdout
-kigit -n --json -o - A..B       # the data on stdout
-```
-
-GUI tests (simulated user, no browser):
-
-```sh
-cd gui && KIGIT_BIN=../build/kigit KIGIT_PROJECT=~/path/to/board uv run pytest
-```
-
-### Windows
-
-kigit builds on Windows with MSVC (Visual Studio 2022) or MinGW-w64 GCC 11+;
-CMake detects the platform and compiler. It needs `git` on PATH (Git for
-Windows), and `uv` for the GUI.
-
-```bat
-cmake -S . -B build
-cmake --build build --config Release
-ctest --test-dir build -C Release
-build\Release\kigit.exe gui
-```
-
-Every push is built and tested on Windows and Linux by GitHub Actions
-(`.github/workflows/ci.yml`).
-
-## Usage
-
-Run it inside a KiCad project folder:
-
-```sh
-kigit                      # HEAD vs the working tree (uncommitted changes)
-kigit HEAD~3               # HEAD~3 vs the working tree
-kigit c46da63..HEAD        # two commits
-kigit v1.0 v1.1 board.kicad_pcb
-kigit -n -s HEAD~1..HEAD   # don't open a browser, print every changed net
-```
-
-Or from anywhere, pointing at the project with `--kicad-repo` (short: `-C`):
-
-```sh
-kigit --kicad-repo ~/Documents/Kicad/owl/owl_v1 c46da63..HEAD
-kigit -C ~/Documents/Kicad/owl HEAD~1          # finds the board in subfolders
-kigit -C path/to/board.kicad_pro HEAD~1        # a .kicad_pro/.kicad_pcb works too
-```
-
-### Moved or renamed boards
-
-If the board isn't at the same path in one of the revisions (you moved
-`hardware/owl.kicad_pcb` to `pcb/owl_v1.kicad_pcb`, say), kigit searches that
-revision for every `.kicad_pcb` and picks the one sharing the most footprints
-and nets with the latest version of your board. It prints a warning with the
-old and new paths and how close the match is, shows the same warning in the
-viewer, and carries on. If nothing is at least 25% similar it stops and lists
-the boards it found instead of guessing.
-
-```
-warning: pcb/owl_v1.kicad_pcb doesn't exist in 259cd18, using hardware/owl.kicad_pcb
-         instead (98% match: 62 of 63 footprints and 74 of 74 nets are the same ...)
-warning: the board was moved or renamed: hardware/owl.kicad_pcb (259cd18) -> pcb/owl_v1.kicad_pcb (f038da9)
-```
-
-### Without git
-
-Compare two copies of a board directly, e.g. two saved versions of the same
-project. No git repository needed; the older file goes first:
-
-```sh
-kigit --files owl_v1_old/owl_v1.kicad_pcb owl_v1/owl_v1.kicad_pcb
-kigit old.kicad_pcb new.kicad_pcb              # two board files = --files
-```
-
-The viewer labels them by file name, or by folder name when both files have
-the same name.
-
-If you give the newer revision first, kigit swaps them so "added" always
-means "added in the newer revision".
-
-The page is written to `.kigit/` next to the board (or `-o FILE`) and opened in your
-browser. In the viewer:
-
-| Action | What it does |
-| --- | --- |
-| Hover a trace, via or pad | Highlight its net, show the net's changes |
-| Click | Pin the net (click again or `Esc` to clear) |
-| Scroll / drag | Zoom / pan |
-| `F` | Fit the board |
-| `/` | Filter nets |
-| Double-click a net in the list | Zoom to it |
-
-The terminal also gets a summary of the most-changed nets.
-
-### Schematic tab
-
-The page has a **Schematic** tab next to the PCB. It draws each sheet
-(wires, parts, labels, sheet boxes) with the same colours: green added, red
-dashed removed, amber for parts whose value, footprint or connections
-changed, grey unchanged.
-
-| Action | What it does |
-| --- | --- |
-| Hover a wire, label or pin | Highlight its net; tooltip shows pins that joined/left, renames, "wiring redrawn, connections unchanged" |
-| Hover a part | Its changes: fields (value, footprint, MPN...), pins moved to other nets, moved |
-| Click | Pin it; the card can jump to other sheets the net is on |
-| Double-click a sheet box | Open that sheet (Backspace goes back up) |
-| Sidebar | Sheet tree with change counts, and the changes on the current sheet |
-
-"Old positions" shows moved parts' previous place as a faint ghost (off by
-default). The drawing is kigit's own, not KiCad's export: close to KiCad but
-with a different font, and images and text boxes aren't drawn yet.
-
-### Source panel
-
-`--source` (or "Include source" in the GUI; off by default, it makes pages
-bigger) adds a panel under the drawing, on both tabs: the text of what changed
-in the `.kicad_pcb` / `.kicad_sch` files, old on the left and new on the
-right, like a side-by-side code diff. Removed lines are red, added lines
-green, and the changed part of a line is marked; long unchanged stretches are
-folded (click to unfold).
-
-| Hover | The panel shows |
-| --- | --- |
-| A trace, via or pad | Its own change first, then every other changed item on its net (and the net's pours) |
-| A pad of a moved or edited footprint | The footprint's change first |
-| A footprint in the sidebar list | That footprint |
-| A wire, label or pin (schematic) | The net's changed wires and labels, on every sheet |
-| A part | Its symbol's text |
-| A bus | Its changed segments and bus labels |
-
-Each change says where it is (`owl_v1.kicad_pcb:722 → :722`), so you can find
-it in an editor. Clicking pins the target, so you can move into the panel and
-scroll. The panel can be resized (drag its top edge) or collapsed (the
-**Source** button). Only changed items' text goes into the page, not whole
-files; a pour's text stops before KiCad's computed fill.
-
-## Schematic nets (work in progress)
-
-kigit also reads the schematic next to the board (all sheets, including
-KiCad 10's multiple top-level sheets from the `.kicad_pro`) and works out its
-nets itself: which pins each wire, label and power symbol connects. There's
-no schematic view yet; for now it's available as data:
-
-```sh
-kigit --json c46da63..HEAD            # PCB diff + both revisions' schematic nets
-```
-
-To verify the connectivity against KiCad's own netlist:
-
-```sh
-kicad-cli sch export netlist -o owl.net owl_v1.kicad_sch
-kigit --check-netlist owl.net         # LOCAL; or add a revision: ... owl.net c46da63
-```
-
-It prints any net whose pins or name differ. On the owl_v1 history (25
-schematic commits) every net matches KiCad exactly, as it does on projects
-using buses (vector buses like `D[0..7]`, groups and bus aliases like
-`USB_C{USB}`, across sheets).
-
-### Schematic diff
-
-Every run also compares the two schematics and prints what changed:
-
-```
-schematic: parts +1 -0, 8 changed electrically, 1 fields only, 0 only moved; 3 nets changed, 0 renamed, 1 only redrawn
-  ~ J3     J3.1 (Pin_1): /owl_v1/CAN Transceiver/CAN_H -> GND, J3.3 (Pin_3): GND -> /owl_v1/CAN Transceiver/CAN_H, moved
-  + R19    R          [IOs] on +3.3V, GND
-  ~ C14    Footprint Capacitor_SMD:C_0402_1005Metric -> Capacitor_SMD:C_0603_1608Metric
-  ~ net GND                      joined: J3.1 (Pin_1), R19.2  left: J3.3 (Pin_3)
-```
-
-- Parts are matched by KiCad's internal ID, so re-annotating shows as a
-  rename, not a remove + add.
-- Changes are split into **electrical** (part added/removed, value,
-  footprint or symbol changed, a pin moved to another net), **fields only**
-  (BOM fields like MPN, or the reference) and **cosmetic** (part moved,
-  wires redrawn, labels moved, but the same connections). Cosmetic changes
-  are counted but only listed with `--stats`.
-- Nets are paired by label name, else by shared pins, and report which pins
-  joined or left, renames, and nets merged into another.
-
-`--json` includes all of this under `schematic_diff`.
-
-## How matching works
-
-**PCB.** Tracks, arcs, vias and pads are matched in two passes:
-
-1. **By KiCad's ID** (the `uuid`/`tstamp` KiCad gives every item and keeps
-   when you move it; a pad uses its footprint's ID plus its pad number).
-   Same ID and same place: unchanged. Same ID and same copper (net, layers,
-   width/size, length) at a new place or angle: **moved**, shown in blue,
-   with an optional ghost at the old position. Same ID but edited (a dragged
-   track end, a new width or net): removed + added.
-2. **By geometry** for everything else (files without IDs, or copper KiCad
-   gave new IDs, e.g. after re-routing): same kind, net, layers and
-   coordinates (to 1 nm) means unchanged.
-
-So moving a footprint or the whole layout shows as moved, not as everything
-removed and re-added, while re-routing still shows the new and old copper.
-
-**Silkscreen** (optional: `--silkscreen`, or "Include silkscreen" in the GUI;
-off by default since it makes pages bigger): F/B silkscreen shapes and text
-are compared and drawn (front near-white, back purple and mirrored), with
-their own layer toggles. Matched like footprint graphics: silkscreen that
-moved with its footprint shows as moved; new or edited items as added /
-removed. Text uses a browser font, so it's close to KiCad's, not identical.
-
-Zones (copper pours) are drawn from the newer revision only and aren't
-diffed, because refilling a pour changes its shape every time.
-
-**Schematic.** Parts are matched by KiCad ID (then reference), nets by label
-name or shared pins, wires and labels by position; see "Schematic diff".
-
-## Logs
-
-Every run keeps a log, named after when it started, so you can look back at
-what happened (and send it along with a bug report):
-
-| Platform | Default folder |
-| --- | --- |
-| Linux | `~/.local/state/kigit/log/` |
-| macOS | `~/Library/Application Support/kigit/log/` |
-| Windows | `%LOCALAPPDATA%\kigit\log\` |
-
-Change it with `--log-dir DIR` (or `KIGIT_LOG_DIR`); `--no-log` turns it off.
-Old logs are kept.
-
-- **Command line:** `kigit_<date>_<time>_<pid>.log`: what was compared, timings,
-  how much changed, warnings, errors, exit code. `-V` also prints the log to
-  the console, with debug lines (every git command and its duration).
-- **GUI:** `kigit-gui_<date>_<time>_<pid>.log` holds the whole session: what
-  you opened and compared, every message the GUI showed you, the kigit calls
-  it made (their own lines included), and any error in the GUI. The same lines
-  go to the console you ran `kigit gui` from, and the **log** button in the
-  GUI's header shows the file and its latest lines.
-
-```
-[2026-10-28 01:25:56.785] [kigit-gui] [info] found 1 KiCad project(s): owl_v1 (/home/me/Kicad/owl/owl_v1)
-[2026-10-28 01:25:56.792] [kigit] [info] run: kigit -C .../owl_v1.kicad_pcb --log --max 200 ...
-[2026-10-28 01:25:56.826] [kigit] [info] done: exit 0 in 34 ms
-[2026-10-28 01:25:56.827] [kigit-gui] [info] loaded .../owl_v1.kicad_pcb: 39 of 39 commits listed
-```
-
-## Testing
-
-```sh
-cmake -S . -B build && cmake --build build -j
-cd build && ctest            # everything (about 5 s)
-ctest -L unit                # C++ only
-ctest -L gui                 # the GUI (needs uv)
-```
-
-The tests don't need any of your projects: `tests/fixtures/` holds a tiny
-KiCad project in two versions, and the tests build a throwaway git repo from
-it (`make_fixture_repo` in `tests/cpp/helpers.cpp`, `gui/tests/fixture_repo.py`) (four commits, including a folder rename). The
-expected nets in the schematic tests are KiCad's own netlist for those files.
-
-- `tests/cpp/`: parser, board, PCB diff, schematic nets, schematic diff, git
-  integration, and the `kigit` binary end to end.
-- `gui/tests/`: the GUI with NiceGUI's simulated user.
-- Optional check against real projects: kigit's nets must match `kicad-cli`
-  exactly. Skipped unless you list projects:
-
-  ```sh
-  KIGIT_REGRESSION_PROJECTS="~/boards/a/a.kicad_pcb:~/boards/b/b.kicad_pcb" ctest -L regression -V
-  ```
-
-## Layout
-
-Headers in `include/<dir>/`, sources in `src/<dir>/`:
-
-```
-utils/      platform (OS-specific code), log, sexpr (KiCad's file syntax)
-git/        git (log, show, revisions), locate (boards moved in history)
-pcb/        board (.kicad_pcb -> tracks, vias, pads, zones, ...), diff
-sch/        schematic (.kicad_sch -> sheets, parts, wires, nets), sch_diff, netcheck
-report/     html (JSON for the viewer), source (file text for the source panel)
-commands/   the command line: one file per command (src/main.cpp runs them)
-submodules/             json, spdlog, doctest (git submodules)
-tests/                  C++ tests, fixtures, regression check
-gui/                    the NiceGUI app and its tests
-resources/viewer.html   page shell + styles; source.js, pcb.js, sch.js,
-                        shell.js are combined into it at build time (one HTML file)
-```
-
-## Limitations
-
-- Custom-shaped pads are drawn as their anchor rectangle.
-- Footprint graphics (silkscreen, courtyards) and text aren't drawn.
-- Old KiCad 5 boards (`module`, numeric nets) are parsed but less tested.
+See [Installation](installation.md) to get kigit, and [Overview](how-to-use/overview.md) for how it works.
