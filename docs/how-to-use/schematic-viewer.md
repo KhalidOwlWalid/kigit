@@ -1,5 +1,7 @@
 # Schematic Viewer
 
+![Schematic viewer](../blobs/sch_viewer.png)
+
 The **Schematic** tab draws each sheet (wires, parts, labels, sheet boxes) with the same colours as the PCB: green added, red dashed removed, amber for parts whose value, footprint or connections changed, grey unchanged.
 
 | Action | What it does |

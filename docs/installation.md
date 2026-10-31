@@ -10,7 +10,13 @@
 1. Download `kigit-<version>-setup.exe` from the [Releases](https://github.com/KhalidOwlWalid/kigit/releases) page.
 2. Run it. No admin rights are needed.
 
-It adds `kigit` to your PATH and a **kigit** entry to the Start menu that opens the GUI. The first GUI start downloads Python and the GUI's packages (once, about a minute); after that it starts straight away.
+It adds `kigit` to your PATH and a **kigit** entry to the Start menu that opens the GUI. 
+
+!!! warning Slow Initial Start
+    The first `kigit gui` takes about a minute, since it grabs Python and the GUI's
+    packages. After that, it's instant. (The command line doesn't need any of that, so it's
+    quick from the start.)
+
 
 !!! tip "Portable"
     The Releases page also has a zip. Unzip it anywhere and run `bin\kigit.exe`.
@@ -22,12 +28,19 @@ Download `kigit-<version>-linux-x86_64.tar.gz` from the [Releases](https://githu
 ```sh
 tar -xzf kigit-*-linux-x86_64.tar.gz -C ~/.local --strip-components=1
 kigit --version    # ~/.local/bin must be on your PATH (it is on most distros)
-kigit gui
+kigit --help # Shows all optional commands and some example
+kigit gui # Launches the GUI for kigit
 ```
 
 It brings its own copy of uv for the GUI (in `~/.local/libexec/kigit`), so a uv you already have isn't touched.
 
-To uninstall, delete `~/.local/bin/kigit`, `~/.local/share/kigit` and `~/.local/libexec/kigit`.
+To uninstall:
+
+```sh
+rm ~/.local/bin/kigit
+rm -r ~/.local/share/kigit ~/.local/libexec/kigit
+rm -r ~/.local/state/kigit    # optional: the GUI's Python environment and the logs
+```
 
 ## Build from source
 

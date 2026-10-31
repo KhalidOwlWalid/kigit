@@ -1,5 +1,7 @@
 # Source Panel
 
+![Source Panel Viewer](../blobs/source_panel_viewer.png)
+
 The source panel shows the text of what changed in the `.kicad_pcb` / `.kicad_sch` files, old on the left and new on the right, like a side-by-side code diff. It sits under the drawing on both tabs.
 
 It's off by default because it makes pages bigger:

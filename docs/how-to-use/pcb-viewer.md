@@ -1,5 +1,7 @@
 # PCB Viewer
 
+![PCB viewer demo](../blobs/pcb_viewer.png)
+
 The **PCB** tab draws both revisions of the board on top of each other.
 
 | Action | What it does |

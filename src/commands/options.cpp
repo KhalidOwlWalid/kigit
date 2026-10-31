@@ -17,6 +17,16 @@ USAGE
     kigit gui [PROJECT_DIR]                                  (desktop app)
     kigit [OPTIONS] --files OLD.kicad_pcb NEW.kicad_pcb      (no git needed)
 
+EXAMPLE
+    Given that you wish to compare 2 different commits, in the repository where .kicad_pcb
+    can be found, run the following command:
+
+    cd <root_directory_of_kicad_pcb>
+    kigit <commit_1>..<commit_2> --output example.html
+
+    This will compare commit 1 and 2 and output the generated pcb and schematic diff at
+    example.html. Simply open the example.html with your browser to view it afterwards.
+
 REVISIONS
     (none)          HEAD vs the working tree (LOCAL)
     REV             REV vs the working tree

@@ -40,6 +40,7 @@ nav:
   - Getting Started:
     - Introduction: introduction.md
     - Installation: installation.md
+    - Architecture: architecture.md
   - How to Use:
     - Overview: how-to-use/overview.md
     - GUI: how-to-use/gui.md
@@ -76,6 +77,9 @@ markdown_extensions:
   - tables
   - toc:
       permalink: true
+
+extra_css:
+  - stylesheets/diff.css
 
 extra:
   social:
