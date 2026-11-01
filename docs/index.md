@@ -81,3 +81,7 @@ kigit gui                  # or pick commits in the GUI
 ```
 
 See [Installation](installation.md) to get kigit, and [Overview](how-to-use/overview.md) for how it works.
+
+## License
+
+kigit is free and open source under the [MIT License](https://github.com/KhalidOwlWalid/kigit/blob/main/LICENSE): use it, fork it and change it, in public or private projects, with no need to open-source your own work.

@@ -138,3 +138,6 @@ install(TARGETS kigit RUNTIME DESTINATION bin)
 install(DIRECTORY gui/ DESTINATION share/kigit/gui
         PATTERN ".venv" EXCLUDE PATTERN "__pycache__" EXCLUDE PATTERN ".pytest_cache" EXCLUDE
         PATTERN "tests" EXCLUDE)
+# kigit's license, and the licenses of what ships with it (compiled-in
+# libraries, the bundled uv).
+install(FILES LICENSE THIRD_PARTY_NOTICES.md DESTINATION share/kigit)

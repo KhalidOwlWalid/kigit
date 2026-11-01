@@ -82,6 +82,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "installed kigit didn't run" }
           if (-not (Test-Path "$env:LOCALAPPDATA\Programs\kigit\share\kigit\gui\pyproject.toml")) { throw "GUI not installed" }
           if (-not (Test-Path "$env:LOCALAPPDATA\Programs\kigit\bin\uv.exe")) { throw "uv not installed" }
+          if (-not (Test-Path "$env:LOCALAPPDATA\Programs\kigit\share\kigit\LICENSE")) { throw "LICENSE not installed" }
+          if (-not (Test-Path "$env:LOCALAPPDATA\Programs\kigit\share\kigit\THIRD_PARTY_NOTICES.md")) { throw "third-party notices not installed" }
 
       - uses: actions/upload-artifact@v4
         with:
@@ -129,6 +131,8 @@ jobs:
           "$RUNNER_TEMP/try/bin/kigit" --version --no-log
           test -f "$RUNNER_TEMP/try/share/kigit/gui/pyproject.toml"
           test -x "$RUNNER_TEMP/try/libexec/kigit/uv"
+          test -f "$RUNNER_TEMP/try/share/kigit/LICENSE"
+          test -f "$RUNNER_TEMP/try/share/kigit/THIRD_PARTY_NOTICES.md"
           # Only system libraries (glibc), nothing that may be missing elsewhere.
           ldd "$RUNNER_TEMP/try/bin/kigit"
           ! ldd "$RUNNER_TEMP/try/bin/kigit" | grep -E 'libstdc\+\+|libspdlog|libfmt'

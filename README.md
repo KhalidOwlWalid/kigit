@@ -43,3 +43,7 @@ KiCAD-Prism and KiHub are in the same space and cover a lot of what kigit does. 
 Me? I'm a hobbyist who only recently got into PCB design and out of this frustration, I figured: why not just make my own PCB diff that does just enough for what I need? Nothing fancy. It runs locally, it's a simple download, and it works on Linux and Windows. (Sorry macOS folks, I'm broke and not about to buy a Mac just for this.)
 
 So, what kigit is **not** is a collaboration tool. It's for people who wants a simple app they can download, or open in a browser, to check what changed in their PCB designs. That's it.
+
+## License
+
+kigit is free and open source under the [MIT License](LICENSE): use it, fork it and change it, in public or private projects, with no need to open-source your own work. Third-party licenses are in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
