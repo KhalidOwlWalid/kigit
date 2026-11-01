@@ -1,4 +1,19 @@
+<div align="center">
+
 # kigit
+
+### Visual diffs for KiCad PCBs and schematics, straight from git.
+
+[![CI](https://github.com/KhalidOwlWalid/kigit/actions/workflows/ci.yml/badge.svg)](https://github.com/KhalidOwlWalid/kigit/actions/workflows/ci.yml)
+[![Release build](https://github.com/KhalidOwlWalid/kigit/actions/workflows/release.yml/badge.svg)](https://github.com/KhalidOwlWalid/kigit/actions/workflows/release.yml)
+[![Release](https://img.shields.io/github/v/release/KhalidOwlWalid/kigit?label=release&color=7e57c2)](https://github.com/KhalidOwlWalid/kigit/releases/latest)
+[![Docs](https://img.shields.io/badge/docs-khalidowlwalid.github.io-7e57c2?logo=materialformkdocs&logoColor=white)](https://khalidowlwalid.github.io/kigit/)
+![C++20](https://img.shields.io/badge/C%2B%2B-20-00599C?logo=cplusplus&logoColor=white)
+![Windows and Linux](https://img.shields.io/badge/platform-Windows%20%7C%20Linux-58a6ff)
+![KiCad 6+](https://img.shields.io/badge/KiCad-6%2B-314CB0?logo=kicad&logoColor=white)
+[![MIT license](https://img.shields.io/badge/license-MIT-3fb950)](LICENSE)
+
+</div>
 
 **kigit** utilizes the use of git logs in order to allow user to perform diffs between their pcb and schematic files. It provides a proper visual feedback which helps in identifying changes made per commit basis. Hence where its name came from, combination of Ki from KiCAD and git itself (kigit!). 
 
