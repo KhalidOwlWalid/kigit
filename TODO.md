@@ -1,1 +1,0 @@
-- [x] Developer mode: side-by-side source panel (`--source`), see README "Source panel"
