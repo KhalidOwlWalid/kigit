@@ -310,3 +310,17 @@ async def test_first_commit_has_nothing_to_review_against(user: User, monkeypatc
     await select(user, [first])
     user.find(marker="review-button").click()
     await user.should_see("This is the first commit")
+
+
+async def test_panels_are_resizable(user: User, monkeypatch) -> None:
+    """Both side panels have a drag handle; a drag's end sets the drawer's width."""
+    await open_at(user, monkeypatch, PROJECT)
+    await user.should_see("Pick two commits on the left", retries=50)
+    for key in ("commits", "review"):
+        grip = user.find(marker=f"grip-{key}").elements.pop()
+        drawer = user.client.elements[int(grip.props["data-drawer"])]
+        assert drawer.props["width"] == 480
+        emit(user, "kigit_panel_width", {"id": drawer.id, "width": 700})
+        assert drawer.props["width"] == 700
+        emit(user, "kigit_panel_width", {"id": drawer.id, "width": "wide"})  # ignored
+        assert drawer.props["width"] == 700

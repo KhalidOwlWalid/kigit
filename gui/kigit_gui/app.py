@@ -32,6 +32,7 @@ from nicegui import app, ui
 
 from . import kigit, logs, review
 from .folder_picker import FolderPicker
+from .resize import Resizer
 from .review_panel import BRIDGE_JS, ReviewPanel, focus_script
 
 LOCAL = "LOCAL"
@@ -42,10 +43,11 @@ SEARCH_DEPTH = 2
 CACHE = Path(tempfile.mkdtemp(prefix="kigit-gui-"))
 app.add_static_files("/diffs", str(CACHE))
 
-# Message column: one line, the whole message on hover.
+# Message column: one line, the whole message on hover. It takes what the
+# commit list's width leaves (the drawer is a size container, see resize.py).
 MESSAGE_CELL = r"""
 <q-td :props="props">
-  <div class="ellipsis" style="max-width: 10.5rem">{{ props.row.subject }}</div>
+  <div class="ellipsis" style="max-width: max(6rem, calc(100cqw - 19rem))">{{ props.row.subject }}</div>
   <q-tooltip anchor="center right" self="center left" max-width="34rem"
              class="bg-grey-10 text-body2" style="white-space: pre-wrap">{{ props.row.tip }}</q-tooltip>
 </q-td>
@@ -138,6 +140,7 @@ def build(start_folder: str):
     ui.dark_mode(True)
     ui.query(".nicegui-content").classes("p-0 gap-0")
     state: dict = {"board": None, "history": None}
+    resizer = Resizer()
 
     # ---------------------------------------------------------------- header
     with ui.header().classes("items-center gap-3 py-2 px-4 bg-[#161a20] border-b border-[#29303a] no-wrap"):
@@ -153,7 +156,7 @@ def build(start_folder: str):
         ui.button(icon="receipt_long", on_click=show_log).props("flat dense round").tooltip("Session log").mark("log-button")
 
     # ----------------------------------------------------------- commit list
-    with ui.left_drawer(value=True, bordered=True).props("width=480").classes("bg-[#161a20] p-0"):
+    with ui.left_drawer(value=True, bordered=True).classes("bg-[#161a20] p-0") as commits_drawer:
         with ui.column().classes("w-full p-3 gap-2"):
             project_label = ui.label("").classes("text-sm font-semibold")
             hint = ui.label("Pick two commits and press Compare, or one and press Review.").classes(
@@ -221,6 +224,7 @@ def build(start_folder: str):
             table.add_slot("body-cell-subject", MESSAGE_CELL)
             table.add_slot("body-cell-short", COMMIT_CELL)
             table.add_slot("body-cell-tags", TAGS_CELL)
+    resizer.add(commits_drawer, "left", "commits", 480)
 
     # ---------------------------------------------------------------- viewer
     with ui.element("div").classes("w-full h-[calc(100vh-52px)] relative"):
@@ -253,7 +257,7 @@ def build(start_folder: str):
                 r["reviewed"] = True
         table.update()
 
-    panel = ReviewPanel(focus=focus, on_saved=on_review_saved)
+    panel = ReviewPanel(focus=focus, on_saved=on_review_saved, resizer=resizer)
     ui.add_body_html(BRIDGE_JS)
     ui.on("kigit_pinned", lambda e: panel.set_pinned(review.Anchor.from_dict(e.args)))
     ui.on("kigit_focused", on_focused)

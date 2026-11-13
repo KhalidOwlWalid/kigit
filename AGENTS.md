@@ -73,7 +73,8 @@ Other folders:
   binary as a byte array. MSVC limits string literal length, hence bytes.
 - `gui/kigit_gui/`: `app.py` (the UI), `kigit.py` (runs the CLI with
   `asyncio.to_thread(subprocess.run)`), `logs.py`, `folder_picker.py`,
-  `review.py` (review file format), `review_panel.py` (the review drawer).
+  `review.py` (review file format), `review_panel.py` (the review drawer),
+  `resize.py` (drag handles for the drawers).
 - `submodules/`: the libraries (json, spdlog, doctest) as pinned git submodules.
 - `tests/`: `cpp/` (doctest), `fixtures/` (demo v1/v2, hier, bus projects),
   `regression.sh`.
@@ -240,6 +241,13 @@ kigit gui [PROJECT_DIR]
   and a manual revision entry. "Compare folders" works without git.
   There's a log viewer and "Include silkscreen" / "Include source" checkboxes.
 - Dialogs are created inside `dialog_host`.
+- Panels resize by dragging their inner edge (double-click resets), and the
+  width is remembered in localStorage. GUI drawers: `Resizer.add()` in
+  `resize.py`; the drag sets the width in the page and sends it to the server
+  when the drag ends (`kigit_panel_width`). A drawer stops where less than
+  400 px would be left for the viewer. Viewer sidebar: `shell.js` sets
+  `--aside-w`; no handle in the narrow (< 760 px) layout. The source panel's
+  height was already adjustable.
 - Window: native (pywebview, `ui.run(native=True)`) by default on Windows,
   browser elsewhere; `--native` / `--browser` override. `choose_window()`
   decides, and `native_problem()` probes pywebview in a separate Python

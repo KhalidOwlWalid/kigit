@@ -124,7 +124,7 @@ class ReviewPanel:
     """The right-hand drawer. `focus(anchor)` asks the viewer to show an
     anchor; `on_saved(commit)` is called when a review file is first created."""
 
-    def __init__(self, focus: Callable[[Anchor], None], on_saved: Callable[[str], None]) -> None:
+    def __init__(self, focus: Callable[[Anchor], None], on_saved: Callable[[str], None], resizer=None) -> None:
         self.focus_cb, self.on_saved = focus, on_saved
         self.project: Path | None = None
         self.key = ""
@@ -136,10 +136,14 @@ class ReviewPanel:
 
         ui.add_body_html(_PAGE_JS)
         ui.on("kigit_image_failed", lambda e: self._warn(f"Couldn't add the image: {e.args}"))
-        with ui.right_drawer(value=False, bordered=True).props("width=480").classes(
+        with ui.right_drawer(value=False, bordered=True).classes(
                 "bg-[#161a20] p-0") as self.drawer:
             self.body = ui.column().classes("w-full p-3 gap-2")
         self.drawer.mark("review-panel")
+        if resizer is not None:
+            resizer.add(self.drawer, "right", "review", 480)
+        else:
+            self.drawer.props("width=480")
         # Edits are written a moment later, not on every keystroke.
         ui.timer(1.0, self.flush)
 
@@ -316,7 +320,7 @@ class ReviewPanel:
                     color = "red-4" if note.anchor.removed else "amber-5"
                     ui.chip(chip_text(note.anchor), icon="my_location",
                             on_click=lambda n=note: self.focus_cb(n.anchor)).props(
-                        f"dense outline color={color} clickable").classes("text-xs max-w-[16rem] truncate").tooltip(
+                        f"dense outline color={color} clickable").classes("text-xs max-w-[70%] truncate").tooltip(
                         "Show it in the viewer" + (f". {note.anchor.where}" if note.anchor.where else ""))
                 else:
                     ui.label("General note").classes("text-xs text-gray-500")

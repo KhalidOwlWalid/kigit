@@ -18,9 +18,12 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
 button { font: inherit; color: inherit; }
 code, .mono { font-family: ui-monospace, "JetBrains Mono", "Fira Code", Menlo, Consolas, monospace; }
 
-#app { display: grid; grid-template-columns: 320px 1fr; height: 100vh; }
+#app { display: grid; grid-template-columns: var(--aside-w, 320px) 1fr; height: 100vh; }
 aside { background: var(--panel); border-right: 1px solid var(--line); display: flex;
-  flex-direction: column; min-height: 0; }
+  flex-direction: column; min-height: 0; min-width: 0; position: relative; }
+.aside-grip { position: absolute; top: 0; bottom: 0; right: -3px; width: 6px; cursor: ew-resize; z-index: 6;
+  touch-action: none; }
+.aside-grip:hover, .aside-grip.dragging { background: color-mix(in srgb, var(--accent, #e8b84d) 35%, transparent); }
 aside section { padding: 12px 14px; border-bottom: 1px solid var(--line); }
 aside h3 { margin: 0 0 8px; font-size: 11px; font-weight: 600; letter-spacing: .08em;
   text-transform: uppercase; color: var(--muted); }
@@ -328,6 +331,7 @@ body[data-tab="pcb"] [data-pane="sch"], body[data-tab="sch"] [data-pane="pcb"] {
 @media (max-width: 760px) {
   #app { grid-template-columns: 1fr; grid-template-rows: 46vh 1fr; }
   aside { order: 2; border-right: 0; border-top: 1px solid var(--line); }
+  .aside-grip { display: none; }
   #card { width: auto; left: 12px; }
   .hint { display: none; }
 }
