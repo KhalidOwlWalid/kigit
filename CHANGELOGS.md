@@ -6,6 +6,8 @@ All notable changes to kigit, newest first. The format follows [Keep a Changelog
 
 ### Added
 
+- **Commit reviews** in the GUI: pick a commit and press Review to see it against its parent and write down why it changed. A summary plus notes, each pointing at a net, footprint, part or bus pinned in the viewer (click to show it again), in Markdown with pasted images and tags. Saved as one Markdown file per commit in `reviews/` next to the board.
+- `kigit --log` gives each commit's parent.
 - Documentation site at [khalidowlwalid.github.io/kigit](https://khalidowlwalid.github.io/kigit/), built with MkDocs (Material): installation, how-to guides for the GUI, command line, PCB and schematic viewers and source panel, examples, and an architecture page.
 - Demo videos and GIFs of the PCB and schematic diff.
 

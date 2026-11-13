@@ -174,7 +174,7 @@ std::vector<Commit> log(const std::string& root, const LogQuery& q) {
     bool ok;
     std::string out = git(root,
                           join(join({"log"}, query_args(q)),
-                               join({"--format=%x1e%H%x1f%h%x1f%ci%x1f%an%x1f%s%x1f%b%x1d", "--name-only",
+                               join({"--format=%x1e%H%x1f%h%x1f%ci%x1f%an%x1f%P%x1f%s%x1f%b%x1d", "--name-only",
                                      "--diff-merges=first-parent"},
                                     path_args(q))),
                           ok);
@@ -188,7 +188,7 @@ std::vector<Commit> log(const std::string& root, const LogQuery& q) {
         size_t msg_end = rec.find('\x1d');
         std::string header = rec.substr(0, msg_end);
         Commit c;
-        std::vector<std::string*> fields{&c.hash, &c.short_hash, &c.date, &c.author, &c.subject, &c.body};
+        std::vector<std::string*> fields{&c.hash, &c.short_hash, &c.date, &c.author, &c.parent, &c.subject, &c.body};
         size_t start = 0;
         for (size_t i = 0; i < fields.size(); ++i) {
             size_t sep = i + 1 < fields.size() ? header.find('\x1f', start) : std::string::npos;
@@ -197,6 +197,7 @@ std::vector<Commit> log(const std::string& root, const LogQuery& q) {
             start = sep + 1;
         }
         while (!c.body.empty() && (c.body.back() == '\n' || c.body.back() == ' ')) c.body.pop_back();
+        c.parent = c.parent.substr(0, c.parent.find(' ')); // a merge's first parent
         if (msg_end != std::string::npos) {
             std::istringstream in(rec.substr(msg_end + 1));
             std::string line;

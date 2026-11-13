@@ -44,6 +44,7 @@ std::vector<std::string> list_files(const std::string& root, const Revision& rev
 // A commit that touched the project, newest first.
 struct Commit {
     std::string hash, short_hash, date, author, subject;
+    std::string parent;             // first parent's full hash ("" for the first commit)
     std::string body;               // rest of the commit message after the subject
     std::vector<std::string> files; // changed paths (from the repo root)
 };

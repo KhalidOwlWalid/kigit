@@ -24,7 +24,7 @@ namespace {
 double r4(double v) { return std::round(v * 1e4) / 1e4; }
 
 json rev_json(const git::Revision& r) {
-    return {{"spec", r.spec}, {"short", r.short_hash}, {"subject", r.subject}, {"date", r.date},
+    return {{"spec", r.spec}, {"hash", r.hash}, {"short", r.short_hash}, {"subject", r.subject}, {"date", r.date},
             {"local", r.local}, {"path", r.board_rel.empty() ? r.path : r.board_rel}};
 }
 

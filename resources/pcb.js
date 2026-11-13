@@ -257,6 +257,7 @@
     renderCard();
     refreshHL();
     if (n !== null) showNetSource(n);
+    tellPinned();
   }
 
   function netAt(e) {
@@ -403,6 +404,7 @@
   }
   function pinFootprint(f) {
     fpPinned = f;
+    tellPinned();
     fpList.querySelectorAll(".pin").forEach((x) => x.classList.remove("pin"));
     if (f !== null) fpList.querySelector(`[data-fp="${f}"]`)?.classList.add("pin");
     setFootprint(f);
@@ -434,6 +436,44 @@
     $("#fpZoom").onclick = () => zoomToFootprint(f);
     $("#fpClose").onclick = () => pinFootprint(null);
   }
+  // ---------- review anchors ----------
+  // Inside the GUI, the pinned net or footprint is what a new review note
+  // points at; the GUI also asks to show a note's anchor (see shell.js).
+  // An anchor also records where it was pinned: this comparison, and the
+  // side the thing is on ("old" when this comparison removed it).
+  const seen = (gone) => ({ old: meta.old.hash || "", new: meta.new.hash || "", side: gone ? "old" : "new" });
+  // A net is gone when everything on it was removed (or is a moved item's old place).
+  // (Pours are drawn from the new board only, so a pour means it's still there.)
+  const netGone = (n) => netEls[n].length > 0 && netEls[n].every((el) => [2, 4].includes(items[+el.dataset.i]?.s));
+  function tellPinned() {
+    if (window.parent === window) return;
+    const anchor = fpPinned !== null
+      ? { tab: "pcb", kind: "footprint", name: footprints[fpPinned].ref, seen: seen(footprints[fpPinned].st === 2) }
+      : pinned !== null ? { tab: "pcb", kind: "net", name: nets[pinned].name, seen: seen(netGone(pinned)) } : null;
+    window.parent.postMessage({ kigit: "pinned", anchor }, "*");
+  }
+  // The footprint with this reference, on the anchor's side if there are two
+  // (one removed, one added in its place).
+  const findFootprint = (a) => {
+    const all = footprints.map((x, i) => [x, i]).filter(([x]) => x.ref === a.name);
+    const old = a.seen && a.seen.side === "old";
+    return (all.find(([x]) => (x.st === 2) === old) || all[0] || [null, -1])[1];
+  };
+  (window.kigitFocus = window.kigitFocus || {}).pcb = (a) => {
+    if (a.kind === "footprint") {
+      const f = findFootprint(a);
+      if (f >= 0) pinFootprint(f);
+      return f >= 0;
+    }
+    const n = nets.findIndex((x) => x.name === a.name);
+    if (n < 0) return false;
+    if (fpPinned !== null) pinFootprint(null);
+    pin(n);
+    const b = netBox(n);
+    if (b) fitBox(b, 0.25);
+    return true;
+  };
+
   fpList.addEventListener("mouseover", (e) => { const r = e.target.closest("[data-fp]"); if (r) setFootprint(+r.dataset.fp); });
   fpList.addEventListener("mouseleave", () => setFootprint(fpPinned));
   fpList.addEventListener("click", (e) => {

@@ -72,7 +72,8 @@ Other folders:
   `source.js` (the source panel, shared by both tabs), `pcb.js`, `sch.js`. CMake combines them into one page and embeds it in the
   binary as a byte array. MSVC limits string literal length, hence bytes.
 - `gui/kigit_gui/`: `app.py` (the UI), `kigit.py` (runs the CLI with
-  `asyncio.to_thread(subprocess.run)`), `logs.py`, `folder_picker.py`.
+  `asyncio.to_thread(subprocess.run)`), `logs.py`, `folder_picker.py`,
+  `review.py` (review file format), `review_panel.py` (the review drawer).
 - `submodules/`: the libraries (json, spdlog, doctest) as pinned git submodules.
 - `tests/`: `cpp/` (doctest), `fixtures/` (demo v1/v2, hier, bus projects),
   `regression.sh`.
@@ -133,7 +134,8 @@ kigit gui [PROJECT_DIR]
   stats, `--json`, `--silkscreen`, `--source`, `-q`, `-V/--verbose` (not `-v`, which is
   `--version`).
 - Used by the GUI: `--log` (history JSON; `--max`, `--since`, `--until`
-  where a bare date means the whole day, `--kicad-only`), `--projects`
+  where a bare date means the whole day, `--kicad-only`; each commit has its
+  first `parent`, the real one even when filtered), `--projects`
   (`--depth`).
 - `--check-netlist FILE`: compare kigit's nets with a KiCad netlist.
 - Logging: every run writes a session log
@@ -255,6 +257,28 @@ kigit gui [PROJECT_DIR]
 - Tests: NiceGUI's harness fails a test on any error-level log, so
   user-facing failures are logged as warnings. Wait for a button to be
   enabled, or the iframe `src` to change, instead of sleeping.
+- Reviews (GUI only): pick one commit and press Review; it's diffed against
+  its `parent` and a right drawer opens. One Markdown file per commit in
+  `<board folder>/reviews/` (`<short>-<subject>.md`, found by the `commit:`
+  header), pasted/dropped images in `reviews/assets/<sha256[:16]>.<ext>`.
+  A note is a `## title` line followed by
+  `<!-- kigit-note {"id", "anchor", "tags"} -->`; anything before the first
+  note is the summary. Anchors are `{tab, kind, name, seen}`: pcb
+  net/footprint, sch net/part/bus, by name. `seen` is
+  `{old, new, side}`: the two full hashes compared when it was pinned
+  (`meta.old.hash`/`meta.new.hash` in the page) and `side: "old"` when that
+  comparison removed it (shown as "· removed"). Commits don't change, so that
+  comparison always has it, deleted or not. When a removed and an added item
+  share a name, focus picks the one on the anchor's side. Older anchors
+  without `seen` still load. Saved by a 1 s timer after edits; no file until
+  something is written. Comparing a commit with its parent opens its review
+  too.
+- Viewer bridge: inside the GUI, `pcb.js`/`sch.js` post
+  `{kigit: "pinned", anchor}` to the parent on every pin change; the GUI
+  posts `{kigit: "focus", anchor}` and `shell.js` switches tab, calls
+  `window.kigitFocus[tab]` and answers `{kigit: "focused", found}`. Images
+  are uploaded over HTTP (`/review-image/{key}`, not the websocket) and
+  served from `/review-files/{key}/`; `key` is a random per-project token.
 - `kigit gui` looks for the app in `$KIGIT_GUI_DIR`, `<exe>/../gui` (build
   folder) or `<exe>/../share/kigit/gui` (installed), and for `uv` next to
   the exe, then in `<exe>/../libexec/kigit`, then on PATH. The installed copy keeps its Python environment in
@@ -303,6 +327,9 @@ macOS code paths in `platform.cpp` stay, but nothing checks them).
 
 Open work:
 
+- Reviews: the working tree (notes before committing), reviews across a
+  range, showing reviews in the HTML page (`--review`), note markers on the
+  canvas.
 - Schematic to PCB cross-probing.
 - A net filter on the schematic tab.
 - Fab and courtyard layers.

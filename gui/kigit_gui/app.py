@@ -10,6 +10,9 @@ Flow:
      on top). Nothing is rendered yet.
   3. Pick two commits and press Compare: kigit diffs them and the viewer
      opens on the schematic.
+  4. Or pick one commit and press Review: it's diffed against its parent and
+     the review panel opens on the right, for notes on why it changed
+     (review_panel.py, saved in <project>/reviews/).
 """
 
 from __future__ import annotations
@@ -27,8 +30,9 @@ from pathlib import Path
 
 from nicegui import app, ui
 
-from . import kigit, logs
+from . import kigit, logs, review
 from .folder_picker import FolderPicker
+from .review_panel import BRIDGE_JS, ReviewPanel, focus_script
 
 LOCAL = "LOCAL"
 SEARCH_DEPTH = 2
@@ -57,7 +61,8 @@ COMMIT_CELL = r"""
 TAGS_CELL = r"""
 <q-td :props="props">
   <q-badge v-if="props.row.pcb" outline color="blue-4" label="PCB" class="q-mr-xs" />
-  <q-badge v-if="props.row.sch" outline color="green-4" label="SCH" />
+  <q-badge v-if="props.row.sch" outline color="green-4" label="SCH" class="q-mr-xs" />
+  <q-icon v-if="props.row.reviewed" name="rate_review" color="amber-5" size="xs"><q-tooltip>Reviewed</q-tooltip></q-icon>
 </q-td>
 """
 
@@ -151,9 +156,13 @@ def build(start_folder: str):
     with ui.left_drawer(value=True, bordered=True).props("width=480").classes("bg-[#161a20] p-0"):
         with ui.column().classes("w-full p-3 gap-2"):
             project_label = ui.label("").classes("text-sm font-semibold")
-            hint = ui.label("Pick two commits, then press Compare.").classes("text-xs text-gray-400")
+            hint = ui.label("Pick two commits and press Compare, or one and press Review.").classes(
+                "text-xs text-gray-400")
             with ui.row().classes("w-full gap-2 items-center no-wrap"):
                 compare_btn = ui.button("Compare", on_click=lambda: compare()).props("unelevated dense color=amber-8")
+                review_btn = ui.button("Review", icon="rate_review", on_click=lambda: review_commit()).props(
+                    "unelevated dense color=blue-grey-8").tooltip(
+                    "Compare this commit with the one before it and write down why it changed").mark("review-button")
                 picked = ui.label("").classes("text-xs text-gray-300 truncate")
             # Off by default: silkscreen makes comparisons slower and pages bigger.
             silk = ui.checkbox("Include silkscreen", value=False).props("dense dark").classes("text-xs").tooltip(
@@ -226,7 +235,31 @@ def build(start_folder: str):
                 "unelevated dense color=amber-8").mark("no-git-compare")
             no_git_button.set_visibility(False)
 
+    # ---------------------------------------------------------------- review
+    def focus(anchor) -> None:
+        if not frame.visible:
+            notify("Open the comparison first", type="warning")
+            return
+        ui.run_javascript(focus_script(frame.id, anchor))
+
+    def on_focused(e) -> None:
+        if not e.args.get("found"):
+            a = review.Anchor.from_dict(e.args.get("anchor"))
+            notify(f"{a.label if a else 'That'} isn't in this comparison", type="warning")
+
+    def on_review_saved(commit: str) -> None:
+        for r in table.rows:
+            if r["hash"] == commit:
+                r["reviewed"] = True
+        table.update()
+
+    panel = ReviewPanel(focus=focus, on_saved=on_review_saved)
+    ui.add_body_html(BRIDGE_JS)
+    ui.on("kigit_pinned", lambda e: panel.set_pinned(review.Anchor.from_dict(e.args)))
+    ui.on("kigit_focused", on_focused)
+
     def show_message(icon: str, text: str, more: str = "", tone: str = "text-gray-400") -> None:
+        panel.close()
         no_git_button.set_visibility(False)
         frame.set_visibility(False)
         placeholder.set_visibility(True)
@@ -387,6 +420,7 @@ def build(start_folder: str):
             return
         rows = []
         local = h.local
+        reviewed = set(review.all_reviews(Path(state["board"]).parent))
         head = h.commits[0] if h.commits else None
         if local.dirty:
             subject = f"HEAD + uncommitted changes ({len(local.files)} file{'s' if len(local.files) != 1 else ''})"
@@ -398,12 +432,13 @@ def build(start_folder: str):
         if head and not filtered():  # with filters the first row needn't be HEAD
             tip += f"\n\nHEAD is {head.short}: {head.subject}"
         rows.append({"hash": LOCAL, "short": "HEAD*" if local.dirty else "HEAD", "pcb": local.pcb,
-                     "sch": local.sch, "date": "now", "subject": subject, "tip": tip})
+                     "sch": local.sch, "date": "now", "subject": subject, "tip": tip, "parent": "",
+                     "reviewed": False})
         for c in h.commits:
             message = c.subject + (f"\n\n{c.body}" if c.body else "")
             tip = f"{message}\n\n{c.author} · {c.date}\n{c.hash}"
             rows.append({"hash": c.hash, "short": c.short, "pcb": c.pcb, "sch": c.sch, "date": c.date[:16],
-                         "subject": c.subject, "tip": tip})
+                         "subject": c.subject, "tip": tip, "parent": c.parent, "reviewed": c.hash in reviewed})
         table.rows = rows
         keep = {r["hash"] for r in rows}
         table.selected = [r for r in table.selected if r["hash"] in keep]
@@ -417,8 +452,9 @@ def build(start_folder: str):
             table.update()
         n = len(table.selected)
         compare_btn.set_enabled(n == 2)
+        review_btn.set_enabled(n == 1 and table.selected[0]["hash"] != LOCAL)
         names = [r["short"] for r in table.selected]
-        picked.text = (" ↔ ".join(names) if n == 2 else f"{names[0]} + pick one more" if n == 1
+        picked.text = (" ↔ ".join(names) if n == 2 else f"{names[0]}: review it, or pick one more" if n == 1
                        else "Nothing picked")
         hint.set_visibility(state["history"] is not None)
 
@@ -434,8 +470,19 @@ def build(start_folder: str):
     async def compare() -> None:
         if len(table.selected) != 2:
             return
-        a, b = (r["hash"] for r in table.selected)
-        await run_diff(a, b, compare_btn)
+        a, b = table.selected
+        # A commit and its parent: that's the commit's own change, so its review opens too.
+        child = a if a.get("parent") == b["hash"] else b if b.get("parent") == a["hash"] else None
+        await run_diff(a["hash"], b["hash"], compare_btn, review_of=child)
+
+    async def review_commit() -> None:
+        if len(table.selected) != 1 or table.selected[0]["hash"] == LOCAL:
+            return
+        row = table.selected[0]
+        if not row.get("parent"):
+            notify("This is the first commit: there's nothing before it to compare with", type="warning")
+            return
+        await run_diff(row["parent"], row["hash"], review_btn, review_of=row)
 
     async def compare_manually() -> None:
         a, b = (old_rev.value or "").strip(), (new_rev.value or "").strip()
@@ -444,9 +491,10 @@ def build(start_folder: str):
             return
         await run_diff(a, b, manual_btn)
 
-    async def run_diff(a: str, b: str, button: ui.button) -> None:
+    async def run_diff(a: str, b: str, button: ui.button, review_of: dict | None = None) -> None:
         """Diffs two revisions and shows the viewer. kigit orders them by
-        history (older first); LOCAL is always the newest."""
+        history (older first); LOCAL is always the newest. review_of: the
+        commit row whose review opens alongside (a single commit's change)."""
         board = state["board"]
         if not board:
             notify("Open a project first", type="warning")
@@ -472,7 +520,15 @@ def build(start_folder: str):
             button.props(remove="loading")
         status.text = f"{short_rev(a)} ↔ {short_rev(b)} · {time.monotonic() - started:.1f} s"
         logs.log.info("compared %s .. %s in %.2f s", a, b, time.monotonic() - started)
+        show_page(name)
+        if review_of:
+            panel.open(Path(board).parent, review_of["hash"], review_of.get("parent", ""), review_of["subject"])
+        else:
+            panel.close()
+
+    def show_page(name: str) -> None:
         # Open on the schematic; the cache-buster makes a regenerated page reload.
+        panel.set_pinned(None)
         frame.props(f'src="/diffs/{name}?t={int(time.time())}#sch"')
         placeholder.set_visibility(False)
         frame.set_visibility(True)
@@ -589,9 +645,8 @@ def build(start_folder: str):
         label = lambda b: Path(b).parent.name or Path(b).name
         status.text = f"{label(old_board)} ↔ {label(new_board)} (no git) · {time.monotonic() - started:.1f} s"
         logs.log.info("compared files in %.2f s", time.monotonic() - started)
-        frame.props(f'src="/diffs/{name}?t={int(time.time())}#sch"')
-        placeholder.set_visibility(False)
-        frame.set_visibility(True)
+        show_page(name)
+        panel.close()
 
     # Pop-up dialogs live here, whichever button opens them.
     dialog_host = ui.element("div")

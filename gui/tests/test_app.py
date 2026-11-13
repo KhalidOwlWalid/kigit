@@ -240,3 +240,73 @@ async def test_include_source_checkbox(user: User, monkeypatch) -> None:
     page = await compare()
     assert '"src":[{' in page
     assert "demo.kicad_pcb" in page
+
+
+def emit(user: User, event: str, args) -> None:
+    """Sends a page event (emitEvent in the browser), e.g. what the viewer
+    reports as pinned."""
+    from nicegui.events import GenericEventArguments
+
+    with user.client:
+        for listener in list(user.client.layout._event_listeners.values()):  # noqa: SLF001
+            if listener.type == event:
+                listener.handler(GenericEventArguments(sender=user.client.layout, client=user.client, args=args))
+
+
+async def test_review_a_commit(user: User, monkeypatch, tmp_path: Path) -> None:
+    """Review one commit: it's diffed against its parent, notes point at what's
+    pinned in the viewer, and everything lands in <project>/reviews/."""
+    from kigit_gui import review
+
+    project = make_fixture_repo(tmp_path / "repo")  # its own repo: this test writes files
+    await open_at(user, monkeypatch, str(project))
+    await user.should_see("Pick two commits on the left", retries=50)
+    rows = commit_table(user).rows
+    v2 = next(r for r in rows if r["subject"].startswith("v2"))
+    docs = next(r for r in rows if r["subject"] == "docs only")
+    assert v2["parent"] == docs["hash"] and not v2["reviewed"]
+
+    await select(user, [rows[0]])  # the working tree can't be reviewed (yet)
+    assert not user.find(marker="review-button").elements.pop().enabled
+    await select(user, [v2])
+    user.find(marker="review-button").click()
+    await user.should_see(marker="viewer", retries=100)
+    assert user.find(marker="review-panel").elements.pop().value  # the drawer is open
+    src = user.find(marker="viewer").elements.pop().props["src"]
+    page = (app.CACHE / src.split("/diffs/")[1].split("?")[0]).read_text()
+    assert docs["short"] in page and v2["short"] in page  # its parent .. it
+
+    # Nothing is written until there's something to keep.
+    assert not (project / "reviews").exists()
+    user.find(marker="review-summary").type("Rev B feedback.")
+    # What the viewer reports when C1 is pinned (pcb.js tellPinned).
+    seen = {"old": docs["hash"], "new": v2["hash"], "side": "new"}
+    emit(user, "kigit_pinned", {"tab": "pcb", "kind": "footprint", "name": "C1", "seen": seen})
+    await user.should_see("Footprint C1")
+    user.find(marker="review-add-note").click()
+    user.find(marker="review-note-title").type("Added C1")
+    user.find(marker="review-note-body").type("Decoupling for U1.")
+
+    for _ in range(50):  # saved a moment after the last edit
+        found = review.all_reviews(project)
+        if found and "Decoupling" in found[v2["hash"]].read_text():
+            break
+        await asyncio.sleep(0.1)
+    r = review.load(review.all_reviews(project)[v2["hash"]])
+    assert (r.parent, r.summary) == (docs["hash"], "Rev B feedback.")
+    assert [(n.title, n.body, n.anchor) for n in r.notes] == [
+        ("Added C1", "Decoupling for U1.", review.Anchor("pcb", "footprint", "C1", review.Seen(**seen)))]
+    assert next(x for x in commit_table(user).rows if x["hash"] == v2["hash"])["reviewed"]
+
+    # Something this commit removed is marked so.
+    emit(user, "kigit_pinned", {"tab": "sch", "kind": "part", "name": "R9", "seen": {**seen, "side": "old"}})
+    await user.should_see("Part R9 · removed")
+
+
+async def test_first_commit_has_nothing_to_review_against(user: User, monkeypatch) -> None:
+    await open_at(user, monkeypatch, PROJECT)
+    await user.should_see("Pick two commits on the left", retries=50)
+    first = next(r for r in commit_table(user).rows if r["subject"] == "v1: first board")
+    await select(user, [first])
+    user.find(marker="review-button").click()
+    await user.should_see("This is the first commit")

@@ -17,4 +17,16 @@
   document.querySelector("#pcbTabN").textContent = changedNets ? changedNets : "";
 
   show(location.hash === "#sch" ? "sch" : "pcb");
+
+  // Inside the GUI: show a review note's anchor when asked. pcb.js and
+  // sch.js fill window.kigitFocus; they tell the GUI what's pinned.
+  window.addEventListener("message", (e) => {
+    const m = e.data;
+    if (e.source !== window.parent || !m || m.kigit !== "focus" || !m.anchor) return;
+    const focus = (window.kigitFocus || {})[m.anchor.tab];
+    if (!focus) return;
+    show(m.anchor.tab);
+    const found = focus(m.anchor);
+    window.parent.postMessage({ kigit: "focused", anchor: m.anchor, found }, "*");
+  });
 })();

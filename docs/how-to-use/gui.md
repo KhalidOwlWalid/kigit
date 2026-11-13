@@ -24,6 +24,16 @@ All commits are listed, newest first, tagged **PCB** / **SCH** when they changed
 
 kigit diffs the two and the viewer opens on the schematic, with the PCB one tab away.
 
+### 4. Review a commit
+
+Pick **one** commit and press **Review**. It's compared with the commit before it, and a review panel opens on the right, for writing down why the commit changed what it changed.
+
+- **Summary:** the commit as a whole.
+- **Notes:** click a net, footprint, part or bus in the viewer, then press **+ Note**: the note points at it. Click the note's tag later to show it again in the viewer. Without anything pinned, the note is a general one.
+- Text is Markdown (links, lists, code). Paste or drop an image into a note to add it. Notes can have tags (reason, todo, question, risk, or your own).
+
+Reviews are saved as you type, one Markdown file per commit in `reviews/` next to the board, with images in `reviews/assets/`. They read fine on their own (GitHub, any editor) and can be committed with the project. Reviewed commits get a :material-rate-review: mark in the list. Comparing a commit with its parent opens its review as well.
+
 ## Options
 
 | Option | What it does |

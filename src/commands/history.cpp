@@ -55,6 +55,7 @@ void print_log(const std::string& root, const std::string& board_rel, git::LogQu
         bool pcb = false, sch = false;
         for (const auto& f : c.files) kind(f, pcb, sch);
         commits.push_back({{"hash", c.hash}, {"short", c.short_hash}, {"date", c.date}, {"author", c.author},
+                           {"parent", c.parent},
                            {"subject", c.subject}, {"body", c.body}, {"pcb", pcb}, {"sch", sch}});
     }
 

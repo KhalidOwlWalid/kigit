@@ -64,6 +64,8 @@ TEST_CASE("--log: all commits, tags, filters and the renamed folder") {
     CHECK(log["commits"][2]["pcb"] == false);
     CHECK(log["commits"][3]["pcb"] == true); // v1, in the old hw/ folder
     CHECK(log["commits"][3]["sch"] == true);
+    CHECK(log["commits"][0]["parent"] == log["commits"][1]["hash"]);
+    CHECK(log["commits"][3]["parent"] == "");
 
     json kicad = parse(run_kigit("--log --kicad-only --max 0 -C " + board));
     CHECK(kicad["commits"].size() == 3);
@@ -92,6 +94,7 @@ TEST_CASE("diff across the folder rename, as JSON on stdout") {
     json d = parse(r);
     CHECK(r.err.find("moved or renamed") != std::string::npos); // hw/ -> board/
     CHECK(d["meta"]["old"]["subject"] == "v1: first board");
+    CHECK(d["meta"]["old"]["hash"].get<std::string>().size() == 40); // full hash, for review anchors
 
     // PCB: R2 and a track moved; schematic: C1 added, R2's value changed.
     int moved = 0;

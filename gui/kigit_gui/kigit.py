@@ -68,6 +68,7 @@ class Commit:
     body: str
     pcb: bool  # changed the board
     sch: bool  # changed the schematic
+    parent: str = ""  # first parent's hash ("" for the first commit)
 
 
 @dataclass

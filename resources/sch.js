@@ -431,7 +431,57 @@
     if (t) document.querySelector(`.chg[data-kind="${t.kind}"][data-id="${t.id}"]`)?.classList.add("pin");
     renderCard();
     refreshHL();
+    tellPinned();
   }
+
+  // ---------- review anchors ----------
+  // Inside the GUI, the pinned net, part or bus is what a new review note
+  // points at; the GUI also asks to show a note's anchor (see shell.js).
+  function tellPinned() {
+    if (window.parent === window) return;
+    const t = pinned;
+    // Also where it was pinned: this comparison, and the side it's on ("old"
+    // when this comparison removed it).
+    const m = DATA.meta;
+    const seen = (gone) => ({ old: m.old.hash || "", new: m.new.hash || "", side: gone ? "old" : "new" });
+    const busGone = (id) => S.sheets.every((sh) => (sh.buses || []).every((b) => b[5] !== id || b[4] === 2));
+    const anchor = !t ? null
+      : t.kind === "n" ? { tab: "sch", kind: "net", name: S.nets[t.id].name, seen: seen(S.nets[t.id].st === 2) }
+      : t.kind === "p" ? { tab: "sch", kind: "part", name: S.parts[t.id].ref, seen: seen(S.parts[t.id].st === 2) }
+      : { tab: "sch", kind: "bus", name: groups[t.id].names[0] || "", seen: seen(busGone(t.id)) };
+    window.parent.postMessage({ kigit: "pinned", anchor }, "*");
+  }
+  // The index with this name, on the anchor's side if there are two (one
+  // removed, one added in its place).
+  function findBy(list, key, a) {
+    const all = list.map((x, i) => [x, i]).filter(([x]) => x[key] === a.name);
+    const old = a.seen && a.seen.side === "old";
+    return (all.find(([x]) => (x.st === 2) === old) || all[0] || [null, -1])[1];
+  }
+  (window.kigitFocus = window.kigitFocus || {}).sch = (a) => {
+    let t = null, sheets = [];
+    if (a.kind === "net") {
+      const id = findBy(S.nets, "name", a);
+      if (id >= 0) { t = { kind: "n", id }; sheets = [...netSheets[id]]; }
+    } else if (a.kind === "part") {
+      const id = findBy(S.parts, "ref", a);
+      if (id >= 0) { t = { kind: "p", id }; S.sheets.forEach((sh, i) => { if (sh.symbols.some((s) => s.i === id)) sheets.push(i); }); }
+    } else if (a.kind === "bus") {
+      const id = groups.findIndex((g) => g.names.includes(a.name));
+      if (id >= 0) {
+        t = { kind: "g", id };
+        S.sheets.forEach((sh, i) => {
+          if ((sh.buses || []).some((b) => b[5] === id) || sh.labels.some((l) => l[9] === id)) sheets.push(i);
+        });
+      }
+    }
+    if (!t) return false;
+    if (sheets.length && !sheets.includes(cur)) openSheet(sheets[0]);
+    pin(t);
+    const b = boxOf(t);
+    if (b) fitBox(b, 0.6);
+    return true;
+  };
 
   // ------------------------------------------------------------ descriptions
 

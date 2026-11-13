@@ -37,6 +37,8 @@ TEST_CASE("log: everything, limited, by date and by path") {
     REQUIRE(commits.size() == 4);
     CHECK(commits[0].subject == "move project folder"); // newest first
     CHECK(git::count(root, all) == 4);
+    for (size_t i = 0; i + 1 < commits.size(); ++i) CHECK(commits[i].parent == commits[i + 1].hash);
+    CHECK(commits[3].parent.empty()); // the first commit has none
 
     git::LogQuery two;
     two.max_count = 2;
@@ -51,6 +53,15 @@ TEST_CASE("log: everything, limited, by date and by path") {
     docs.paths = {"README.md"};
     REQUIRE(git::log(root, docs).size() == 1);
     CHECK(git::log(root, docs)[0].subject == "docs only");
+
+    // Filtered by path, a commit still names its real parent, not the
+    // previous commit in the filtered list.
+    git::LogQuery boards;
+    boards.paths = {":(glob)**/*.kicad_pcb"};
+    std::vector<git::Commit> touched = git::log(root, boards);
+    REQUIRE(touched.size() == 3);
+    CHECK(touched[1].subject == "v2: add C1, move R2, widen a track");
+    CHECK(touched[1].parent == commits[2].hash); // "docs only"
 }
 
 TEST_CASE("past_paths follows the project folder rename") {
