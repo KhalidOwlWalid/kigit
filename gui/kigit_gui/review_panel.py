@@ -3,10 +3,12 @@
 Opens on the right when a single commit is reviewed (diffed against its
 parent). Each note can point at what's pinned in the viewer (a net,
 footprint, part or bus); clicking the note's anchor shows it again. Text is
-Markdown; pasting or dropping an image stores it in reviews/assets/.
+Markdown; pasting or dropping an image stores it in .reviews/assets/.
 
-Everything is saved to `<project>/reviews/<commit>.md` (see review.py) a
-moment after each edit.
+Press Write (or Ctrl+S) to save it to `<project>/.reviews/<id>.md` and update
+`.reviews/index.md` (see review.py). Until then edits are only in the GUI: switching to another commit
+or closing the panel keeps them as a draft for this session, and the browser
+asks before the page is closed with anything unwritten.
 """
 
 from __future__ import annotations
@@ -23,6 +25,12 @@ from nicegui import app, ui
 
 from . import logs, review
 from .review import Anchor, Note, Review
+
+
+def note_times(n: Note) -> str:
+    if not n.created:
+        return "Not written yet"
+    return f"Written {n.created}" + (f" · edited {n.edited}" if n.edited else "")
 
 
 def chip_text(a: Anchor) -> str:
@@ -105,6 +113,17 @@ _PAGE_JS = """
     const a = e.target.closest && e.target.closest(".kigit-md-view a[href]");
     if (a) { e.preventDefault(); window.open(a.href, "_blank", "noopener"); }
   }, true);
+  // Ctrl+S / Cmd+S writes the open review.
+  document.addEventListener("keydown", (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s" && document.querySelector(".kigit-write")) {
+      e.preventDefault();
+      emitEvent("kigit_write");
+    }
+  });
+  // Unwritten edits: ask before leaving the page.
+  window.addEventListener("beforeunload", (e) => {
+    if (document.querySelector(".kigit-unsaved")) { e.preventDefault(); e.returnValue = ""; }
+  });
 })();
 </script>
 <style>
@@ -122,7 +141,7 @@ def rewrite_images(text: str, key: str) -> str:
 
 class ReviewPanel:
     """The right-hand drawer. `focus(anchor)` asks the viewer to show an
-    anchor; `on_saved(commit)` is called when a review file is first created."""
+    anchor; `on_saved(commit)` is called when a review file is first written."""
 
     def __init__(self, focus: Callable[[Anchor], None], on_saved: Callable[[str], None], resizer=None) -> None:
         self.focus_cb, self.on_saved = focus, on_saved
@@ -130,12 +149,20 @@ class ReviewPanel:
         self.key = ""
         self.review: Review | None = None
         self.path: Path | None = None
-        self.dirty = False
+        self.dirty = False  # edits not written yet
+        # Unwritten edits of reviews that aren't open: commit -> (project, review, file).
+        self.drafts: dict[str, tuple[Path, Review, Path | None]] = {}
         self.pinned: Anchor | None = None
+        self.status_label = self.write_button = None
+        self.note_times: dict[str, ui.label] = {}  # note id -> its "Written ... · edited ..." line
         self.editing: set[str] = set()  # notes (by id) shown as text boxes; "summary" for the summary
 
         ui.add_body_html(_PAGE_JS)
         ui.on("kigit_image_failed", lambda e: self._warn(f"Couldn't add the image: {e.args}"))
+        ui.on("kigit_write", lambda: self.write() if self.review else None)
+        # Present (with class kigit-unsaved) while anything is unwritten; the
+        # page asks before closing then.
+        self.unsaved_marker = ui.element("div").classes("hidden")
         with ui.right_drawer(value=False, bordered=True).classes(
                 "bg-[#161a20] p-0") as self.drawer:
             self.body = ui.column().classes("w-full p-3 gap-2")
@@ -144,33 +171,47 @@ class ReviewPanel:
             resizer.add(self.drawer, "right", "review", 480)
         else:
             self.drawer.props("width=480")
-        # Edits are written a moment later, not on every keystroke.
-        ui.timer(1.0, self.flush)
 
     # ------------------------------------------------------------- open/close
-    def open(self, project_dir: str | Path, commit: str, parent: str, subject: str) -> None:
-        self.flush()
+    def open(self, project_dir: str | Path, commit: str, parent: str, subject: str, date: str = "",
+             author: str = "") -> None:
+        self._stash()
         self.project = Path(project_dir)
         self.key = project_key(self.project)
-        self.path = review.all_reviews(self.project).get(commit)
         self.review = None
-        if self.path:
+        draft = self.drafts.get(commit)
+        if draft and draft[0] == self.project:
+            # Back to a review left unwritten: carry on where it was.
+            del self.drafts[commit]
+            _, self.review, self.path = draft
+            self.dirty = True
+        else:
+            self.path = review.all_reviews(self.project).get(commit)
+        if self.review is None and self.path:
             try:
                 self.review = review.load(self.path)
             except (OSError, ValueError, UnicodeDecodeError) as e:
                 self._warn(f"Couldn't read {self.path.name}: {e}")
                 self.path = None
         if self.review is None:
-            self.review = Review(commit=commit, parent=parent, subject=subject)
+            self.review = Review(commit=commit, parent=parent, subject=subject, date=date, author=author)
         self.editing = set() if self.review.summary or self.review.notes else {"summary"}
-        logs.log.info("review %s (%s)", commit[:7], self.path or "new")
+        logs.log.info("review %s (%s%s)", commit[:7], self.path or "new", ", unwritten draft" if self.dirty else "")
         self.render()
         self.drawer.show()
 
     def close(self) -> None:
-        self.flush()
+        self._stash()
         self.review = None
         self.drawer.hide()
+        self._sync_status()
+
+    def _stash(self) -> None:
+        """Keeps the open review's unwritten edits as a draft."""
+        if self.review and self.dirty:
+            self.drafts[self.review.commit] = (self.project, self.review, self.path)
+            logs.log.info("kept unwritten review %s as a draft", self.review.commit[:7])
+        self.dirty = False
 
     @property
     def commit(self) -> str | None:
@@ -183,22 +224,52 @@ class ReviewPanel:
 
     # ------------------------------------------------------------------- save
     def changed(self) -> None:
-        self.dirty = True
+        if not self.dirty:
+            self.dirty = True
+            self._sync_status()
 
-    def flush(self) -> None:
-        if not (self.dirty and self.review and self.project):
+    def write(self) -> None:
+        """Writes the open review to its file."""
+        if not (self.review and self.project):
             return
-        self.dirty = False
         first = self.path is None
         try:
             self.path = review.save(self.project, self.review, self.path)
         except OSError as e:
-            self._warn(f"Couldn't save the review: {e}")
+            self._warn(f"Couldn't write the review: {e}")
             return
+        self.dirty = False
+        logs.log.info("wrote review %s", self.path)
+        ui.notify(f"Written to {review.FOLDER}/{self.path.name}", type="positive")
+        self.path_label.text = self._path_text()
+        self.id_label.text = f"ID {self.review.id}"
+        for n in self.review.notes:  # in place, so a text box being typed in keeps its cursor
+            if n.id in self.note_times:
+                self.note_times[n.id].text = note_times(n)
+        self._sync_status()
         if first:
-            logs.log.info("created review %s", self.path)
-            self.path_label.text = self._path_text()
             self.on_saved(self.review.commit)
+
+    def _sync_status(self) -> None:
+        """The Write button, the "unsaved" line, and the page's leave warning."""
+        if self.dirty or self.drafts:
+            self.unsaved_marker.classes(add="kigit-unsaved")
+        else:
+            self.unsaved_marker.classes(remove="kigit-unsaved")
+        if self.status_label is None or self.review is None:
+            return
+        others = [c[:7] for c in self.drafts]
+        if self.dirty:
+            text, tone = "Unsaved changes", "text-amber-400"
+        elif self.path:
+            text, tone = f"Written {self.review.updated}", "text-gray-500"
+        else:
+            text, tone = "Nothing written yet", "text-gray-500"
+        if others:
+            text += f" · unwritten draft{'s' if len(others) > 1 else ''}: {', '.join(others)}"
+        self.status_label.text = text
+        self.status_label.classes(replace=f"text-xs {tone} flex-grow")
+        self.write_button.set_enabled(self.dirty)
 
     def _warn(self, message: str) -> None:
         logs.log.warning("shown to user: %s", message)
@@ -207,7 +278,7 @@ class ReviewPanel:
     def _path_text(self) -> str:
         if self.path:
             return f"{review.FOLDER}/{self.path.name}"
-        return f"{review.FOLDER}/{review.file_name(self.review)} (saved once you write something)"
+        return f"{review.FOLDER}/ (not written yet; it gets an ID then)"
 
     # ------------------------------------------------------------------ notes
     def add_note(self) -> None:
@@ -224,7 +295,6 @@ class ReviewPanel:
 
     def toggle_edit(self, key: str) -> None:
         self.editing ^= {key}
-        self.flush()
         self.summary_view.refresh() if key == "summary" else self.notes_view.refresh()
 
     def point_at_pinned(self, note: Note) -> None:
@@ -246,17 +316,26 @@ class ReviewPanel:
                 ui.icon("rate_review").classes("text-amber-500")
                 ui.label("Review").classes("text-base font-semibold")
                 ui.label(r.commit[:7]).classes("text-mono text-xs text-gray-400")
+                self.id_label = ui.label(f"ID {r.id}" if r.id else "").classes(
+                    "text-mono text-xs text-amber-400").mark("review-id")
+                self.id_label.tooltip("This review's ID: its file name, and its row in .reviews/index.md")
                 ui.space()
                 ui.button(icon="close", on_click=self.close).props("flat dense round").tooltip("Close the review")
             ui.label(r.subject).classes("text-sm text-gray-300")
+            with ui.row().classes("w-full items-center gap-2 no-wrap"):
+                self.status_label = ui.label("").classes("text-xs flex-grow").mark("review-status")
+                self.write_button = ui.button("Write", icon="save", on_click=self.write).props(
+                    "unelevated dense color=green-8").classes("kigit-write").tooltip(
+                    "Write the review to its file (Ctrl+S)").mark("review-write")
             with ui.row().classes("w-full items-center gap-1 no-wrap"):
                 self.path_label = ui.label(self._path_text()).classes("text-xs text-gray-500 truncate flex-grow")
                 ui.button(icon="folder", on_click=self._open_folder).props("flat dense round size=sm").tooltip(
-                    "Open the reviews folder")
+                    "Open the .reviews folder")
             self.summary_view()
             ui.separator().classes("my-1")
             self.pinned_view()
             self.notes_view()
+        self._sync_status()
 
     def _open_folder(self) -> None:
         from .app import open_folder_in_os
@@ -307,6 +386,7 @@ class ReviewPanel:
     @ui.refreshable_method
     def notes_view(self) -> None:
         notes = self.review.notes
+        self.note_times = {}
         if not notes:
             ui.label("No notes yet.").classes("text-xs text-gray-500 italic")
         for note in notes:
@@ -353,6 +433,8 @@ class ReviewPanel:
                             ui.badge(t, color="blue-grey-7").props("outline")
                 if note.body.strip():
                     self._markdown_view(note.body)
+            self.note_times[note.id] = ui.label(note_times(note)).classes("text-[11px] text-gray-500").mark(
+                "review-note-times")
 
 
 def focus_script(frame_id: int, anchor: Anchor) -> str:

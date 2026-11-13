@@ -14,7 +14,8 @@ PARENT = "fedcba9876543210fedcba9876543210fedcba98"
 
 def sample() -> Review:
     return Review(
-        commit=COMMIT, parent=PARENT, subject="v2: add C1, move R2", created="2026-11-13 10:00",
+        commit=COMMIT, parent=PARENT, subject="v2: add C1, move R2", date="2025-03-01 12:00", author="Ada | L",
+        created="2026-11-13 10:00",
         summary="Why: rev B feedback.\n\nSee [the issue](https://example.com/1).",
         notes=[
             Note(title="Moved U3", body="Closer to the LDO.\n\n## Not a note\nstill the body",
@@ -28,7 +29,8 @@ def sample() -> Review:
 def test_round_trip() -> None:
     r = sample()
     back = review.loads(review.dumps(r))
-    assert (back.commit, back.parent, back.subject, back.created) == (r.commit, r.parent, r.subject, r.created)
+    assert (back.commit, back.parent, back.subject, back.date, back.author, back.created) == \
+           (r.commit, r.parent, r.subject, r.date, r.author, r.created)
     assert back.summary == r.summary
     assert [(n.id, n.title, n.body, n.anchor, n.tags) for n in back.notes] == \
            [(n.id, n.title, n.body, n.anchor, n.tags) for n in r.notes]
@@ -57,16 +59,81 @@ def test_not_a_review() -> None:
 def test_save_find_and_reload(tmp_path: Path) -> None:
     r = sample()
     path = review.save(tmp_path, r)
-    assert path == tmp_path / "reviews" / "0123456-v2-add-c1-move-r2.md"
-    assert not list((tmp_path / "reviews").glob("*.tmp"))
+    d = tmp_path / ".reviews"
+    assert r.id and path == d / f"{r.id}.md"  # given an ID, which is its file name
+    assert not list(d.glob("*.tmp"))
     assert r.updated
-    (tmp_path / "reviews" / "README.md").write_text("Not a review\n")
-    assert review.all_reviews(tmp_path) == {COMMIT: path}
-    assert review.load(path).notes[0].anchor == Anchor("pcb", "footprint", "U3")
-    # Saved again in place, keeping its creation time.
+    (d / "README.md").write_text("Not a review\n")
+    assert review.all_reviews(tmp_path) == {COMMIT: path}  # index.md and README.md aren't reviews
+    back = review.load(path)
+    assert back.id == r.id and back.notes[0].anchor == Anchor("pcb", "footprint", "U3")
+    # Saved again in place, keeping its ID and creation time.
     r.summary = "changed"
     assert review.save(tmp_path, r, path) == path
-    assert review.load(path).summary == "changed" and review.load(path).created == "2026-11-13 10:00"
+    back = review.load(path)
+    assert (back.summary, back.created, back.id) == ("changed", "2026-11-13 10:00", r.id)
+
+
+def test_note_times(tmp_path: Path, monkeypatch) -> None:
+    """Written when first saved; edited when a later save changes it."""
+    clock = iter(["2026-11-13 10:00", "2026-11-13 11:00", "2026-11-13 12:00", "2026-11-13 13:00"])
+    monkeypatch.setattr(review, "now", lambda: next(clock))
+    r = Review(commit=COMMIT, notes=[Note(title="A", body="one"), Note(title="B", body="two")])
+    path = review.save(tmp_path, r)  # 10:00
+    assert [(n.created, n.edited) for n in r.notes] == [("2026-11-13 10:00", "")] * 2
+
+    r.notes[0].body = "one, changed"
+    r.notes[1].body = "two  \n"  # the same once written: not an edit
+    r.notes.append(Note(title="C"))
+    review.save(tmp_path, r, path)  # 11:00
+    back = review.load(path)
+    assert [(n.title, n.created, n.edited) for n in back.notes] == [
+        ("A", "2026-11-13 10:00", "2026-11-13 11:00"),
+        ("B", "2026-11-13 10:00", ""),
+        ("C", "2026-11-13 11:00", "")]
+
+    # A fresh load (another session): anchors and tags count, and old times stay.
+    back.notes[1].tags = ["todo"]
+    review.save(tmp_path, back, path)  # 12:00
+    again = review.load(path)
+    assert [(n.created, n.edited) for n in again.notes] == [
+        ("2026-11-13 10:00", "2026-11-13 11:00"),
+        ("2026-11-13 10:00", "2026-11-13 12:00"),
+        ("2026-11-13 11:00", "")]
+
+
+def test_notes_from_before_times_were_kept(tmp_path: Path) -> None:
+    """Notes in older files have no times; they aren't made up."""
+    r = review.loads(f"---\ncommit: {COMMIT}\n---\n\n## A\n<!-- kigit-note {{\"id\": \"aa\"}} -->\nbody\n")
+    d = tmp_path / ".reviews"
+    d.mkdir()
+    path = d / "x.md"
+    path.write_text(review.dumps(r))
+    review.save(tmp_path, r, path)
+    n = review.load(path).notes[0]
+    assert (n.created, n.edited) == ("", "")
+
+
+def test_index_lists_every_review(tmp_path: Path) -> None:
+    old = Review(commit=PARENT, subject="first board", date="2025-01-10 12:00", author="Ada")
+    review.save(tmp_path, old)
+    new = sample()
+    review.save(tmp_path, new)
+    assert old.id != new.id
+    index = (tmp_path / ".reviews" / "index.md").read_text()
+    rows = [line for line in index.splitlines() if line.startswith("| [")]
+    # Newest commit first; each row links its file, with the full hash.
+    assert rows[0].startswith(f"| [{new.id}]({new.id}.md) | `{COMMIT}` | 2025-03-01 12:00 | Ada \\| L | ")
+    assert "| 4 |" in rows[0]  # notes
+    assert rows[1].startswith(f"| [{old.id}]({old.id}.md) | `{PARENT}` | 2025-01-10 12:00 | Ada | first board | 0 |")
+
+
+def test_new_ids_are_unique(tmp_path: Path, monkeypatch) -> None:
+    (tmp_path / ".reviews").mkdir()
+    (tmp_path / ".reviews" / "aaaaaaaa.md").write_text("x")
+    ids = iter(["aaaaaaaa", "bbbbbbbb"])
+    monkeypatch.setattr(review.secrets, "token_hex", lambda n: next(ids))
+    assert review.new_id(tmp_path) == "bbbbbbbb"
 
 
 def test_no_reviews_folder(tmp_path: Path) -> None:
@@ -76,7 +143,7 @@ def test_no_reviews_folder(tmp_path: Path) -> None:
 def test_save_image(tmp_path: Path) -> None:
     rel = review.save_image(tmp_path, b"\x89PNG fake", "image/png")
     assert review.ASSET_NAME.match(rel.split("/")[1]) and rel.startswith("assets/")
-    assert (tmp_path / "reviews" / rel).read_bytes() == b"\x89PNG fake"
+    assert (tmp_path / ".reviews" / rel).read_bytes() == b"\x89PNG fake"
     assert review.save_image(tmp_path, b"\x89PNG fake", "image/png") == rel  # same image, same file
     with pytest.raises(ValueError):
         review.save_image(tmp_path, b"<svg/>", "image/svg+xml")

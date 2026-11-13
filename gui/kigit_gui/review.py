@@ -1,13 +1,21 @@
 """Commit reviews: why a commit changed what it changed.
 
-One Markdown file per commit in `<project>/reviews/`, images in
-`reviews/assets/`. The file reads fine on its own (GitHub, an editor,
-Obsidian):
+Everything lives in `<project>/.reviews/`:
+
+    .reviews/
+      index.md        every review: ID, commit, date, author, subject (written by kigit)
+      3f9a1c0e.md     one review per commit; its ID is its file name
+      assets/         pasted images, named by content hash
+
+A review reads fine on its own (GitHub, an editor, Obsidian):
 
     ---
+    id: 3f9a1c0e
     commit: <full hash>
     parent: <full hash>
     subject: v2: add C1
+    date: 2025-03-01 12:00
+    author: Khalid
     created: 2026-11-13 14:02
     updated: 2026-11-13 14:30
     ---
@@ -15,7 +23,7 @@ Obsidian):
     Summary of the commit, free Markdown.
 
     ## Moved U3 closer to the regulator
-    <!-- kigit-note {"id": "1a2b3c4d", "anchor": {"tab": "pcb", "kind": "footprint", "name": "U3"}, "tags": ["reason"]} -->
+    <!-- kigit-note {"id": "1a2b3c4d", "anchor": {"tab": "pcb", "kind": "footprint", "name": "U3"}, "tags": ["reason"], "created": "2026-11-13 14:05", "edited": "2026-11-14 09:12"} -->
 
     Note text, free Markdown: links, ![images](assets/3f2a91c0d4e5b6a7.png).
 
@@ -25,6 +33,10 @@ about in the viewer: a net, footprint, part or bus, by name, plus where it was
 pinned (`seen`: the two commits compared, and the side it's on). Commits
 don't change, so that comparison always shows it, even after it's deleted;
 side "old" means that comparison removed it.
+
+A note's `created` is when it was first written (Write), `edited` the last
+Write that changed it (title, text, tags or anchor); neither is there if
+unknown or never.
 """
 
 from __future__ import annotations
@@ -37,7 +49,8 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
-FOLDER = "reviews"
+FOLDER = ".reviews"
+INDEX = "index.md"
 ASSETS = "assets"
 TAGS = ["reason", "todo", "question", "risk"]
 IMAGE_TYPES = {"image/png": "png", "image/jpeg": "jpg", "image/gif": "gif", "image/webp": "webp"}
@@ -111,6 +124,12 @@ class Note:
     anchor: Anchor | None = None
     tags: list[str] = field(default_factory=list)
     id: str = field(default_factory=lambda: secrets.token_hex(4))
+    created: str = ""  # when first written
+    edited: str = ""   # when last written with a change ("" if never)
+
+    def content(self) -> tuple:
+        """What counts as an edit: as it's written to the file."""
+        return (one_line(self.title), self.body.strip(), self.anchor, list(self.tags))
 
 
 @dataclass
@@ -118,6 +137,9 @@ class Review:
     commit: str
     parent: str = ""
     subject: str = ""
+    date: str = ""     # the commit's date
+    author: str = ""   # the commit's author
+    id: str = ""       # the review's ID and file name; given on first save
     created: str = ""
     updated: str = ""
     summary: str = ""
@@ -133,12 +155,17 @@ def one_line(s: str) -> str:
 
 
 def dumps(r: Review) -> str:
-    out = ["---", f"commit: {r.commit}", f"parent: {r.parent}", f"subject: {one_line(r.subject)}",
-           f"created: {r.created}", f"updated: {r.updated}", "---", ""]
+    out = ["---", f"id: {r.id}", f"commit: {r.commit}", f"parent: {r.parent}", f"subject: {one_line(r.subject)}",
+           f"date: {r.date}", f"author: {one_line(r.author)}", f"created: {r.created}", f"updated: {r.updated}",
+           "---", ""]
     if r.summary.strip():
         out += [r.summary.strip(), ""]
     for n in r.notes:
         meta = {"id": n.id, "anchor": n.anchor.to_dict() if n.anchor else None, "tags": n.tags}
+        if n.created:
+            meta["created"] = n.created
+        if n.edited:
+            meta["edited"] = n.edited
         # "<" and ">" escaped so a name can't end the comment early.
         text = json.dumps(meta, ensure_ascii=False).replace("<", "\\u003c").replace(">", "\\u003e")
         out += [f"## {one_line(n.title) or 'Note'}", f"<!-- kigit-note {text} -->", ""]
@@ -162,6 +189,7 @@ def loads(text: str) -> Review:
     if not head.get("commit"):
         raise ValueError("not a kigit review (no commit in the header)")
     r = Review(commit=head["commit"], parent=head.get("parent", ""), subject=head.get("subject", ""),
+               date=head.get("date", ""), author=head.get("author", ""), id=head.get("id", ""),
                created=head.get("created", ""), updated=head.get("updated", ""))
 
     def is_note(k: int) -> bool:
@@ -191,7 +219,9 @@ def loads(text: str) -> Review:
             tags = meta.get("tags")
             note = Note(title=lines[i][3:].strip(), anchor=Anchor.from_dict(meta.get("anchor")),
                         tags=[t for t in tags if isinstance(t, str)] if isinstance(tags, list) else [],
-                        id=str(meta.get("id") or secrets.token_hex(4)))
+                        id=str(meta.get("id") or secrets.token_hex(4)),
+                        created=meta["created"] if isinstance(meta.get("created"), str) else "",
+                        edited=meta["edited"] if isinstance(meta.get("edited"), str) else "")
             i += 2
             continue
         chunk.append(lines[i])
@@ -204,13 +234,17 @@ def folder(project_dir: str | Path) -> Path:
     return Path(project_dir) / FOLDER
 
 
-def _slug(s: str) -> str:
-    return re.sub(r"[^a-z0-9]+", "-", s.lower()).strip("-")[:40].rstrip("-")
+def new_id(project_dir: str | Path) -> str:
+    """A review ID not used in the project yet. Random rather than counted, so
+    reviews written on two branches can't get the same one."""
+    taken = {p.stem for p in folder(project_dir).glob("*.md")}
+    while (i := secrets.token_hex(4)) in taken:
+        pass
+    return i
 
 
 def file_name(r: Review) -> str:
-    slug = _slug(r.subject)
-    return f"{r.commit[:7]}{'-' + slug if slug else ''}.md"
+    return f"{r.id}.md"
 
 
 def all_reviews(project_dir: str | Path) -> dict[str, Path]:
@@ -235,22 +269,83 @@ def load(path: Path) -> Review:
     return loads(path.read_text(encoding="utf-8"))
 
 
+def _write(path: Path, text: str) -> None:
+    tmp = path.with_suffix(".md.tmp")
+    tmp.write_text(text, encoding="utf-8", newline="\n")
+    tmp.replace(path)  # never leave a half-written file
+
+
 def save(project_dir: str | Path, r: Review, path: Path | None = None) -> Path:
-    """Writes the review (to `path`, else a new file named after the commit).
-    Returns the file."""
+    """Writes the review (to `path`, else `<id>.md`, giving it an ID if it has
+    none), then the index. Returns the review's file."""
     d = folder(project_dir)
     d.mkdir(parents=True, exist_ok=True)
-    r.created = r.created or now()
-    r.updated = now()
+    r.id = r.id or new_id(project_dir)
+    when = now()
+    r.created = r.created or when
+    r.updated = when
     path = path or d / file_name(r)
-    tmp = path.with_suffix(".md.tmp")
-    tmp.write_text(dumps(r), encoding="utf-8", newline="\n")
-    tmp.replace(path)  # never leave a half-written review
+    before = None
+    if path.exists():
+        try:
+            before = load(path)
+        except (OSError, ValueError, UnicodeDecodeError):
+            pass
+    stamp(r, before, when)
+    _write(path, dumps(r))
+    write_index(project_dir)
+    return path
+
+
+def stamp(r: Review, before: Review | None, when: str) -> None:
+    """Sets each note's created / edited times for a write at `when`, from
+    what the file held `before` (None: nothing written yet)."""
+    old = {n.id: n for n in before.notes} if before else {}
+    for n in r.notes:
+        o = old.get(n.id)
+        if o is None:
+            n.created = n.created or when
+            continue
+        n.created = n.created or o.created
+        if n.content() != o.content():
+            n.edited = when
+        else:
+            n.edited = n.edited or o.edited
+
+
+def _cell(s: str) -> str:
+    return one_line(s).replace("|", "\\|")
+
+
+def index_text(reviews: list[tuple[Review, Path]]) -> str:
+    """index.md: one row per review, newest commit first."""
+    rows = sorted(reviews, key=lambda x: (x[0].date, x[0].id), reverse=True)
+    out = ["# Reviews", "",
+           "Written by kigit each time a review is written; edit the reviews, not this file. "
+           "A review's ID is its file name (`<ID>.md`).", "",
+           "| ID | Commit | Date | Author | Subject | Notes | Written |",
+           "| --- | --- | --- | --- | --- | --- | --- |"]
+    for r, p in rows:
+        out.append(f"| [{_cell(r.id or p.stem)}]({p.name}) | `{r.commit}` | {_cell(r.date)} | {_cell(r.author)} | "
+                   f"{_cell(r.subject)} | {len(r.notes)} | {_cell(r.updated)} |")
+    return "\n".join(out) + "\n"
+
+
+def write_index(project_dir: str | Path) -> Path:
+    """Rewrites .reviews/index.md from the review files."""
+    reviews = []
+    for p in all_reviews(project_dir).values():
+        try:
+            reviews.append((load(p), p))
+        except (OSError, ValueError, UnicodeDecodeError):
+            continue
+    path = folder(project_dir) / INDEX
+    _write(path, index_text(reviews))
     return path
 
 
 def save_image(project_dir: str | Path, data: bytes, mime: str) -> str:
-    """Stores a pasted image in reviews/assets/. Returns its path relative to
+    """Stores a pasted image in .reviews/assets/. Returns its path relative to
     the review files (what the Markdown links to)."""
     ext = IMAGE_TYPES.get(mime)
     if not ext:

@@ -267,10 +267,17 @@ kigit gui [PROJECT_DIR]
   enabled, or the iframe `src` to change, instead of sleeping.
 - Reviews (GUI only): pick one commit and press Review; it's diffed against
   its `parent` and a right drawer opens. One Markdown file per commit in
-  `<board folder>/reviews/` (`<short>-<subject>.md`, found by the `commit:`
-  header), pasted/dropped images in `reviews/assets/<sha256[:16]>.<ext>`.
+  `<board folder>/.reviews/`, named `<id>.md` (a random 8-hex ID given on
+  the first Write, also in the `id:` header; found by the `commit:` header),
+  pasted/dropped images in `.reviews/assets/<sha256[:16]>.<ext>`.
+  `.reviews/index.md` (a table: ID, full hash, commit date, author, subject,
+  note count, written) is rebuilt from the review files on every Write;
+  never parsed back. Note times (`review.stamp`, on every save): `created`
+  when a note is first written, `edited` when a later write changes its
+  title, text, tags or anchor, compared with the file on disk. Notes from
+  older files have no times and get none.
   A note is a `## title` line followed by
-  `<!-- kigit-note {"id", "anchor", "tags"} -->`; anything before the first
+  `<!-- kigit-note {"id", "anchor", "tags", "created", "edited"} -->`; anything before the first
   note is the summary. Anchors are `{tab, kind, name, seen}`: pcb
   net/footprint, sch net/part/bus, by name. `seen` is
   `{old, new, side}`: the two full hashes compared when it was pinned
@@ -278,8 +285,10 @@ kigit gui [PROJECT_DIR]
   comparison removed it (shown as "· removed"). Commits don't change, so that
   comparison always has it, deleted or not. When a removed and an added item
   share a name, focus picks the one on the anchor's side. Older anchors
-  without `seen` still load. Saved by a 1 s timer after edits; no file until
-  something is written. Comparing a commit with its parent opens its review
+  without `seen` still load. Nothing is saved until Write (or Ctrl+S).
+  Unwritten edits of a review you leave stay as a draft for the session
+  (`ReviewPanel.drafts`), and the page warns before closing while anything
+  is unwritten (an element with class `kigit-unsaved`). Comparing a commit with its parent opens its review
   too.
 - Viewer bridge: inside the GUI, `pcb.js`/`sch.js` post
   `{kigit: "pinned", anchor}` to the parent on every pin change; the GUI

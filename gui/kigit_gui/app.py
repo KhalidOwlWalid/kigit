@@ -12,7 +12,7 @@ Flow:
      opens on the schematic.
   4. Or pick one commit and press Review: it's diffed against its parent and
      the review panel opens on the right, for notes on why it changed
-     (review_panel.py, saved in <project>/reviews/).
+     (review_panel.py, saved in <project>/.reviews/).
 """
 
 from __future__ import annotations
@@ -442,7 +442,8 @@ def build(start_folder: str):
             message = c.subject + (f"\n\n{c.body}" if c.body else "")
             tip = f"{message}\n\n{c.author} · {c.date}\n{c.hash}"
             rows.append({"hash": c.hash, "short": c.short, "pcb": c.pcb, "sch": c.sch, "date": c.date[:16],
-                         "subject": c.subject, "tip": tip, "parent": c.parent, "reviewed": c.hash in reviewed})
+                         "subject": c.subject, "tip": tip, "parent": c.parent, "author": c.author,
+                         "reviewed": c.hash in reviewed})
         table.rows = rows
         keep = {r["hash"] for r in rows}
         table.selected = [r for r in table.selected if r["hash"] in keep]
@@ -526,7 +527,8 @@ def build(start_folder: str):
         logs.log.info("compared %s .. %s in %.2f s", a, b, time.monotonic() - started)
         show_page(name)
         if review_of:
-            panel.open(Path(board).parent, review_of["hash"], review_of.get("parent", ""), review_of["subject"])
+            panel.open(Path(board).parent, review_of["hash"], review_of.get("parent", ""), review_of["subject"],
+                       review_of.get("date", ""), review_of.get("author", ""))
         else:
             panel.close()
 

@@ -31,8 +31,9 @@ Pick **one** commit and press **Review**. It's compared with the commit before i
 - **Summary:** the commit as a whole.
 - **Notes:** click a net, footprint, part or bus in the viewer, then press **+ Note**: the note points at it. Click the note's tag later to show it again in the viewer. Without anything pinned, the note is a general one.
 - Text is Markdown (links, lists, code). Paste or drop an image into a note to add it. Notes can have tags (reason, todo, question, risk, or your own).
+- Each note shows when it was written and, if it was changed afterwards, when it was last edited.
 
-Reviews are saved as you type, one Markdown file per commit in `reviews/` next to the board, with images in `reviews/assets/`. They read fine on their own (GitHub, any editor) and can be committed with the project. Reviewed commits get a :material-rate-review: mark in the list. Comparing a commit with its parent opens its review as well.
+Press **Write** (or Ctrl+S) to save. Until then the panel says "Unsaved changes"; if you switch to another commit first, your edits are kept as a draft for the session, and closing the page asks before throwing them away. Reviews are saved as one Markdown file per commit in the hidden `.reviews/` folder next to the board, with images in `.reviews/assets/`. Each review gets an ID when first written, which is also its file name (`.reviews/3f9a1c0e.md`), and `.reviews/index.md` lists every review with its ID, commit, date, author and subject. They read fine on their own (GitHub, any editor) and can be committed with the project. Reviewed commits get a :material-rate-review: mark in the list. Comparing a commit with its parent opens its review as well.
 
 ## Options
 

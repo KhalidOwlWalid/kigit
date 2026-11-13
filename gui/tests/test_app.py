@@ -255,7 +255,7 @@ def emit(user: User, event: str, args) -> None:
 
 async def test_review_a_commit(user: User, monkeypatch, tmp_path: Path) -> None:
     """Review one commit: it's diffed against its parent, notes point at what's
-    pinned in the viewer, and everything lands in <project>/reviews/."""
+    pinned in the viewer, and Write puts it in <project>/.reviews/."""
     from kigit_gui import review
 
     project = make_fixture_repo(tmp_path / "repo")  # its own repo: this test writes files
@@ -277,7 +277,7 @@ async def test_review_a_commit(user: User, monkeypatch, tmp_path: Path) -> None:
     assert docs["short"] in page and v2["short"] in page  # its parent .. it
 
     # Nothing is written until there's something to keep.
-    assert not (project / "reviews").exists()
+    assert not (project / ".reviews").exists()
     user.find(marker="review-summary").type("Rev B feedback.")
     # What the viewer reports when C1 is pinned (pcb.js tellPinned).
     seen = {"old": docs["hash"], "new": v2["hash"], "side": "new"}
@@ -287,20 +287,67 @@ async def test_review_a_commit(user: User, monkeypatch, tmp_path: Path) -> None:
     user.find(marker="review-note-title").type("Added C1")
     user.find(marker="review-note-body").type("Decoupling for U1.")
 
-    for _ in range(50):  # saved a moment after the last edit
-        found = review.all_reviews(project)
-        if found and "Decoupling" in found[v2["hash"]].read_text():
+    # Nothing is written until Write.
+    await user.should_see("Unsaved changes")
+    await asyncio.sleep(0.3)
+    assert not (project / ".reviews").exists()
+    await user.should_see("Not written yet")  # the note
+    user.find(marker="review-write").click()
+    await user.should_see("Written to .reviews/")
+    assert not user.find(marker="review-write").elements.pop().enabled
+    times = user.find(marker="review-note-times").elements.pop()
+    assert times.text.startswith("Written 20") and "edited" not in times.text
+    user.find(marker="review-note-body").type(" Plus bulk.")
+    user.find(marker="review-write").click()
+    for _ in range(20):
+        if "edited" in times.text:
             break
-        await asyncio.sleep(0.1)
+        await asyncio.sleep(0.05)
+    assert " · edited 20" in times.text
     r = review.load(review.all_reviews(project)[v2["hash"]])
     assert (r.parent, r.summary) == (docs["hash"], "Rev B feedback.")
     assert [(n.title, n.body, n.anchor) for n in r.notes] == [
-        ("Added C1", "Decoupling for U1.", review.Anchor("pcb", "footprint", "C1", review.Seen(**seen)))]
+        ("Added C1", "Decoupling for U1. Plus bulk.", review.Anchor("pcb", "footprint", "C1", review.Seen(**seen)))]
+    assert r.notes[0].created and r.notes[0].edited
     assert next(x for x in commit_table(user).rows if x["hash"] == v2["hash"])["reviewed"]
+    assert (r.date, r.author) == (v2["date"], "kigit tests")
+    await user.should_see(f"ID {r.id}")
+    assert f"[{r.id}]({r.id}.md)" in (project / ".reviews" / "index.md").read_text()
 
     # Something this commit removed is marked so.
     emit(user, "kigit_pinned", {"tab": "sch", "kind": "part", "name": "R9", "seen": {**seen, "side": "old"}})
     await user.should_see("Part R9 · removed")
+
+
+async def test_unwritten_review_is_kept_as_a_draft(user: User, monkeypatch, tmp_path: Path) -> None:
+    """Switching to another commit without writing keeps the edits for later."""
+    project = make_fixture_repo(tmp_path / "repo")
+    await open_at(user, monkeypatch, str(project))
+    await user.should_see("Pick two commits on the left", retries=50)
+    rows = commit_table(user).rows
+    v2 = next(r for r in rows if r["subject"].startswith("v2"))
+    moved = next(r for r in rows if r["subject"] == "move project folder")
+
+    async def review(row: dict) -> None:
+        frame = next(e for e in user.client.elements.values() if e.tag == "iframe")  # hidden at first
+        before = frame.props.get("src")
+        await select(user, [row])
+        user.find(marker="review-button").click()
+        for _ in range(100):  # until the viewer shows the new page
+            if frame.props.get("src") != before:
+                break
+            await asyncio.sleep(0.1)
+
+    await review(v2)
+    user.find(marker="review-summary").type("Half a thought")
+    await review(moved)
+    await user.should_see("unwritten draft: " + v2["short"])
+    assert not (project / ".reviews").exists()
+    await review(v2)
+    await user.should_see("Unsaved changes")
+    await user.should_see("Half a thought")  # shown as rendered text
+    user.find(marker="review-write").click()
+    await user.should_see("Written to .reviews/")
 
 
 async def test_first_commit_has_nothing_to_review_against(user: User, monkeypatch) -> None:
