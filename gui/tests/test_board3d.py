@@ -30,6 +30,42 @@ def test_routes() -> None:
     assert asyncio.run(board3d._three("../../../../nicegui.py")).status_code == 404  # noqa: SLF001
 
 
+def test_side_by_side_page() -> None:
+    """Several boards: one /board3d frame each, views linked through the page."""
+    page = board3d.grid_page([("a.glb", "owl · 1a2b", "Rev A"), ("b.glb", "owl · 3c4d", "Rev <B>")])
+    assert page.count("<iframe") == 2 and 'src="/board3d/a.glb?title=owl' in page
+    assert "Rev+%3CB%3E" in page  # quoted into the address
+    assert "grid-template-columns: repeat(2, 1fr)" in page and 'id="linked" checked' in page
+    assert '"setCamera" : "setLayer"' in page and "%%" not in page  # views and layers both follow
+    four = board3d.grid_page([(f"{i}.glb", "", "") for i in range(4)])
+    assert "repeat(2, 1fr)" in four  # 2 x 2
+    # Each board sends its camera out and takes the others'.
+    one = board3d.page("/diffs/a.glb")
+    assert 'kigit3d: "camera"' in one and 'm.kigit3d !== "setCamera"' in one
+    # Mask and silkscreen can be hidden, as in KiCad's 3D viewer, and the
+    # other boards follow.
+    assert 'id="mask" class="on"' in one and 'id="silk" class="on"' in one
+    assert 'kigit3d: "layer", name, on' in one and 'm.kigit3d === "setLayer"' in one
+
+
+def test_side_by_side_route() -> None:
+    from starlette.requests import Request
+
+    for n in ("aaaaaaaaaaaa.glb", "bbbbbbbbbbbb.glb"):
+        (app.CACHE / n).write_bytes(b"glTF")
+
+    def get(query: str):
+        req = Request({"type": "http", "method": "GET", "path": "/board3d-grid", "headers": [],
+                       "query_string": query.encode()})
+        return asyncio.run(board3d._grid(req))  # noqa: SLF001
+
+    ok = get("b=aaaaaaaaaaaa.glb&t=A&s=x&b=bbbbbbbbbbbb.glb&t=B&s=y")
+    assert ok.status_code == 200 and ok.body.count(b"<iframe") == 2
+    assert get("b=aaaaaaaaaaaa.glb&b=missing.glb").status_code == 404
+    assert get("b=../x.glb").status_code == 404
+    assert get("&".join(["b=aaaaaaaaaaaa.glb"] * 5)).status_code == 404  # at most four
+
+
 def test_cached_model_names(tmp_path) -> None:
     board = tmp_path / "b.kicad_pcb"
     board.write_text("x")

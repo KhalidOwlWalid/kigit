@@ -126,6 +126,19 @@ TEST_CASE("--3d: one revision, made by kicad-cli") {
     REQUIRE(made.code == 0);
     CHECK(made.out.find("out.glb") != std::string::npos);
     CHECK(read_text(glb).substr(0, 4) == "glTF");
+
+#ifndef _WIN32
+    // Two at once into one folder (the GUI's side-by-side view): kicad-cli's
+    // scratch file next to its output mustn't be shared.
+    std::string a = (tmp / "a.glb").string(), b = (tmp / "b.glb").string();
+    run(quote(KIGIT_BIN) + " --no-log -q --3d HEAD -o " + quote(a) + " -C " + dir + " & " +
+                         quote(KIGIT_BIN) + " --no-log -q --3d HEAD~1 -o " + quote(b) + " -C " + dir +
+                         " & wait");
+    CHECK(read_text(a).substr(0, 4) == "glTF");
+    CHECK(read_text(b).substr(0, 4) == "glTF");
+    for (const auto& e : fs::directory_iterator(tmp.path()))
+        CHECK(e.path().filename().string().find("tempfile") == std::string::npos);
+#endif
 }
 
 TEST_CASE("diff across the folder rename, as JSON on stdout") {

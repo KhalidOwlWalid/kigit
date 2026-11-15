@@ -18,7 +18,9 @@ Flow:
 from __future__ import annotations
 
 import argparse
+import asyncio
 import hashlib
+import json
 import logging
 import os
 import socket
@@ -92,9 +94,15 @@ def page_name(project: str, old: str, new: str) -> str:
     return f"{key}.html"
 
 
+MAX_3D = 4  # boards side by side in the 3D view
+
+
 def board3d_name(board: str, rev: str) -> str:
     """The cached 3D model's file name. A commit never changes; the working
-    tree is named by the board file's time and size, so an edit makes a new one."""
+    tree is named by the board file's time and size, so an edit makes a new
+    one. Other names (HEAD~1, a branch) can move, so they're never reused."""
+    if rev != LOCAL and not is_hash(rev):
+        rev = f"{rev}|{time.time_ns()}"
     if rev == LOCAL:
         try:
             st = Path(board).stat()
@@ -102,6 +110,10 @@ def board3d_name(board: str, rev: str) -> str:
         except OSError:
             rev = f"{LOCAL}|{time.time()}"
     return hashlib.sha1(f"{board}|{rev}".encode()).hexdigest()[:12] + ".glb"
+
+
+def is_hash(rev: str) -> bool:
+    return len(rev) == 40 and all(c in "0123456789abcdef" for c in rev)
 
 
 def short_rev(rev: str) -> str:
@@ -169,6 +181,9 @@ def build(start_folder: str):
         ui.button("Browse", icon="folder_open", on_click=lambda: browse()).props("flat dense")
         ui.button("Open", on_click=lambda: open_folder(folder_input.value)).props("flat dense")
         status = ui.label("").classes("text-sm text-gray-400 ml-auto truncate")
+        dock_btn = ui.button("3D", icon="view_in_ar", on_click=lambda: dock_toggle()).props("flat dense").tooltip(
+            "Show the board in 3D beside the comparison (New, Old or both)").mark("dock-button")
+        dock_btn.set_visibility(False)
         ui.button("Reviews", icon="menu_book", on_click=lambda: open_reviews_doc()).props("flat dense").tooltip(
             "All of this project's written reviews as one page, in a new tab").mark("reviews-doc")
         ui.button("Compare folders", icon="difference", on_click=lambda: compare_folders()).props(
@@ -182,7 +197,7 @@ def build(start_folder: str):
             hint = ui.label("Pick two commits and press Compare, or one and press Review.").classes(
                 "text-xs text-gray-400")
             with ui.row().classes("w-full gap-2 items-center no-wrap"):
-                compare_btn = ui.button("Compare", on_click=lambda: compare()).props("unelevated dense color=amber-8")
+                compare_btn = ui.button("Compare", on_click=lambda: compare()).props("unelevated dense color=amber-8").mark("compare-button")
                 review_btn = ui.button("Review", icon="rate_review", on_click=lambda: review_commit()).props(
                     "unelevated dense color=blue-grey-8").tooltip(
                     "Compare this commit with the one before it and write down why it changed").mark("review-button")
@@ -294,17 +309,137 @@ def build(start_folder: str):
     resizer.add(commits_drawer, "left", "commits", 480)
 
     # ---------------------------------------------------------------- viewer
-    with ui.element("div").classes("w-full h-[calc(100vh-52px)] relative"):
-        frame = ui.element("iframe").classes("w-full h-full border-0 bg-[#0f1115]").mark("viewer")
-        frame.set_visibility(False)
-        with ui.column().classes("absolute inset-0 items-center justify-center gap-2") as placeholder:
-            placeholder_icon = ui.icon("folder_open").classes("text-5xl text-gray-600")
-            placeholder_text = ui.label("Open a KiCad project folder to start.").classes("text-gray-400")
-            placeholder_more = ui.label("").classes("text-xs text-gray-500 text-center max-w-[36rem]")
-            # Shown when a project has no git history: compare two copies instead.
-            no_git_button = ui.button("Compare two copies of this project", icon="difference").props(
-                "unelevated dense color=amber-8").mark("no-git-compare")
-            no_git_button.set_visibility(False)
+    # The comparison, and the 3D dock beside it (its width: --kigit-dock-w,
+    # dragged by the grip, remembered in the browser).
+    with ui.element("div").classes("kigit-split w-full h-[calc(100vh-52px)] flex no-wrap") as split:
+        with ui.element("div").classes("kigit-main h-full flex-1 min-w-0 min-h-0 relative"):
+            frame = ui.element("iframe").classes("w-full h-full border-0 bg-[#0f1115]").mark("viewer")
+            frame.set_visibility(False)
+            with ui.column().classes("absolute inset-0 items-center justify-center gap-2") as placeholder:
+                placeholder_icon = ui.icon("folder_open").classes("text-5xl text-gray-600")
+                placeholder_text = ui.label("Open a KiCad project folder to start.").classes("text-gray-400")
+                placeholder_more = ui.label("").classes("text-xs text-gray-500 text-center max-w-[36rem]")
+                # Shown when a project has no git history: compare two copies instead.
+                no_git_button = ui.button("Compare two copies of this project", icon="difference").props(
+                    "unelevated dense color=amber-8").mark("no-git-compare")
+                no_git_button.set_visibility(False)
+        dock_grip = ui.element("div").classes("kigit-dock-grip").props(
+            'title="Drag to resize; double-click to reset"').mark("dock-grip")
+        with ui.column().classes("kigit-dock h-full gap-0 no-wrap bg-[#0f1115]") as dock:
+            with ui.row().classes("w-full items-center gap-2 px-2 py-1 no-wrap bg-[#161a20] border-b border-[#29303a]"):
+                ui.icon("view_in_ar").classes("text-amber-500")
+                ui.label("3D").classes("text-sm font-semibold")
+                dock_away = ui.label("in another tab").classes("text-xs text-amber-300").mark("dock-away")
+                dock_away.set_visibility(False)
+                dock_side = ui.toggle({"new": "New", "old": "Old", "both": "Both"}, value="new",
+                                      on_change=lambda: dock_load()).props(
+                    "dense no-caps size=sm toggle-color=amber-8 text-color=grey-5").mark("dock-side")
+                ui.space()
+                # Opened in the click itself (window.open needs the user's
+                # click, or the browser blocks it), then the server is told.
+                dock_out = ui.button(icon="open_in_new").props("flat dense round size=sm").tooltip(
+                    "Open it in a new browser tab; close that tab to bring it back here").mark("dock-popout")
+                dock_back = ui.button("Bring back", icon="login", on_click=lambda: ui.run_javascript(
+                    "window.kigitPopout && window.kigitPopout.close()")).props(
+                    "flat dense no-caps size=sm color=amber-5").mark("dock-bring-back")
+                dock_back.set_visibility(False)
+                dock_place = ui.button(icon="horizontal_split", on_click=lambda: set_dock_below(
+                    not state.get("dock_below"))).props("flat dense round size=sm").mark("dock-place")
+                with dock_place:
+                    dock_place_tip = ui.tooltip("Dock it below the comparison")
+                ui.button(icon="close", on_click=lambda: dock_close()).props("flat dense round size=sm").tooltip(
+                    "Close the 3D view")
+            with ui.element("div").classes("kigit-dock-body w-full flex-1 relative min-h-0"):
+                dock_frame = ui.element("iframe").classes("w-full h-full border-0 bg-[#0f1115]").mark("dock-viewer")
+                with ui.column().classes("absolute inset-0 items-center justify-center gap-3 p-6") as dock_wait:
+                    dock_spinner = ui.spinner(size="lg", color="amber-7")
+                    dock_msg = ui.label("").classes("text-xs text-gray-400 text-center").mark("dock-message")
+        dock.set_visibility(False)
+        dock_grip.set_visibility(False)
+    ui.add_head_html("""<style>
+.kigit-dock { width: var(--kigit-dock-w, clamp(320px, 40%, 900px)); flex: none; }
+.kigit-dock-grip { width: 5px; flex: none; cursor: col-resize; background: #29303a; }
+/* Docked below: the comparison keeps the full width. */
+.kigit-split.below { flex-direction: column; }
+.kigit-split.below > .kigit-main { height: auto; }
+.kigit-split.below > .kigit-dock { width: 100%; height: var(--kigit-dock-h, 45%); }
+.kigit-split.below > .kigit-dock-grip { width: 100%; height: 5px; cursor: row-resize; }
+/* In another tab: only the dock's header bar stays, under the comparison. */
+.kigit-split.popped { flex-direction: column; }
+.kigit-split.popped > .kigit-main { height: auto; }
+.kigit-split.popped > .kigit-dock { width: 100%; height: auto; }
+.kigit-split.popped > .kigit-dock-grip, .kigit-split.popped .kigit-dock-body { display: none; }
+.kigit-dock-grip:hover, body.kigit-dragging .kigit-dock-grip { background: #e8b84d; }
+body.kigit-dragging iframe { pointer-events: none; }  /* else the frames swallow the drag */
+</style>""")
+    ui.add_body_html("""<script>
+(() => {
+  const root = document.documentElement;
+  try {
+    const w = localStorage.getItem("kigit.dockWidth"), h = localStorage.getItem("kigit.dockHeight");
+    if (w) root.style.setProperty("--kigit-dock-w", w + "px");
+    if (h) root.style.setProperty("--kigit-dock-h", h + "px");
+  } catch {}
+  // Where the dock was last put (beside or below), once the page is up.
+  let tries = 0;
+  const restore = setInterval(() => {
+    if (typeof mounted_app === "undefined" || !mounted_app) { if (++tries > 100) clearInterval(restore); return; }
+    clearInterval(restore);
+    let v = null;
+    try { v = localStorage.getItem("kigit.dockBelow"); } catch {}
+    if (v !== null) emitEvent("kigit_dock_below", v === "1");
+  }, 100);
+  document.addEventListener("pointerdown", (e) => {
+    const grip = e.target.closest && e.target.closest(".kigit-dock-grip");
+    if (!grip) return;
+    e.preventDefault();
+    const split = grip.parentElement, below = split.classList.contains("below");
+    const box = split.getBoundingClientRect();
+    document.body.classList.add("kigit-dragging");
+    let size = null;
+    // The comparison keeps at least 300 px (200 px tall when below).
+    const move = (ev) => {
+      if (below) {
+        size = Math.round(Math.min(Math.max(box.bottom - ev.clientY, 180), Math.max(180, box.height - 200)));
+        root.style.setProperty("--kigit-dock-h", size + "px");
+      } else {
+        size = Math.round(Math.min(Math.max(box.right - ev.clientX, 260), Math.max(260, box.width - 300)));
+        root.style.setProperty("--kigit-dock-w", size + "px");
+      }
+    };
+    const up = () => {
+      document.body.classList.remove("kigit-dragging");
+      removeEventListener("pointermove", move);
+      removeEventListener("pointerup", up);
+      if (size) try { localStorage.setItem(below ? "kigit.dockHeight" : "kigit.dockWidth", size); } catch {}
+    };
+    addEventListener("pointermove", move);
+    addEventListener("pointerup", up);
+  });
+  // The 3D view in its own tab: opened here (in the click), watched until
+  // it's closed, then the dock takes it back (unless kigit closed it).
+  window.kigitPopOut = (src) => {
+    const w = window.open(src && src !== "about:blank" ? src : "about:blank", "_blank");
+    if (!w) return false;
+    window.kigitPopout = w;
+    window.kigitPopoutQuiet = false;
+    clearInterval(window.kigitPopoutTimer);
+    window.kigitPopoutTimer = setInterval(() => {
+      if (!w.closed) return;
+      clearInterval(window.kigitPopoutTimer);
+      window.kigitPopout = null;
+      if (!window.kigitPopoutQuiet) emitEvent("kigit_dock_back");
+    }, 400);
+    return true;
+  };
+  document.addEventListener("dblclick", (e) => {
+    if (!(e.target.closest && e.target.closest(".kigit-dock-grip"))) return;
+    root.style.removeProperty("--kigit-dock-w");
+    root.style.removeProperty("--kigit-dock-h");
+    try { localStorage.removeItem("kigit.dockWidth"); localStorage.removeItem("kigit.dockHeight"); } catch {}
+  });
+})();
+</script>""")
 
     # ---------------------------------------------------------------- review
     def focus(anchor) -> None:
@@ -411,6 +546,7 @@ def build(start_folder: str):
 
     def show_message(icon: str, text: str, more: str = "", tone: str = "text-gray-400") -> None:
         panel.close()
+        no_comparison()
         no_git_button.set_visibility(False)
         frame.set_visibility(False)
         placeholder.set_visibility(True)
@@ -600,17 +736,18 @@ def build(start_folder: str):
         on_select()
 
     def on_select() -> None:
-        # At most two, keeping the most recently picked.
-        if len(table.selected) > 2:
-            table.selected = table.selected[-2:]
+        # At most MAX_3D (several boards side by side in 3D), keeping the most
+        # recently picked. Compare takes two, Review one.
+        if len(table.selected) > MAX_3D:
+            table.selected = table.selected[-MAX_3D:]
             table.update()
         n = len(table.selected)
         compare_btn.set_enabled(n == 2)
         review_btn.set_enabled(n == 1 and table.selected[0]["hash"] != LOCAL)
-        view3d_btn.set_enabled(n == 1 and not state.get("busy3d"))
+        view3d_btn.set_enabled(1 <= n <= MAX_3D and not state.get("busy3d"))
         names = [r["short"] for r in table.selected]
         picked.text = (" ↔ ".join(names) if n == 2 else f"{names[0]}: review it, or pick one more" if n == 1
-                       else "Nothing picked")
+                       else f"{', '.join(names)}: 3D side by side" if n > 2 else "Nothing picked")
         hint.set_visibility(state["history"] is not None)
 
     # ---------------------------------------------------------------- compare
@@ -639,45 +776,199 @@ def build(start_folder: str):
             return
         await run_diff(row["parent"], row["hash"], review_btn, review_of=row)
 
+    # ------------------------------------------------------------------- 3D
+    async def build_models(names: dict[str, str]) -> list[tuple[str, BaseException]]:
+        """Makes the missing 3D models (rev -> file name in CACHE) with kigit
+        --3d, all at once. Returns the ones that failed."""
+        board = state["board"]
+        todo = [r for r, n in names.items() if not (CACHE / n).exists()]
+        if not todo:
+            return []
+        started = time.monotonic()
+        logs.log.info("3d %s", " ".join(todo))
+        results = await asyncio.gather(*(kigit.board3d(board, r, CACHE / names[r]) for r in todo),
+                                       return_exceptions=True)
+        failed = []
+        for r, result in zip(todo, results):
+            if isinstance(result, BaseException):
+                failed.append((r, result))
+                continue
+            for w in result:
+                notify(w, type="warning", multi_line=True, close_button=True)
+        logs.log.info("3d done in %.1f s", time.monotonic() - started)
+        return failed
+
+    def board3d_src(items: list[tuple[str, str, str]]) -> str:
+        """The 3D page for (file name, commit label, subject) items: one board,
+        or several side by side."""
+        name = state.get("name") or Path(state["board"]).stem
+        if len(items) == 1:
+            n, label, subject = items[0]
+            return f"/board3d/{n}?" + urllib.parse.urlencode({"title": f"{name} · {label}", "subtitle": subject})
+        return "/board3d-grid?" + urllib.parse.urlencode(
+            [p for n, label, subject in items for p in (("b", n), ("t", f"{name} · {label}"), ("s", subject))])
+
+    def subject_of(rev: str) -> str:
+        return next((r.get("subject", "") for r in table.rows if r["hash"] == rev), "")
+
     async def view_3d() -> None:
-        """Shows the picked commit's board in 3D. KiCad makes the model (it can
-        take a while on a big board); each commit's is kept for the session."""
-        if len(table.selected) != 1 or not state["board"]:
+        """Shows the picked commits' boards in 3D: one, or up to MAX_3D side by
+        side (oldest first, views linked). KiCad makes each model, all at once;
+        a big board takes a while, and each commit's is kept for the session."""
+        n = len(table.selected)
+        if not 1 <= n <= MAX_3D or not state["board"]:
             return
-        row, board = table.selected[0], state["board"]
-        name = board3d_name(board, row["hash"])
-        out = CACHE / name
-        title = f"{state.get('name') or Path(board).stem} · {row['short']}"
-        if not out.exists():
+        board = state["board"]
+        order = {r["hash"]: i for i, r in enumerate(table.rows)}
+        rows = sorted(table.selected, key=lambda r: -order.get(r["hash"], 0))  # oldest first: lowest in the list
+        names = {r["hash"]: board3d_name(board, r["hash"]) for r in rows}
+        todo = [r for r in rows if not (CACHE / names[r["hash"]]).exists()]
+        if todo:
             state["busy3d"] = True
             on_select()
             view3d_btn.props("loading")
-            show_message("view_in_ar", f"Building the 3D board of {row['short']} with KiCad...",
+            which = ", ".join(r["short"] for r in todo)
+            show_message("view_in_ar", f"Building the 3D board{'s' if len(todo) > 1 else ''} of {which} with KiCad...",
                          "kicad-cli exports the board with its parts' 3D models. A big board takes a while "
-                         "(half a minute or so); after that this commit opens straight away.")
+                         "(half a minute or so; several are made at the same time); after that a commit opens "
+                         "straight away.")
             status.text = "Building 3D board..."
             started = time.monotonic()
-            logs.log.info("3d %s", row["hash"])
-            try:
-                for w in await kigit.board3d(board, row["hash"], out):
-                    notify(w, type="warning", multi_line=True, close_button=True)
-            except kigit.KigitError as e:
+            failed = await build_models(names)
+            state["busy3d"] = False
+            view3d_btn.props(remove="loading")
+            on_select()
+            if failed:
                 status.text = ""
-                show_message("error_outline", "Couldn't make the 3D board.", str(e), tone="text-red-400")
+                short = {r["hash"]: r["short"] for r in rows}
+                show_message("error_outline", "Couldn't make the 3D board.",
+                             "\n".join(f"{short[r]}: {e}" for r, e in failed), tone="text-red-400")
                 return
-            finally:
-                state["busy3d"] = False
-                view3d_btn.props(remove="loading")
-                on_select()
-            logs.log.info("3d %s done in %.1f s", row["short"], time.monotonic() - started)
-            status.text = f"3D {row['short']} · {time.monotonic() - started:.1f} s"
-        query = urllib.parse.urlencode({"title": title, "subtitle": row.get("subject", "")})
+            status.text = f"3D {which} · {time.monotonic() - started:.1f} s"
         panel.close()
         panel.set_pinned(None)
-        frame.props(f'src="/board3d/{name}?{query}"')
+        no_comparison()
+        frame.props(f'src="{board3d_src([(names[r["hash"]], r["short"], r.get("subject", "")) for r in rows])}"')
         placeholder.set_visibility(False)
         no_git_button.set_visibility(False)
         frame.set_visibility(True)
+
+    # The 3D dock: the comparison's boards in 3D beside it (state["pair"]: old, new).
+    def no_comparison() -> None:
+        """No comparison on screen any more: no dock."""
+        state["pair"] = None
+        dock_btn.set_visibility(False)
+        dock_close()
+
+    def set_popped(on: bool) -> None:
+        """The 3D view in another tab (on), or back in the dock."""
+        state["popped"] = on
+        split.classes(add="popped") if on else split.classes(remove="popped")
+        dock_away.set_visibility(on)
+        dock_back.set_visibility(on)
+        dock_out.set_visibility(not on)
+        dock_place.set_visibility(not on)
+        if on:
+            dock_frame.props('src="about:blank"')  # one copy is enough: frees its WebGL memory
+
+    def popped_out(e) -> None:
+        if not e.args:
+            notify("The browser blocked the new tab: allow pop-ups for this page, then try again", type="warning")
+            return
+        logs.log.info("3d dock opened in a new tab")
+        set_popped(True)
+        if not state.get("dock_src"):  # still being made: the tab gets it when it's ready
+            dock_away.text = "in another tab (being made...)"
+
+    async def dock_came_back(_=None) -> None:
+        if not state.get("popped"):
+            return
+        logs.log.info("3d tab closed: back in the dock")
+        set_popped(False)
+        await dock_load()
+
+    dock_out.on("click", popped_out, js_handler=f"""() => {{
+        const f = getHtmlElement({dock_frame.id});
+        emit(window.kigitPopOut(f ? f.getAttribute("src") : ""));
+    }}""")
+    ui.on("kigit_dock_back", dock_came_back)
+
+    def dock_close() -> None:
+        if state.get("popped"):  # closed by kigit: not a "bring it back"
+            ui.run_javascript("window.kigitPopoutQuiet = true; window.kigitPopout && window.kigitPopout.close()")
+            set_popped(False)
+        state["dock_src"] = ""
+        state["dock_token"] = state.get("dock_token", 0) + 1  # a model still being made isn't shown
+        dock.set_visibility(False)
+        dock_grip.set_visibility(False)
+        dock_frame.props('src="about:blank"')  # frees its WebGL memory
+
+    def set_dock_below(on: bool, remember: bool = True) -> None:
+        """Docks the 3D view below the comparison, or beside it."""
+        state["dock_below"] = on
+        split.classes(add="below") if on else split.classes(remove="below")
+        dock_place.props(f"icon={'vertical_split' if on else 'horizontal_split'}")
+        dock_place_tip.text = "Dock it beside the comparison" if on else "Dock it below the comparison"
+        if remember:
+            state["dock_placed"] = True
+            ui.run_javascript(f'try {{ localStorage.setItem("kigit.dockBelow", "{1 if on else 0}") }} catch {{}}')
+
+    def restored_dock(e) -> None:
+        state["dock_placed"] = True
+        set_dock_below(bool(e.args), remember=False)
+    ui.on("kigit_dock_below", restored_dock)
+
+    async def dock_toggle() -> None:
+        if dock.visible:
+            dock_close()
+            return
+        if not state.get("dock_placed"):
+            # Not placed yet: below when the comparison would be squeezed beside it.
+            try:
+                width = await ui.run_javascript("document.querySelector('.kigit-split')?.clientWidth || 0", timeout=2)
+            except TimeoutError:
+                width = 0
+            set_dock_below(bool(width) and width < 1100, remember=False)
+        dock.set_visibility(True)
+        dock_grip.set_visibility(True)
+        await dock_load()
+
+    async def dock_load() -> None:
+        """Shows the comparison's New, Old or both boards in the dock, making
+        their models first if needed."""
+        pair = state.get("pair")
+        if not pair or not dock.visible:
+            return
+        side = dock_side.value
+        revs = list(pair) if side == "both" else [pair[0] if side == "old" else pair[1]]
+        token = state["dock_token"] = state.get("dock_token", 0) + 1
+        board = state["board"]
+        names = {r: board3d_name(board, r) for r in revs}
+        state["dock_src"] = ""
+        if any(not (CACHE / n).exists() for n in names.values()):
+            dock_frame.set_visibility(False)
+            dock_wait.set_visibility(True)
+            dock_spinner.set_visibility(True)
+            dock_msg.text = (f"Building the 3D board of {' and '.join(short_rev(r) for r in revs)} with KiCad... "
+                             "A big board takes about half a minute; the comparison stays usable.")
+            failed = await build_models(names)
+            if token != state.get("dock_token"):
+                return  # closed, or another side picked meanwhile
+            if failed:
+                dock_spinner.set_visibility(False)
+                dock_msg.text = "Couldn't make the 3D board. " + " ".join(f"{short_rev(r)}: {e}" for r, e in failed)
+                return
+        if token != state.get("dock_token"):
+            return
+        src = state["dock_src"] = board3d_src([(names[r], short_rev(r), subject_of(r)) for r in revs])
+        dock_wait.set_visibility(False)
+        if state.get("popped"):  # the other tab shows it
+            dock_away.text = "in another tab"
+            ui.run_javascript(f"window.kigitPopout && !window.kigitPopout.closed && "
+                              f"(window.kigitPopout.location.href = {json.dumps(src)})")
+            return
+        dock_frame.props(f'src="{src}"')
+        dock_frame.set_visibility(True)
 
     async def compare_manually() -> None:
         a, b = (old_rev.value or "").strip(), (new_rev.value or "").strip()
@@ -716,6 +1007,14 @@ def build(start_folder: str):
         status.text = f"{short_rev(a)} ↔ {short_rev(b)} · {time.monotonic() - started:.1f} s"
         logs.log.info("compared %s .. %s in %.2f s", a, b, time.monotonic() - started)
         show_page(name)
+        # Older first: lower in the list (LOCAL, at the top, is the newest).
+        order = {r["hash"]: i for i, r in enumerate(table.rows)}
+        if a in order and b in order and order[a] < order[b]:
+            a, b = b, a
+        state["pair"] = (a, b)
+        dock_btn.set_visibility(True)
+        if dock.visible:
+            background_tasks.create(dock_load())
         if review_of:
             panel.open(Path(board).parent, review_of["hash"], review_of.get("parent", ""), review_of["subject"],
                        review_of.get("date", ""), review_of.get("author", ""), review_of.get("body", ""))
@@ -842,6 +1141,7 @@ def build(start_folder: str):
         status.text = f"{label(old_board)} ↔ {label(new_board)} (no git) · {time.monotonic() - started:.1f} s"
         logs.log.info("compared files in %.2f s", time.monotonic() - started)
         show_page(name)
+        no_comparison()  # two folders: no git, so no 3D dock
         panel.close()
 
     # Pop-up dialogs live here, whichever button opens them.

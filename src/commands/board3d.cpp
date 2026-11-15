@@ -121,6 +121,12 @@ int run_board3d(const Options& o, const fs::path& project) {
     spdlog::info("3d: running {}", cli->string());
     std::error_code ec;
     fs::remove(out, ec);
+    // kicad-cli writes a scratch file ("$tempfile$.bin.tmp") next to its
+    // output, so it writes into our own temp folder and the result is moved
+    // into place: exports running at the same time (the GUI's side-by-side
+    // view, all into one cache folder) would otherwise share that file.
+    fs::path made = tmp / "board.glb";
+    args[args.size() - 2] = made.string();
     platform::RunResult r = platform::run(args, true);
     int no_model = 0; // parts whose 3D model file KiCad couldn't find
     for (const auto& text : {r.out, r.err}) {
@@ -129,6 +135,13 @@ int run_board3d(const Options& o, const fs::path& project) {
             if (l.empty()) continue;
             spdlog::info("kicad-cli: {}", l);
             if (l.rfind("Could not add 3D model", 0) == 0) ++no_model;
+        }
+    }
+    if (r.ok && fs::exists(made)) {
+        fs::rename(made, out, ec);
+        if (ec) { // another drive: copy instead
+            ec.clear();
+            fs::copy_file(made, out, fs::copy_options::overwrite_existing, ec);
         }
     }
     fs::remove_all(tmp, ec);

@@ -294,7 +294,8 @@ at once. localStorage settings are per origin, so per port.
 - Tests: NiceGUI's harness fails a test on any error-level log, so
   user-facing failures are logged as warnings. Wait for a button to be
   enabled, or the iframe `src` to change, instead of sleeping.
-- 3D view (`board3d.py`): the 3D button (one row, the working tree too)
+- 3D view (`board3d.py`): the 3D button (one to `MAX_3D` = 4 rows; the table
+  keeps the last 4 picked, Compare needs 2, Review 1; the working tree too)
   runs `kigit --3d` into `CACHE` (`board3d_name`: a commit's file is reused
   for the session; LOCAL is keyed by the board's mtime and size) and points
   the viewer iframe at `/board3d/{name}`: a standalone three.js page using
@@ -306,11 +307,54 @@ at once. localStorage settings are per origin, so per port.
   PMREM room as the environment plus a light above and below. KiCad writes
   material colours as sRGB values in glTF's linear slots, so the page runs
   `convertSRGBToLinear()` on each material once (else the mask is pale
-  mint); Neutral tone mapping. It draws on
+  mint); Neutral tone mapping. Tuned against `kicad-cli pcb render` of the
+  CM5 board by measuring median mask and pad colours: environment
+  intensity 0.3 (more mirrors the bright "ceiling" into the mask and washes
+  it out seen from above), mask opacity 0.8 (KiCad exports 0.83; a bit less
+  shows the traces), and KiCad's pure-metal copper made half metal (0.55,
+  roughness <= 0.35) so pads are gold, not a dull reflection of the room.
+  Parts (no metallic factor in the file, so 1 by glTF's default) get the
+  same. KiCad's own 3D viewer does nothing more for traces (mask at its
+  colour's alpha over copper, shiny specular; see
+  `render_3d_opengl.cpp`), so traces under mask on poured boards are faint
+  there too; like KiCad, the page lets you hide layers: the board group's
+  merged meshes with a see-through dark material are the mask, see-through
+  light ones the silkscreen (`layers`, `setLayer`; M, K, P). A layer change
+  is posted as `{kigit3d: "layer"}` and the grid relays it as `setLayer`
+  while linked. It draws on
   demand (`redraw()`: on controls `change`, while damping still moves, on
   resize and view changes), not every frame, and the static model's
   matrices are computed once; no hover raycasting (it lagged on big boards).
   `window.kigit3dReady` is set once loaded (for browser checks).
+  The 3D dock: while a comparison shows, the header's 3D button (`dock_btn`)
+  opens a panel beside it (`.kigit-split` flex row: `.kigit-main`, grip,
+  `.kigit-dock`) or below it (class `below`, column). `state["pair"]` is the
+  comparison (older first, by list order); `dock_side` New/Old/Both picks
+  the board(s) (`board3d_src`, grid for both). Width/height are CSS
+  variables `--kigit-dock-w`/`-h`, set by the grip's drag in page JS (the
+  frames get `pointer-events: none` while dragging), remembered in
+  localStorage (`kigit.dockWidth`/`Height`/`Below`). Unplaced, it goes below
+  if the split is under 1100 px wide. `no_comparison()` (from
+  `show_message`, a 3D-only view, folder compare) hides the button and
+  closes the dock; `dock_close` blanks its iframe to free WebGL memory and
+  bumps `dock_token` so a model still being made isn't shown. Names like
+  HEAD~1 aren't reused by `board3d_name` (they can move).
+  Pop-out: the dock's open_in_new button runs `window.kigitPopOut(src)` in
+  its click (`js_handler`; window.open outside a click is blocked), which
+  keeps `window.kigitPopout` and polls `.closed`; on close it emits
+  `kigit_dock_back` unless `kigitPopoutQuiet` (kigit closed it). Popped
+  (`set_popped`, class `popped` on the split): only the dock's header bar
+  stays, under the comparison; the dock iframe is blanked and `dock_load`
+  sends `state["dock_src"]` to the tab (`location.href`) instead.
+  Several rows: their models are made at once (`asyncio.gather`) and the
+  iframe shows `/board3d-grid?b=..&t=..&s=..` (oldest first): one
+  `/board3d` iframe per board. Each board posts `{kigit3d: "camera"}` to its
+  parent on controls `change`; the grid relays it as `setCamera` to the
+  others while "Link views" is on; `applying` stops a received camera
+  being sent back, and a board's first view isn't sent. kicad-cli writes a
+  scratch `$tempfile$.bin.tmp` next to its output, so `--3d` exports into
+  its own temp folder and moves the file into place (parallel exports into
+  the GUI's one cache folder failed before).
   Render stats (`stats` in the page; `?stats=1` or S): only measured while
   shown. Input → drawn (first unanswered pointerdown/drag/wheel to the end
   of the next render), CPU per `renderer.render`, GPU via

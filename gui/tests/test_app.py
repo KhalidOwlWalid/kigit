@@ -163,8 +163,8 @@ async def test_diff_commits_manually(user: User, monkeypatch) -> None:
     await open_at(user, monkeypatch, PROJECT)
     await user.should_see("Pick two commits on the left", retries=50)
     user.find("Diff commits manually").click()
-    user.find("Old").type("HEAD~1")
-    user.find("New").type("LOCAL")
+    user.find(kind=ui.input, content="Old").type("HEAD~1")
+    user.find(kind=ui.input, content="New").type("LOCAL")
     user.find("Find manually").click()
     await user.should_see(marker="viewer", retries=100)
     assert user.find(marker="viewer").elements.pop().props["src"].endswith("#sch")
@@ -174,8 +174,8 @@ async def test_diff_manually_reports_bad_commit(user: User, monkeypatch) -> None
     await open_at(user, monkeypatch, PROJECT)
     await user.should_see("Pick two commits on the left", retries=50)
     user.find("Diff commits manually").click()
-    user.find("Old").type("no-such-commit")
-    user.find("New").type("HEAD")
+    user.find(kind=ui.input, content="Old").type("no-such-commit")
+    user.find(kind=ui.input, content="New").type("HEAD")
     user.find("Find manually").click()
     await user.should_see("unknown revision", retries=50)
 
@@ -184,7 +184,7 @@ async def test_diff_manually_needs_both(user: User, monkeypatch) -> None:
     await open_at(user, monkeypatch, PROJECT)
     await user.should_see("Pick two commits on the left", retries=50)
     user.find("Diff commits manually").click()
-    user.find("Old").type("HEAD")
+    user.find(kind=ui.input, content="Old").type("HEAD")
     user.find("Find manually").click()
     await user.should_see("Enter both an old and a new commit")
 
@@ -497,7 +497,7 @@ async def test_3d_view_of_a_commit(user: User, monkeypatch) -> None:
     button = user.find(marker="view3d-button").elements.pop()
     assert not button.enabled
     await select(user, [rows[1], rows[2]])
-    assert not button.enabled  # one commit at a time
+    assert button.enabled  # several side by side, too
     await select(user, [rows[1]])
     assert button.enabled
     frame = next(e for e in user.client.elements.values() if e.tag == "iframe")
@@ -509,6 +509,134 @@ async def test_3d_view_of_a_commit(user: User, monkeypatch) -> None:
             await asyncio.sleep(0.1)
     assert "/board3d/" in frame.props["src"] and rows[1]["short"] in frame.props["src"]
     assert calls == [rows[1]["hash"]]  # made once
+
+
+async def test_3d_side_by_side(user: User, monkeypatch) -> None:
+    """Up to four commits in 3D side by side, oldest first, made at once;
+    Compare still wants exactly two."""
+    from kigit_gui import kigit
+
+    calls = []
+
+    async def fake_board3d(project: str, rev: str, out: Path) -> list[str]:
+        calls.append(rev)
+        out.write_bytes(b"glTF")
+        return []
+
+    monkeypatch.setattr(kigit, "board3d", fake_board3d)
+    await open_at(user, monkeypatch, PROJECT)
+    await user.should_see("Pick two commits on the left", retries=50)
+    rows = commit_table(user).rows
+    await select(user, rows[1:5])  # four commits, newest first in the list
+    assert user.find(marker="view3d-button").elements.pop().enabled
+    compare = next(e for e in user.client.elements.values() if isinstance(e, ui.button) and e.text == "Compare")
+    assert not compare.enabled
+    await select(user, rows[0:5])  # five: the four last picked are kept
+    assert len(commit_table(user).selected) == app.MAX_3D
+    await select(user, rows[1:4])
+    user.find(marker="view3d-button").click()
+    frame = next(e for e in user.client.elements.values() if e.tag == "iframe")
+    for _ in range(50):
+        if "/board3d-grid" in (frame.props.get("src") or ""):
+            break
+        await asyncio.sleep(0.1)
+    src = frame.props["src"]
+    assert src.startswith("/board3d-grid?") and src.count("b=") == 3
+    assert sorted(calls) == sorted(r["hash"] for r in rows[1:4])
+    # Oldest first: the lowest row in the list comes first.
+    assert src.index(rows[3]["short"]) < src.index(rows[2]["short"]) < src.index(rows[1]["short"])
+
+
+async def test_3d_dock_beside_a_comparison(user: User, monkeypatch) -> None:
+    """While comparing, the 3D dock shows the new board beside it, or the
+    old one, or both (oldest first); it goes when the comparison does."""
+    from kigit_gui import kigit
+
+    calls = []
+
+    async def fake_board3d(project: str, rev: str, out: Path) -> list[str]:
+        calls.append(rev)
+        out.write_bytes(b"glTF")
+        return []
+
+    monkeypatch.setattr(kigit, "board3d", fake_board3d)
+    await open_at(user, monkeypatch, PROJECT)
+    await user.should_see("Pick two commits on the left", retries=50)
+    rows = commit_table(user).rows
+    old, new = rows[3], rows[1]
+    dock_button = marked(user, "dock-button")
+    assert not dock_button.visible  # nothing compared yet
+    await select(user, [new, old])  # picked newest first: still old .. new
+    user.find(marker="compare-button").click()
+    await user.should_see(marker="viewer", retries=100)
+    for _ in range(100):
+        if dock_button.visible:
+            break
+        await asyncio.sleep(0.1)
+    assert dock_button.visible
+
+    dock_frame = marked(user, "dock-viewer")
+
+    async def dock_src(part: str) -> str:
+        for _ in range(50):
+            if part in (dock_frame.props.get("src") or ""):
+                break
+            await asyncio.sleep(0.1)
+        return dock_frame.props["src"]
+
+    user.find(marker="dock-button").click()
+    src = await dock_src("/board3d/")
+    assert new["short"] in src and calls == [new["hash"]]
+    assert "/diffs/" in user.find(marker="viewer").elements.pop().props["src"]  # the comparison stays
+    with user.client:
+        marked(user, "dock-side").value = "both"
+    src = await dock_src("/board3d-grid")
+    assert src.index(old["short"]) < src.index(new["short"])  # oldest first
+    assert sorted(calls) == sorted([new["hash"], old["hash"]])  # each made once
+
+    # Below the comparison instead of beside it, and back.
+    place = marked(user, "dock-place")
+    user.find(marker="dock-place").click()
+    assert "below" in marked(user, "dock-grip").parent_slot.parent.classes and place.text == ""
+    user.find(marker="dock-place").click()
+    assert "below" not in marked(user, "dock-grip").parent_slot.parent.classes
+
+    # In another tab: the dock shrinks to its bar; the tab gets what the
+    # dock would show; closing the tab (kigit_dock_back) brings it back.
+    from nicegui.events import GenericEventArguments
+
+    def popout_click(opened: bool) -> None:
+        button = marked(user, "dock-popout")
+        with user.client:
+            for listener in list(button._event_listeners.values()):  # noqa: SLF001
+                if listener.type == "click":
+                    listener.handler(GenericEventArguments(sender=button, client=user.client, args=opened))
+
+    split = marked(user, "dock-grip").parent_slot.parent
+    popout_click(False)  # blocked by the browser: stays docked
+    assert "popped" not in split.classes
+    popout_click(True)
+    assert "popped" in split.classes and marked(user, "dock-bring-back").visible
+    assert dock_frame.props["src"] == "about:blank"
+    with user.client:
+        marked(user, "dock-side").value = "new"  # still works while it's out
+    await asyncio.sleep(0.3)
+    assert dock_frame.props["src"] == "about:blank"  # the other tab shows it, not the dock
+    with user.client:  # the page's emitEvent("kigit_dock_back"); its handler is async
+        for listener in list(user.client.layout._event_listeners.values()):  # noqa: SLF001
+            if listener.type == "kigit_dock_back":
+                await listener.handler(None)
+    src = await dock_src("/board3d/")
+    assert "popped" not in split.classes and new["short"] in src
+
+    # Showing a commit in 3D on its own: no comparison, no dock.
+    await select(user, [new])
+    user.find(marker="view3d-button").click()
+    for _ in range(50):
+        if not dock_button.visible:
+            break
+        await asyncio.sleep(0.1)
+    assert not dock_button.visible and not marked(user, "dock-grip").visible
 
 
 async def test_3d_view_without_kicad(user: User, monkeypatch) -> None:

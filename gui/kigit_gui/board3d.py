@@ -15,9 +15,11 @@ from __future__ import annotations
 import html
 import json
 import re
+import urllib.parse
 from pathlib import Path
 
 import nicegui
+from fastapi import Request
 from fastapi.responses import FileResponse, HTMLResponse, Response
 from nicegui import app
 
@@ -42,6 +44,28 @@ async def _page(name: str, title: str = "", subtitle: str = "") -> Response:
     if not _NAME.match(name) or not (CACHE / name).is_file():
         return Response("No such 3D board.", status_code=404)
     return HTMLResponse(page(f"/diffs/{name}", title, subtitle))
+
+
+def grid_page(boards: list[tuple[str, str, str]]) -> str:
+    """Several boards side by side: (name in the cache, title, subtitle)
+    each, with their views linked."""
+    cells = "".join(
+        f'<iframe title="{html.escape(t)}" src="/board3d/{n}?'
+        f'{urllib.parse.urlencode({"title": t, "subtitle": sub})}"></iframe>' for n, t, sub in boards)
+    cols = len(boards) if len(boards) <= 3 else 2
+    return _GRID.replace("%%COLS%%", str(cols)).replace("%%CELLS%%", cells).replace("%%N%%", str(len(boards)))
+
+
+@app.get("/board3d-grid")
+async def _grid(request: Request) -> Response:
+    from .app import CACHE, MAX_3D
+
+    q = request.query_params
+    names, titles, subs = q.getlist("b"), q.getlist("t"), q.getlist("s")
+    if not 1 <= len(names) <= MAX_3D or any(not _NAME.match(n) or not (CACHE / n).is_file() for n in names):
+        return Response("No such 3D boards.", status_code=404)
+    pad = lambda xs: xs + [""] * (len(names) - len(xs))
+    return HTMLResponse(grid_page(list(zip(names, pad(titles), pad(subs)))))
 
 
 @app.get("/kigit-three/{path:path}")
@@ -87,6 +111,14 @@ button.on { color: var(--accent); border-color: rgba(232,184,77,.45); }
 #loading .track { height: 4px; border-radius: 2px; background: var(--line); overflow: hidden; margin-top: 10px; }
 #loading .fill { height: 100%; width: 0; background: var(--accent); transition: width .15s; }
 #loading.err .box { color: #f07178; }
+/* Narrow (a cell of the side-by-side view): title on top, buttons at the
+   bottom, no hint. */
+@media (max-width: 760px) {
+  #info { max-width: calc(100% - 24px); padding: 6px 10px; }
+  #tools { top: auto; bottom: 12px; right: 50%; transform: translateX(50%); padding: 4px; gap: 2px; }
+  #tools button { padding: 4px 7px; }
+  #hint { display: none; }
+}
 #stats { right: 12px; bottom: 12px; display: none; flex-direction: column; align-items: stretch; gap: 6px; padding: 10px 12px;
   font: 12px/1.45 ui-monospace, Menlo, Consolas, monospace; min-width: 300px; }
 #stats.on { display: flex; }
@@ -107,6 +139,8 @@ button.on { color: var(--accent); border-color: rgba(232,184,77,.45); }
   <button data-view="iso" title="Angled view (3)">3D</button>
   <button data-view="fit" title="Fit the board in view (F)">Fit</button>
   <span class="sep"></span>
+  <button id="mask" class="on" title="Show or hide the solder mask. Off, the copper lies bare and every trace is easy to follow, as in KiCad's 3D viewer (M)">Mask</button>
+  <button id="silk" class="on" title="Show or hide the silkscreen (K)">Silk</button>
   <button id="parts" class="on" title="Show or hide the parts' 3D models (P)">Parts</button>
 </div>
 <div id="hint" class="bar">Drag to rotate · right-drag to pan · scroll to zoom</div>
@@ -126,7 +160,7 @@ import { mergeGeometries } from "BufferGeometryUtils";
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
 renderer.toneMapping = THREE.NeutralToneMapping;  // keeps colours close to KiCad's
-renderer.toneMappingExposure = 1.0;
+renderer.toneMappingExposure = 1.35;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 document.body.prepend(renderer.domElement);
 
@@ -145,14 +179,15 @@ scene.background = new THREE.Color(0x0f1115);
   panel(0, 4.9, 0, 6, 6, 5); panel(0, -4.9, 0, 6, 6, 3); panel(4.9, 2, 2, 3, 3, 2.5); panel(-4.9, 2, -2, 3, 3, 2); panel(0, 1, 4.9, 4, 2, 1.5);
   const pmrem = new THREE.PMREMGenerator(renderer);
   scene.environment = pmrem.fromScene(room, 0.04).texture;
-  scene.environmentIntensity = 0.7;
+  scene.environmentIntensity = 0.3;  // more washes the mask out seen from above (measured against KiCad's render)
 }
-scene.add(new THREE.HemisphereLight(0xffffff, 0x404650, 0.35));
-const sun = new THREE.DirectionalLight(0xffffff, 1.0);
+scene.add(new THREE.HemisphereLight(0xffffff, 0x404650, 0.6));
+const sun = new THREE.DirectionalLight(0xffffff, 1.8);
 scene.add(sun);
-const under = new THREE.DirectionalLight(0xffffff, 0.8);  // the bottom side gets light too
+const under = new THREE.DirectionalLight(0xffffff, 1.0);  // the bottom side gets light too
 scene.add(under);
 
+const MASK_OPACITY = 0.8;  // KiCad exports 0.83; a little less lets traces show
 const camera = new THREE.PerspectiveCamera(35, 1, 0.0001, 100);
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
@@ -198,20 +233,32 @@ function view(name, animate = true) {
 }
 
 document.querySelectorAll("[data-view]").forEach((b) => b.addEventListener("click", () => view(b.dataset.view)));
-const partsBtn = document.getElementById("parts");
-function toggleParts() {
-  const on = !partsBtn.classList.contains("on");
-  partsBtn.classList.toggle("on", on);
-  parts.forEach((p) => (p.visible = on));
+// Layers to show or hide: the solder mask, the silkscreen and the parts.
+// Side by side, the other boards follow (see the grid page).
+const layers = { mask: [], silk: [], parts: [] };
+const toggles = { mask: document.getElementById("mask"), silk: document.getElementById("silk"),
+                  parts: document.getElementById("parts") };
+const partsBtn = toggles.parts;
+function setLayer(name, on, tell = true) {
+  toggles[name].classList.toggle("on", on);
+  layers[name].forEach((o) => (o.visible = on));
   redraw();
+  if (tell && window.parent !== window) parent.postMessage({ kigit3d: "layer", name, on }, "*");
 }
-partsBtn.addEventListener("click", toggleParts);
+const toggleLayer = (name) => setLayer(name, !toggles[name].classList.contains("on"));
+const toggleParts = () => toggleLayer("parts");
+for (const name of Object.keys(toggles)) toggles[name].addEventListener("click", () => toggleLayer(name));
+addEventListener("message", (e) => {
+  const m = e.data;
+  if (m && m.kigit3d === "setLayer" && toggles[m.name]) setLayer(m.name, !!m.on, false);
+});
 addEventListener("keydown", (e) => {
   if (e.ctrlKey || e.metaKey || e.altKey) return;
   const k = e.key.toLowerCase();
   if (k === "t") view("top"); else if (k === "b") view("bottom"); else if (k === "3") view("iso");
   else if (k === "f") view("fit"); else if (k === "p") toggleParts();
   else if (k === "s") stats.toggle();
+  else if (k === "m") toggleLayer("mask"); else if (k === "k") toggleLayer("silk");
 });
 
 const fill = document.getElementById("fill"), msg = document.getElementById("msg"), loading = document.getElementById("loading");
@@ -268,6 +315,10 @@ new GLTFLoader().load(%%GLB%%, (gltf) => {
     if (seen.has(m)) return;
     seen.add(m);
     m.color?.convertSRGBToLinear();
+    // Copper and pads: KiCad exports them as pure metal, which only mirrors
+    // the (grey) room and comes out dull olive. Half metal keeps their gold,
+    // as in KiCad's viewer. Part models are left as they are.
+    if (m.metalness === 1 && !m.transparent) { m.metalness = 0.55; m.roughness = Math.min(m.roughness, 0.35); }
   }));
   // Parts are the top-level nodes named by reference (J502, U3); the board's
   // own layers are named "=>[...]". Each side is merged on its own, so the
@@ -278,7 +329,19 @@ new GLTFLoader().load(%%GLB%%, (gltf) => {
   const before = { meshes: 0 };
   loaded.traverse((o) => { if (o.isMesh) before.meshes++; });
   model = new THREE.Group();
-  model.add(mergeByMaterial(root.children.filter((n) => !isPart(n)), "board"));
+  const boardGroup = mergeByMaterial(root.children.filter((n) => !isPart(n)), "board");
+  model.add(boardGroup);
+  // The board's see-through layers: the solder mask (coloured) and the
+  // silkscreen (white), as KiCad exports them. The mask is made a little
+  // thinner than KiCad's 0.83 so the copper under it shows a bit more.
+  for (const mesh of boardGroup.children) {
+    const m = mesh.material, c = m?.color;
+    if (!m?.transparent || !c) continue;
+    if (Math.min(c.r, c.g, c.b) < 0.5) {
+      layers.mask.push(mesh);
+      if (m.opacity > MASK_OPACITY) m.opacity = MASK_OPACITY;
+    } else layers.silk.push(mesh);
+  }
   const partsGroup = mergeByMaterial(partNodes, "parts");
   model.add(partsGroup);
   loaded.traverse((o) => { if (o.isMesh) o.geometry.dispose(); }); // the originals aren't drawn any more
@@ -295,8 +358,12 @@ new GLTFLoader().load(%%GLB%%, (gltf) => {
   sun.position.copy(box.getCenter(new THREE.Vector3())).add(new THREE.Vector3(size, size * 2, size));
   under.position.copy(box.getCenter(new THREE.Vector3())).add(new THREE.Vector3(-size, -size * 2, -size));
   parts = partNodes.length ? [partsGroup] : [];
-  if (!parts.length) partsBtn.disabled = true, partsBtn.title = "No 3D models of parts in this board";
+  layers.parts = parts;
+  for (const [name, list] of Object.entries(layers))
+    if (!list.length) toggles[name].disabled = true, toggles[name].title = `No ${name} in this board`;
+  applying = true; // its first view isn't sent to the other boards: they may have been turned already
   view("iso", false);
+  applying = false;
   loading.remove();
   redraw();
   window.kigit3dReady = true;
@@ -426,7 +493,79 @@ function redraw() {
   });
 }
 controls.addEventListener("change", redraw);
+
+// Side by side (/board3d-grid): this view's camera goes to the page around
+// it, which hands it to the other boards, and theirs come here. All boards
+// share KiCad's coordinates, so the same camera shows the same spot.
+// `applying` keeps a camera that came in from being sent back out.
+let applying = false;
+if (window.parent !== window) {
+  const arr = (v) => [v.x, v.y, v.z];
+  controls.addEventListener("change", () => {
+    if (applying || !model) return;
+    parent.postMessage({ kigit3d: "camera", p: arr(camera.position), t: arr(controls.target), u: arr(camera.up) }, "*");
+  });
+  addEventListener("message", (e) => {
+    const m = e.data;
+    if (!m || m.kigit3d !== "setCamera" || !model) return;
+    applying = true;
+    camera.position.fromArray(m.p);
+    controls.target.fromArray(m.t);
+    camera.up.fromArray(m.u);
+    controls.update();
+    applying = false;
+    redraw();
+  });
+}
 redraw();
+</script>
+</body>
+</html>
+"""
+
+# The side-by-side page: one /board3d page per board, in a grid. It relays
+# each board's camera to the others while "Link views" is on.
+_GRID = """<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>3D boards</title>
+<style>
+html, body { margin: 0; height: 100%; overflow: hidden; background: #0f1115; color: #9aa4b2;
+  font: 13px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; }
+body { display: flex; flex-direction: column; }
+.top { flex: none; display: flex; align-items: center; gap: 14px; padding: 4px 12px; border-bottom: 1px solid #29303a;
+  background: #161a20; }
+.top .n { color: #e6e9ee; }
+.grid { flex: 1; min-height: 0; display: grid; grid-template-columns: repeat(%%COLS%%, 1fr); grid-auto-rows: 1fr;
+  gap: 2px; background: #29303a; }
+iframe { width: 100%; height: 100%; border: 0; display: block; background: #0f1115; }
+#link { display: flex; gap: 7px; align-items: center; cursor: pointer; user-select: none; }
+#link input { accent-color: #e8b84d; margin: 0; }
+</style>
+</head>
+<body>
+<div class="top"><span class="n">%%N%% boards, oldest first</span>
+  <label id="link" title="Turn one board and the others turn with it (L)"><input type="checkbox" id="linked" checked> Link views</label></div>
+<div class="grid">%%CELLS%%</div>
+<script>
+const frames = [...document.querySelectorAll("iframe")];
+const linked = document.getElementById("linked");
+addEventListener("message", (e) => {
+  const m = e.data;
+  if (!linked.checked || !m || (m.kigit3d !== "camera" && m.kigit3d !== "layer")) return;
+  const relay = { ...m, kigit3d: m.kigit3d === "camera" ? "setCamera" : "setLayer" };  // views and layers alike
+  for (const f of frames)
+    if (f.contentWindow !== e.source) f.contentWindow.postMessage(relay, "*");
+});
+// L in any board toggles linking (the boards' own keys stay theirs).
+const toggle = () => { linked.checked = !linked.checked; };
+addEventListener("keydown", (e) => { if (e.key.toLowerCase() === "l") toggle(); });
+for (const f of frames) f.addEventListener("load", () => {
+  try { f.contentWindow.addEventListener("keydown", (e) => { if (e.key.toLowerCase() === "l") toggle(); }); } catch {}
+});
+window.kigit3dGrid = %%N%%;
 </script>
 </body>
 </html>
