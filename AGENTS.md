@@ -294,6 +294,9 @@ at once. localStorage settings are per origin, so per port.
   (uvicorn otherwise waits for open websockets). On Windows, `kigit.exe`
   waits for the GUI with a `CreateProcessW` wait and a non-inherited
   `SetConsoleCtrlHandler`.
+- Python: `requires-python = ">=3.10,<3.14"`: NiceGUI's vbuild calls
+  `pkgutil.find_loader`, gone in 3.14 (CI's uv picked 3.14 and the GUI
+  tests died on import). Lift it when NiceGUI drops vbuild.
 - Tests: NiceGUI's harness fails a test on any error-level log, so
   user-facing failures are logged as warnings. Wait for a button to be
   enabled, or the iframe `src` to change, instead of sleeping.

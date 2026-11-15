@@ -50,7 +50,14 @@ async def test_compare_two_folders(user: User, monkeypatch, tmp_path: Path) -> N
     await user.should_see("Compare two KiCad project folders")
     await fill(user, "old", str(before))
     await fill(user, "new", str(after))
-    await user.should_see("✓ demo.kicad_pcb", retries=50)
+    # Both folders checked (each shows its own ✓; the first may be done well
+    # before the second): then Compare is enabled.
+    go = user.find(marker="compare-folders-go").elements.pop()
+    for _ in range(100):
+        if go.enabled:
+            break
+        await asyncio.sleep(0.1)
+    assert go.enabled
     user.find(marker="compare-folders-go").click()
     await user.should_see(marker="viewer", retries=100)
     assert user.find(marker="viewer").elements.pop().props["src"].endswith("#sch")

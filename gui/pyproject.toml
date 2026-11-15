@@ -2,7 +2,9 @@
 name = "kigit-gui"
 version = "0.1.0"
 description = "Desktop GUI for kigit: pick two commits, see the PCB and schematic diff"
-requires-python = ">=3.10"
+# Below 3.14: NiceGUI needs vbuild, which calls pkgutil.find_loader (removed
+# in Python 3.14). Lift this once NiceGUI no longer needs it.
+requires-python = ">=3.10,<3.14"
 dependencies = [
     "nicegui>=2.10,<3",
     "markdown2>=2.4",  # the reviews page (NiceGUI uses it too)
