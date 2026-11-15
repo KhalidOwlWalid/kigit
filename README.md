@@ -29,6 +29,9 @@ What it can do:
 
 Have a look at the demo below to get a feel for it.
 
+![kigit GUI: a schematic diff with the old and new boards in 3D docked below it](docs/blobs/gifs/kigit-showcase.gif)
+<p align="center"><i>The GUI: pick two commits, see what changed on the schematic and PCB, with both boards in 3D (made by KiCad) docked below, views linked.</i></p>
+
 ## Demonstration
 
 https://github.com/user-attachments/assets/f906914c-ffff-49df-a43d-28ec8a625058
