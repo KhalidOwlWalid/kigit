@@ -1,0 +1,49 @@
+{
+  "name": "blinky",
+  "author": {
+    "name": "Robin Example",
+    "email": "robin@example.invalid"
+  },
+  "commits": [
+    {
+      "step": 1,
+      "folder": "board",
+      "message": "First board: power in, 3.3 V regulator, two status LEDs",
+      "date": "2026-01-05T10:00:00+00:00"
+    },
+    {
+      "step": 2,
+      "folder": "board",
+      "message": "Add two more LEDs",
+      "date": "2026-01-12T10:00:00+00:00"
+    },
+    {
+      "step": 3,
+      "folder": "board",
+      "message": "Rework the power: move U1, wider tracks, Rev B",
+      "date": "2026-01-19T10:00:00+00:00"
+    },
+    {
+      "step": 4,
+      "folder": "board",
+      "message": "Rename VIN to VBUS, let D4 share LED2, drop TP1",
+      "date": "2026-01-26T10:00:00+00:00"
+    },
+    {
+      "step": 5,
+      "folder": "hardware",
+      "message": "Move the project into hardware/",
+      "date": "2026-02-02T10:00:00+00:00"
+    },
+    {
+      "step": 6,
+      "folder": "hardware",
+      "message": "Add design notes: reviews and discussions",
+      "date": "2026-02-09T10:00:00+00:00"
+    }
+  ],
+  "uncommitted": {
+    "step": 7,
+    "folder": "hardware"
+  }
+}

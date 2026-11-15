@@ -99,6 +99,7 @@ add_executable(kigit
   src/commands/diff.cpp
   src/commands/history.cpp
   src/commands/board3d.cpp
+  src/commands/example.cpp
   src/commands/projects.cpp
   src/commands/gui.cpp
 )
@@ -139,6 +140,8 @@ install(TARGETS kigit RUNTIME DESTINATION bin)
 install(DIRECTORY gui/ DESTINATION share/kigit/gui
         PATTERN ".venv" EXCLUDE PATTERN "__pycache__" EXCLUDE PATTERN ".pytest_cache" EXCLUDE
         PATTERN "tests" EXCLUDE)
+# The example project (kigit example) is found at <prefix>/share/kigit/examples.
+install(DIRECTORY examples/ DESTINATION share/kigit/examples)
 # kigit's license, and the licenses of what ships with it (compiled-in
 # libraries, the bundled uv).
 install(FILES LICENSE THIRD_PARTY_NOTICES.md DESTINATION share/kigit)

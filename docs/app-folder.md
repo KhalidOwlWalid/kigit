@@ -35,6 +35,7 @@ In the GUI, the :material-receipt-text: log button shows the log's full path and
 | `thumbnails/` | The board pictures on the landing page, one per project | the GUI (with KiCad) |
 | `3d-build-times.json` | How long each board's [3D model](how-to-use/3d-view.md#making-the-model) took to make, for the progress bar | the GUI |
 | `gui-env/` | The GUI's Python and packages, set up the first time you run `kigit gui` | the installed kigit |
+| `example/` | The [example project](example.md), if you tried it from the GUI | the GUI |
 
 `gui-env/` is only there for an installed kigit (the Windows installer or zip, the Linux download); one built from source uses `gui/.venv` in the source folder instead.
 

@@ -142,6 +142,8 @@ button.on { color: var(--accent); border-color: rgba(232,184,77,.45); }
   <button id="mask" class="on" title="Show or hide the solder mask. Off, the copper lies bare and every trace is easy to follow, as in KiCad's 3D viewer (M)">Mask</button>
   <button id="silk" class="on" title="Show or hide the silkscreen (K)">Silk</button>
   <button id="parts" class="on" title="Show or hide the parts' 3D models (P)">Parts</button>
+  <span class="sep newtab" hidden></span>
+  <button id="newtab" class="newtab" hidden title="Open this 3D view in a new browser tab">&#x2197; New tab</button>
 </div>
 <div id="hint" class="bar">Drag to rotate · right-drag to pan · scroll to zoom</div>
 <div id="stats" class="bar" aria-live="off">
@@ -252,6 +254,13 @@ addEventListener("message", (e) => {
   const m = e.data;
   if (m && m.kigit3d === "setLayer" && toggles[m.name]) setLayer(m.name, !!m.on, false);
 });
+// Shown inside the GUI's viewer: open this page in its own tab. Not in a
+// side-by-side cell (the grid has its own) or in the dock (?dock=1: its bar has one).
+if (window !== window.top && window.parent === window.top && !new URLSearchParams(location.search).has("dock")) {
+  document.querySelectorAll(".newtab").forEach((el) => { el.hidden = false; });
+  document.getElementById("newtab").onclick = () => window.open(location.href, "_blank");
+}
+
 addEventListener("keydown", (e) => {
   if (e.ctrlKey || e.metaKey || e.altKey) return;
   const k = e.key.toLowerCase();
@@ -558,11 +567,15 @@ body { display: flex; flex-direction: column; }
 iframe { width: 100%; height: 100%; border: 0; display: block; background: #0f1115; }
 #link { display: flex; gap: 7px; align-items: center; cursor: pointer; user-select: none; }
 #link input { accent-color: #e8b84d; margin: 0; }
+#newtab { margin-left: auto; border: 1px solid transparent; background: none; color: #9aa4b2; border-radius: 7px;
+  padding: 3px 10px; font: inherit; cursor: pointer; }
+#newtab:hover { color: #e6e9ee; background: rgba(255,255,255,.06); }
 </style>
 </head>
 <body>
 <div class="top"><span class="n">%%N%% boards, oldest first</span>
-  <label id="link" title="Turn one board and the others turn with it (L)"><input type="checkbox" id="linked" checked> Link views</label></div>
+  <label id="link" title="Turn one board and the others turn with it (L)"><input type="checkbox" id="linked" checked> Link views</label>
+  <button id="newtab" hidden title="Open these boards in a new browser tab">&#x2197; New tab</button></div>
 <div class="grid">%%CELLS%%</div>
 <script>
 const frames = [...document.querySelectorAll("iframe")];
@@ -580,6 +593,11 @@ addEventListener("keydown", (e) => { if (e.key.toLowerCase() === "l") toggle(); 
 for (const f of frames) f.addEventListener("load", () => {
   try { f.contentWindow.addEventListener("keydown", (e) => { if (e.key.toLowerCase() === "l") toggle(); }); } catch {}
 });
+if (window !== window.top && !new URLSearchParams(location.search).has("dock")) {
+  const nt = document.getElementById("newtab");
+  nt.hidden = false;
+  nt.onclick = () => window.open(location.href, "_blank");
+}
 window.kigit3dGrid = %%N%%;
 </script>
 </body>

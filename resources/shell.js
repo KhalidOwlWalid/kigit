@@ -58,6 +58,54 @@
     grip.addEventListener("dblclick", () => { put(0); set(0); });
   })();
 
+  // Hide the sidebar (the button by the board's name) to a rail on the left
+  // edge; click the rail to bring it back. Remembered like its width. Inside
+  // the GUI there's also a button to open the page in a new tab.
+  (() => {
+    const app = document.querySelector("#app"), aside = app && app.querySelector("aside");
+    const brand = aside && aside.querySelector(".brand");
+    if (!brand) return;
+    const KEY = "kigit.asideHidden";
+    const btn = (text, title, cls) => {
+      const b = document.createElement("button");
+      b.className = "pbtn " + cls;
+      b.textContent = text;
+      b.title = title;
+      brand.appendChild(b);
+      return b;
+    };
+    const newTab = () => window.open(location.href, "_blank");
+    const framed = window !== window.top;
+    if (framed) btn("\u2197", "Open this comparison in a new browser tab", "newtab").addEventListener("click", newTab);
+    const hide = btn("\u00ab", "Hide the sidebar, for more room (click the rail on the left to bring it back)", "hide-aside");
+    // The rail: shows the sidebar again; and the new-tab button, which would
+    // otherwise go with the sidebar.
+    const rail = document.createElement("div");
+    rail.className = "aside-rail";
+    rail.innerHTML = '<button class="show" title="Show the sidebar"><span aria-hidden="true">\u00bb</span>' +
+      '<span class="name">Sidebar</span></button>';
+    if (framed) {
+      const nt = document.createElement("button");
+      nt.className = "newtab";
+      nt.title = "Open this comparison in a new browser tab";
+      nt.textContent = "\u2197";
+      nt.addEventListener("click", newTab);
+      rail.prepend(nt);
+    }
+    aside.appendChild(rail);
+    const set = (hidden, keep = true) => {
+      app.classList.toggle("aside-hidden", hidden);
+      if (keep) try { localStorage.setItem(KEY, hidden ? "1" : "0"); } catch { /* private mode */ }
+      window.dispatchEvent(new Event("resize")); // the views refit
+    };
+    let saved = null;
+    try { saved = localStorage.getItem(KEY); } catch { /* private mode */ }
+    if (saved === "1") set(true, false);
+    hide.addEventListener("click", () => set(true));
+    rail.querySelector(".show").addEventListener("click", () => set(false));
+    window.kigitSidebar = set;
+  })();
+
   // Inside the GUI: show a review note's anchor when asked. pcb.js and
   // sch.js fill window.kigitFocus; they tell the GUI what's pinned.
   window.addEventListener("message", (e) => {

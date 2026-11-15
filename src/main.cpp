@@ -54,6 +54,14 @@ logging::Options log_options(int argc, char** argv) {
 
 int main(int argc, char** argv) {
     if (argc >= 2 && std::string(argv[1]) == "gui") return cmd::run_gui(argv[0], argc - 2, argv + 2);
+    if (argc >= 2 && std::string(argv[1]) == "example") {
+        logging::Options lo;
+        lo.enabled = false;
+        logging::start(lo);
+        int code = cmd::run_example(argv[0], argc - 2, argv + 2);
+        logging::stop();
+        return code;
+    }
 
     logging::Options lo = log_options(argc, argv);
     std::string log_path = logging::start(lo);

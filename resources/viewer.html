@@ -30,7 +30,20 @@ aside h3 { margin: 0 0 8px; font-size: 11px; font-weight: 600; letter-spacing: .
 
 .brand { display: flex; align-items: baseline; gap: 8px; }
 .brand .logo { font-weight: 700; font-size: 16px; color: var(--accent); letter-spacing: .02em; }
-.brand .board { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.brand .board { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0; }
+.brand .pbtn { align-self: center; flex: none; border: 1px solid transparent; background: none; color: var(--muted);
+  border-radius: 6px; padding: 1px 6px; cursor: pointer; font-size: 14px; line-height: 1.2; }
+.brand .pbtn:hover { color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); }
+/* The sidebar hidden: a rail on the left edge brings it back. */
+.aside-rail { display: none; }
+#app.aside-hidden { grid-template-columns: 30px 1fr; }
+#app.aside-hidden aside > :not(.aside-rail) { display: none; }
+#app.aside-hidden .aside-rail { display: flex; flex-direction: column; align-items: stretch; height: 100%; }
+.aside-rail button { border: 0; background: none; color: var(--muted); cursor: pointer; padding: 8px 0; }
+.aside-rail button:hover { color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, transparent); }
+.aside-rail .show { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 10px;
+  user-select: none; }
+.aside-rail .name { writing-mode: vertical-rl; transform: rotate(180deg); font-size: 12px; letter-spacing: .06em; }
 
 .rev { display: grid; grid-template-columns: 44px auto 1fr; gap: 8px; align-items: baseline; margin-top: 6px; }
 .rev .tag { font-size: 10px; font-weight: 700; border-radius: 4px; padding: 1px 0; text-align: center; }
@@ -332,6 +345,10 @@ body[data-tab="pcb"] [data-pane="sch"], body[data-tab="sch"] [data-pane="pcb"] {
   #app { grid-template-columns: 1fr; grid-template-rows: 46vh 1fr; }
   aside { order: 2; border-right: 0; border-top: 1px solid var(--line); }
   .aside-grip { display: none; }
+  #app.aside-hidden { grid-template-columns: 1fr; grid-template-rows: 1fr 30px; }
+  #app.aside-hidden .aside-rail { flex-direction: row; }
+  .aside-rail .show { flex-direction: row; justify-content: center; padding: 0; }
+  .aside-rail .name { writing-mode: horizontal-tb; transform: none; }
   #card { width: auto; left: 12px; }
   .hint { display: none; }
 }

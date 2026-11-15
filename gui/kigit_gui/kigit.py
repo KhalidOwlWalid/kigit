@@ -170,6 +170,13 @@ async def rewritten(project_dir: str, hashes: list[str]) -> list[Rewritten]:
     return found
 
 
+async def example(dest: Path) -> Path:
+    """Makes the example project (a git repository) in dest; returns its
+    project folder."""
+    out, _ = await _run("example", str(dest))
+    return Path(out.decode().strip().splitlines()[-1])
+
+
 async def render(board: str, out_file: Path) -> None:
     """Writes a picture of the board on disk (top view, KiCad's 3D render)."""
     await _run("-C", board, "-q", "--render", "-o", str(out_file))

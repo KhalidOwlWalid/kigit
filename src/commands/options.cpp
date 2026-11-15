@@ -17,6 +17,7 @@ USAGE
     kigit gui [PROJECT_DIR] [--port N]                       (desktop app; kigit gui --help)
     kigit [OPTIONS] --files OLD.kicad_pcb NEW.kicad_pcb      (no git needed)
     kigit --3d [REV] [-o BOARD.glb]                          (3D board, via kicad-cli)
+    kigit example [DIR]                                      (an example project to try kigit on)
 
 EXAMPLE
     Given that you wish to compare 2 different commits, in the repository where .kicad_pcb

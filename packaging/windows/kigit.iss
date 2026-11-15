@@ -43,8 +43,9 @@ Name: "addtopath"; Description: "Add kigit to PATH (so you can run kigit from a 
 Name: "desktopicon"; Description: "Create a desktop shortcut for the GUI"; Flags: unchecked
 
 [InstallDelete]
-; An upgrade replaces the GUI's files instead of mixing old and new ones.
+; An upgrade replaces the GUI's and the example's files instead of mixing old and new ones.
 Type: filesandordirs; Name: "{app}\share\kigit\gui"
+Type: filesandordirs; Name: "{app}\share\kigit\examples"
 
 [Files]
 Source: "{#StageDir}\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs ignoreversion

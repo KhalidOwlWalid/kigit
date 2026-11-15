@@ -5,6 +5,7 @@
 #include <doctest/doctest.h>
 #include <nlohmann/json.hpp>
 
+#include <algorithm>
 #include <set>
 
 using namespace kigit::test;
@@ -171,6 +172,30 @@ TEST_CASE("--render: a picture of the board on disk, by kicad-cli") {
     REQUIRE(r.code == 0);
     CHECK(r.out.find("board.png") != std::string::npos);
     CHECK(read_text(png).substr(1, 3) == "PNG");
+}
+
+TEST_CASE("kigit example: the example project's history, the same everywhere") {
+    TempDir tmp;
+    std::string dir = (tmp / "ex").string();
+    RunResult made = run_kigit("example " + quote(dir));
+    INFO("stderr: " << made.err);
+    REQUIRE(made.code == 0);
+    CHECK(made.out.find("hardware") != std::string::npos); // the project folder
+    RunResult log = run("git -C " + quote(dir) + " log --format=%H%x20%s");
+    CHECK(std::count(log.out.begin(), log.out.end(), '\n') == 6);
+    // Fixed authors, UTC dates and no line-ending conversion: the same commits
+    // for everyone, on every OS (the reviews name them). Pinned on purpose:
+    // after changing the example (tools/make_example.py), update these.
+    CHECK(log.out.find("First board") != std::string::npos);
+    CHECK(run("git -C " + quote(dir) + " rev-list --max-parents=0 HEAD").out.substr(0, 40) == "9ea234ce51abd247897ff306d6837f1e641f0be3");
+    CHECK(run("git -C " + quote(dir) + " rev-parse HEAD").out.substr(0, 40) == "957795c5fbfa381196fb7d15adf9b500d9cbdea7");
+    CHECK(!run("git -C " + quote(dir) + " status --porcelain").out.empty()); // an uncommitted change too
+    // Commits named in the reviews are filled in.
+    std::string review = read_text(tmp / "ex/hardware/reviews/3b6d1f22.md");
+    CHECK(review.find("{{") == std::string::npos);
+    CHECK(review.find(run("git -C " + quote(dir) + " rev-parse HEAD~3").out.substr(0, 40)) != std::string::npos);
+    // Not over an existing project.
+    CHECK(run_kigit("example " + quote(dir)).code == 1);
 }
 
 TEST_CASE("diff across the folder rename, as JSON on stdout") {

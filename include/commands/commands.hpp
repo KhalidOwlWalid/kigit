@@ -19,6 +19,8 @@ int run_board3d(const Options& o, const std::filesystem::path& project);
 int run_render(const Options& o, const std::filesystem::path& project);
 // `kigit --projects`: KiCad projects in a folder as JSON.
 int run_projects(const std::filesystem::path& dir, int depth);
+// `kigit example [DIR]`: the example project's git repository, to try kigit on.
+int run_example(const char* argv0, int argc, char** argv);
 // `kigit gui [args]`: the desktop app.
 int run_gui(const char* argv0, int argc, char** argv);
 

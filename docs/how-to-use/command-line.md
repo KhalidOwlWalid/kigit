@@ -38,6 +38,14 @@ kigit -C path/to/board.kicad_pro HEAD~1      # a .kicad_pro or .kicad_pcb works 
 
 Run `kigit --help` for the full list.
 
+## The example project
+
+```sh
+kigit example [DIR]
+```
+
+Makes the [example project](../example.md) (a git repository) in DIR (default: `./kigit-example`) and prints its project folder. It won't write over an existing folder.
+
 ## The GUI
 
 ```sh

@@ -92,7 +92,10 @@ So, what kigit is **not** is a collaboration tool. It's for people who wants a s
 cd path/to/my-board        # a KiCad project in a git repository
 kigit HEAD~1               # the last commit vs your working tree
 kigit gui                  # or pick commits in the GUI
+kigit example              # no board of your own at hand? an example project to try it on
 ```
+
+New to kigit? [Try the example](example.md): a small board whose history shows off every feature.
 
 See [Installation](installation.md) to get kigit, and [Overview](how-to-use/overview.md) for how it works.
 

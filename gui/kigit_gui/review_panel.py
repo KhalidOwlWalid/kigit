@@ -171,8 +171,10 @@ class ReviewPanel:
 
     def __init__(self, focus: Callable[[Anchor], None], on_saved: Callable[[str], None], resizer=None,
                  strays: Callable[[], list] | None = None, on_moved: Callable[[], None] | None = None,
-                 discussions=None) -> None:
+                 discussions=None, panels=None, open_in_tab: Callable[[str], None] | None = None) -> None:
         self.focus_cb, self.on_saved = focus, on_saved
+        self.panels = panels  # panels.Panels: hiding the drawer to a rail
+        self.open_in_tab_cb = open_in_tab  # open_in_tab(review id): the Reviews page at this review
         self.discussions = discussions  # discussions.Discussions: "Request" and this commit's discussions
         self.strays_cb, self.on_moved = strays or (lambda: []), on_moved or (lambda: None)
         self.message = ""  # the open commit's whole message
@@ -199,8 +201,10 @@ class ReviewPanel:
         self.unsaved_marker = ui.element("div").classes("hidden")
         with ui.right_drawer(value=False, bordered=True).classes(
                 "bg-[#161a20] p-0") as self.drawer:
-            self.body = ui.column().classes("w-full p-3 gap-2")
+            self.body = ui.column().classes("w-full p-3 gap-2 q-mini-drawer-hide")
         self.drawer.mark("review-panel")
+        if panels is not None:
+            panels.add(self.drawer, "review", "Review", "right")
         if resizer is not None:
             resizer.add(self.drawer, "right", "review", 480)
         else:
@@ -235,12 +239,24 @@ class ReviewPanel:
         logs.log.info("review %s (%s%s)", commit[:7], self.path or "new", ", unwritten draft" if self.dirty else "")
         self.render()
         self.drawer.show()
+        if self.panels is not None and self.panels.hidden.get("review"):
+            self.panels.set("review", False)  # asked for a review: show it
 
     def close(self) -> None:
         self._stash()
         self.review = None
         self.drawer.hide()
         self._sync_status()
+
+    def open_in_tab(self) -> None:
+        """The Reviews page in a new tab, at this review: only written ones are on it."""
+        if not self.review or not self.review.id or not self.path:
+            self._warn("This review isn't written yet: press Write, then it can open in a new tab")
+            return
+        if self.dirty:
+            ui.notify("The new tab shows the review as last written: press Write to add your edits")
+        if self.open_in_tab_cb:
+            self.open_in_tab_cb(self.review.id)
 
     def _stash(self) -> None:
         """Keeps the open review's unwritten edits as a draft."""
@@ -361,7 +377,15 @@ class ReviewPanel:
                     "text-mono text-xs text-amber-400").mark("review-id")
                 self.id_label.tooltip("This review's ID: its file name, and its row in reviews/index.md")
                 ui.space()
-                ui.button(icon="close", on_click=self.close).props("flat dense round").tooltip("Close the review")
+                ui.button(icon="open_in_new", on_click=self.open_in_tab).props("flat dense round size=sm").tooltip(
+                    "Open this review in a new tab (the Reviews page, as last written)").mark("review-newtab")
+                if self.panels is not None:
+                    ui.button(icon="chevron_right", on_click=lambda: self.panels.set("review", True)).props(
+                        "flat dense round size=sm").tooltip(
+                        "Hide the review panel to the edge (click its rail to bring it back); "
+                        "nothing is lost").mark("review-hide")
+                ui.button(icon="close", on_click=self.close).props("flat dense round size=sm").tooltip(
+                    "Close the review")
             ui.label(r.subject).classes("text-sm text-gray-300")
             self.bring_in_view()
             with ui.row().classes("w-full items-center gap-2 no-wrap"):

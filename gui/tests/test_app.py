@@ -221,6 +221,28 @@ async def test_shortcuts_list(user: User, monkeypatch) -> None:
     await user.should_see("Up to the parent sheet")
 
 
+async def test_try_the_example_project(user: User, monkeypatch, tmp_path: Path) -> None:
+    """The landing page's example button makes the example project (kigit
+    example) in the app folder and opens it: its history, its reviews and
+    its discussions."""
+    from kigit_gui import sessions
+
+    monkeypatch.setattr(sessions, "path", lambda: tmp_path / "state" / "sessions.json")
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    await open_at(user, monkeypatch, str(empty))
+    await user.should_see(marker="landing", retries=50)
+    user.find(marker="landing-example").click()
+    await user.should_see("Pick two commits on the left", retries=100)
+    rows = commit_table(user).rows
+    assert rows[0]["hash"] == app.LOCAL and "uncommitted" in rows[0]["subject"]
+    assert [r["subject"] for r in rows[1:3]] == ["Add design notes: reviews and discussions",
+                                                 "Move the project into hardware/"]
+    assert sum(r["reviewed"] for r in rows) == 2
+    assert marked(user, "discussions-badge").text == "2"  # one needs attention, one done
+    assert (tmp_path / "state" / "example" / "hardware" / "blinky.kicad_pcb").exists()
+
+
 async def test_project_without_git_is_flagged(user: User, monkeypatch, tmp_path: Path) -> None:
     (tmp_path / "board").mkdir()
     (tmp_path / "board" / "x.kicad_pro").write_text("{}")
@@ -483,6 +505,10 @@ def marked(user: User, marker: str):
     return next(e for e in user.client.elements.values() if marker in e._markers)  # noqa: SLF001
 
 
+def split_of(user: User):
+    return marked(user, "dock-grip").parent_slot.parent
+
+
 def git(repo: Path, *args: str) -> str:
     import subprocess
     return subprocess.run(["git", "-C", str(repo), *args], check=True, capture_output=True, text=True).stdout.strip()
@@ -704,6 +730,15 @@ async def test_3d_dock_beside_a_comparison(user: User, monkeypatch) -> None:
     user.find(marker="dock-place").click()
     assert "below" not in marked(user, "dock-grip").parent_slot.parent.classes
 
+    # Folded to its bar and back: the 3D page stays loaded meanwhile.
+    loaded = dock_frame.props["src"]
+    assert loaded.endswith("&dock=1")  # the page leaves its own new-tab button out
+    user.find(marker="dock-fold").click()
+    assert "folded" in split_of(user).classes and dock_frame.props["src"] == loaded
+    assert not marked(user, "dock-place").visible
+    user.find(marker="dock-fold").click()
+    assert "folded" not in split_of(user).classes and marked(user, "dock-place").visible
+
     # In another tab: the dock shrinks to its bar; the tab gets what the
     # dock would show; closing the tab (kigit_dock_back) brings it back.
     from nicegui.events import GenericEventArguments
@@ -922,6 +957,66 @@ async def test_panels_are_resizable(user: User, monkeypatch) -> None:
         assert drawer.props["width"] == 700
         emit(user, "kigit_panel_width", {"id": drawer.id, "width": "wide"})  # ignored
         assert drawer.props["width"] == 700
+
+
+async def test_panels_hide_to_a_rail(user: User, monkeypatch, tmp_path: Path) -> None:
+    """The commit list and the review panel hide to a rail on their edge (a
+    mini drawer), come back from it, remember it, and open in a new tab."""
+    project = make_fixture_repo(tmp_path / "repo")
+    await open_at(user, monkeypatch, str(project))
+    await user.should_see("Pick two commits on the left", retries=50)
+    opened = []
+    monkeypatch.setattr(ui.navigate, "to", lambda url, new_tab=False: opened.append((url, new_tab)))
+    commits = marked(user, "grip-commits").parent_slot.parent
+    assert not commits.props.get("mini")
+    user.find(marker="commits-hide").click()
+    assert commits.props.get("mini") is True
+    assert "q-mini-drawer-only" in marked(user, "commits-rail").classes  # what shows while hidden
+    assert "q-mini-drawer-hide" in marked(user, "commits-hide").parent_slot.parent.parent_slot.parent.classes
+    user.find(marker="commits-rail").click()
+    assert not commits.props.get("mini")
+    emit(user, "kigit_panel_hidden", {"key": "commits", "hidden": True})  # remembered from last time
+    assert commits.props.get("mini") is True
+    emit(user, "kigit_panel_hidden", {"key": "nope", "hidden": True})  # ignored
+    user.find(marker="commits-rail").click()
+
+    # The commit list's new tab: this project in another kigit tab.
+    user.find(marker="commits-newtab").click()
+    assert opened and opened[-1][1] is True and opened[-1][0].startswith("/?folder=")
+    import urllib.parse
+    q = urllib.parse.parse_qs(opened[-1][0][2:])
+    assert Path(q["folder"][0]) == project and q["board"][0].endswith(".kicad_pcb")
+
+    # The review panel: hide, rail, and back when a review is asked for again.
+    rows = commit_table(user).rows
+    v2 = next(r for r in rows if r["subject"].startswith("v2"))
+    await select(user, [v2])
+    user.find(marker="review-button").click()
+    await user.should_see(marker="review-hide", retries=100)
+    drawer = marked(user, "review-panel")
+    user.find(marker="review-hide").click()
+    assert drawer.props.get("mini") is True and drawer.value
+    marked(user, "review-rail")  # exists, shown by Quasar while mini
+    user.find(marker="review-rail").click()
+    assert not drawer.props.get("mini")
+
+    # Not written yet: no page to open; written: the Reviews page at it.
+    user.find(marker="review-newtab").click()
+    await user.should_see("isn't written yet")
+    user.find(marker="review-summary").type("Looks fine.")
+    user.find(marker="review-write").click()
+    await user.should_see("Written", retries=50)
+    user.find(marker="review-newtab").click()
+    url = opened[-1][0]
+    assert url.startswith("/reviews-doc/") and "#r-" in url
+
+    user.find(marker="review-hide").click()
+    user.find(marker="review-button").click()  # asking for it shows it again
+    for _ in range(50):
+        if not drawer.props.get("mini"):
+            break
+        await asyncio.sleep(0.1)
+    assert not drawer.props.get("mini")
 
 
 async def test_reviews_page_button(user: User, monkeypatch) -> None:

@@ -1,0 +1,16 @@
+{
+  "meta": {
+    "filename": "blinky.kicad_pro",
+    "version": 1
+  },
+  "sheets": [
+    [
+      "ac2c6a98-3b0f-5102-9986-277d6ee62e6f",
+      "Root"
+    ],
+    [
+      "8c830e40-7d2d-514c-a3c2-2e57a45bec37",
+      "LEDs"
+    ]
+  ]
+}

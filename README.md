@@ -24,6 +24,8 @@ What it can do:
 - Show what changed on your symbols and their fields
 - Show your buses and where they're routed
 - Works without git too: just point it at two folders
+- Keep notes and PR-style discussions on why the board changed, and see any commit in 3D
+- Comes with an example project to try it all on: `kigit example`
 
 Have a look at the demo below to get a feel for it.
 

@@ -99,7 +99,7 @@ class Resizer:
         self._set(drawer, width)
         self.drawers[drawer.id] = drawer
         with drawer:
-            ui.element("div").classes("kigit-grip").props(
+            ui.element("div").classes("kigit-grip q-mini-drawer-hide").props(
                 f'data-drawer="{drawer.id}" data-side="{side}" data-key="{key}" data-default="{width}" '
                 f'data-min="{min_width}" data-max="{max_width}" title="Drag to resize, double-click to reset"'
             ).mark(f"grip-{key}")

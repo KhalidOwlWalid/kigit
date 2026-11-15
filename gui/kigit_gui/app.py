@@ -38,6 +38,7 @@ from nicegui import app, background_tasks, ui
 from . import buildtime, kigit, logs, notices, review, rewritten, sessions, shortcuts, threads
 from .discussions import Discussions
 from .folder_picker import FolderPicker
+from .panels import Panels
 from .resize import Resizer
 from . import board3d, review_doc  # noqa: F401  (register the /board3d and /reviews-doc pages)
 from .review_panel import BRIDGE_JS, ReviewPanel, focus_script, project_key
@@ -266,6 +267,7 @@ def build(start_folder: str):
     ui.query(".nicegui-content").classes("p-0 gap-0")
     state: dict = {"board": None, "history": None, "strays": []}
     resizer = Resizer()
+    panels = Panels()
 
     # ---------------------------------------------------------------- header
     with ui.header().classes("items-center gap-3 py-2 px-4 bg-[#161a20] border-b border-[#29303a] no-wrap"):
@@ -301,8 +303,17 @@ def build(start_folder: str):
 
     # ----------------------------------------------------------- commit list
     with ui.left_drawer(value=True, bordered=True).classes("bg-[#161a20] p-0") as commits_drawer:
-        with ui.column().classes("w-full p-3 gap-2"):
-            project_label = ui.label("").classes("text-sm font-semibold")
+        with ui.column().classes("w-full p-3 gap-2 q-mini-drawer-hide"):
+            with ui.row().classes("w-full items-center gap-1 no-wrap"):
+                project_label = ui.label("").classes("text-sm font-semibold truncate flex-grow")
+                ui.button(icon="open_in_new", on_click=lambda: open_project_in_tab()).props(
+                    "flat dense round size=sm").tooltip(
+                    "Open this project in a new kigit tab, with its own commit list and viewer").mark(
+                    "commits-newtab")
+                ui.button(icon="chevron_left", on_click=lambda: panels.set("commits", True)).props(
+                    "flat dense round size=sm").tooltip(
+                    "Hide the commit list to the edge, for more room (click its rail to bring it back)").mark(
+                    "commits-hide")
             hint = ui.label("Pick two commits and press Compare, or one and press Review.").classes(
                 "text-xs text-gray-400")
             with ui.row().classes("w-full gap-2 items-center no-wrap"):
@@ -416,6 +427,14 @@ def build(start_folder: str):
         table.update()
         ui.run_javascript(f'try {{ localStorage.setItem("kigit.wrapMessages", "{1 if on else 0}") }} catch {{}}')
     resizer.add(commits_drawer, "left", "commits", 480)
+    panels.add(commits_drawer, "commits", "Commits", "left")
+
+    def open_project_in_tab() -> None:
+        if not state["board"]:
+            notify("Open a project first", type="warning")
+            return
+        folder = str(Path(state["board"]).parent)
+        ui.navigate.to("/?" + urllib.parse.urlencode({"folder": folder, "board": state["board"]}), new_tab=True)
 
     # The bell: a red "!" while warnings or errors are unread.
     seen_version = {"v": -1}
@@ -497,6 +516,10 @@ document.addEventListener("keydown", (e) => {
                     "window.kigitPopout && window.kigitPopout.close()")).props(
                     "flat dense no-caps size=sm color=amber-5").mark("dock-bring-back")
                 dock_back.set_visibility(False)
+                dock_fold = ui.button(icon="expand_more", on_click=lambda: set_dock_folded(
+                    not state.get("dock_folded"))).props("flat dense round size=sm").mark("dock-fold")
+                with dock_fold:
+                    dock_fold_tip = ui.tooltip("Fold the 3D view down to this bar (it stays loaded)")
                 dock_place = ui.button(icon="horizontal_split", on_click=lambda: set_dock_below(
                     not state.get("dock_below"))).props("flat dense round size=sm").mark("dock-place")
                 with dock_place:
@@ -528,6 +551,11 @@ document.addEventListener("keydown", (e) => {
 .kigit-split.popped > .kigit-main { height: auto; }
 .kigit-split.popped > .kigit-dock { width: 100%; height: auto; }
 .kigit-split.popped > .kigit-dock-grip, .kigit-split.popped .kigit-dock-body { display: none; }
+/* Folded: only the dock's bar, under the comparison; the 3D page stays loaded. */
+.kigit-split.folded { flex-direction: column; }
+.kigit-split.folded > .kigit-main { height: auto; }
+.kigit-split.folded > .kigit-dock { width: 100%; height: auto; }
+.kigit-split.folded > .kigit-dock-grip, .kigit-split.folded .kigit-dock-body { display: none; }
 .kigit-dock-grip:hover, body.kigit-dragging .kigit-dock-grip { background: #e8b84d; }
 body.kigit-dragging iframe { pointer-events: none; }  /* else the frames swallow the drag */
 </style>""")
@@ -653,7 +681,9 @@ body.kigit-dragging iframe { pointer-events: none; }  /* else the frames swallow
 
     panel = ReviewPanel(focus=focus, on_saved=on_review_saved, resizer=resizer,
                         strays=lambda: state["strays"], on_moved=lambda: background_tasks.create(check_strays()),
-                        discussions=disc)
+                        discussions=disc, panels=panels, open_in_tab=lambda rid: ui.navigate.to(
+                            f"/reviews-doc/{project_key(Path(state['board']).parent)}#r-{rid}", new_tab=True))
+    panels.finish()
 
     # ------------------------------------------------- rewritten commits
     async def check_strays() -> None:
@@ -958,6 +988,24 @@ body.kigit-dragging iframe { pointer-events: none; }  /* else the frames swallow
                 state["snapshotting"].discard(board)
             show_thumb(board)
 
+    async def open_example() -> None:
+        """The example project (kigit example), made once in the app folder,
+        then opened. Delete that folder to start it afresh."""
+        dest = sessions.path().parent / "example"
+        project = dest / "hardware"
+        if not project.is_dir():
+            status.text = "Making the example project..."
+            try:
+                project = await kigit.example(dest)
+            except kigit.KigitError as e:
+                status.text = ""
+                notify(f"Couldn't make the example project: {e}", type="negative", multi_line=True, close_button=True)
+                return
+            logs.log.info("made the example project in %s", dest)
+            notify("Example project ready: 6 commits and an uncommitted change. Try comparing two of them, Review, "
+                   "3D, and the Discussions button.", type="positive", multi_line=True, close_button=True)
+        await open_folder(str(project))
+
     def forget_session(s: sessions.Session) -> None:
         sessions.forget(s.board)
         render_landing()
@@ -975,6 +1023,10 @@ body.kigit-dragging iframe { pointer-events: none; }  /* else the frames swallow
                     "unelevated color=amber-8").mark("landing-browse")
                 ui.button("Compare folders", icon="difference", on_click=lambda: compare_folders()).props(
                     "flat color=grey-4")
+                ui.button("Try the example project", icon="science", on_click=lambda: open_example()).props(
+                    "flat color=amber-5").tooltip(
+                    "A small LED board with a history that shows every kigit feature: open it and play").mark(
+                    "landing-example")
                 if state["board"]:
                     ui.button(f"Back to {state.get('name') or 'the project'}", icon="arrow_back",
                               on_click=lambda: show_message(
@@ -1265,9 +1317,18 @@ body.kigit-dragging iframe { pointer-events: none; }  /* else the frames swallow
         dock_away.set_visibility(on)
         dock_back.set_visibility(on)
         dock_out.set_visibility(not on)
-        dock_place.set_visibility(not on)
+        dock_fold.set_visibility(not on)
+        dock_place.set_visibility(not on and not state.get("dock_folded"))
         if on:
             dock_frame.props('src="about:blank"')  # one copy is enough: frees its WebGL memory
+
+    def set_dock_folded(on: bool) -> None:
+        """Folds the dock to its bar (on), or opens it again."""
+        state["dock_folded"] = on
+        split.classes(add="folded") if on else split.classes(remove="folded")
+        dock_fold.props(f"icon={'expand_less' if on else 'expand_more'}")
+        dock_fold_tip.text = "Unfold the 3D view" if on else "Fold the 3D view down to this bar (it stays loaded)"
+        dock_place.set_visibility(not on and not state.get("popped"))
 
     def popped_out(e) -> None:
         if not e.args:
@@ -1297,6 +1358,8 @@ body.kigit-dragging iframe { pointer-events: none; }  /* else the frames swallow
             set_popped(False)
         state["dock_src"] = ""
         state["dock_token"] = state.get("dock_token", 0) + 1  # a model still being made isn't shown
+        if state.get("dock_folded"):
+            set_dock_folded(False)
         dock.set_visibility(False)
         dock_grip.set_visibility(False)
         dock_frame.props('src="about:blank"')  # frees its WebGL memory
@@ -1365,7 +1428,8 @@ body.kigit-dragging iframe { pointer-events: none; }  /* else the frames swallow
             ui.run_javascript(f"window.kigitPopout && !window.kigitPopout.closed && "
                               f"(window.kigitPopout.location.href = {json.dumps(src)})")
             return
-        dock_frame.props(f'src="{src}"')
+        # dock=1: the page leaves out its own "new tab" button (the dock's bar has one).
+        dock_frame.props(f'src="{src}&dock=1"')
         dock_frame.set_visibility(True)
 
     async def compare_manually() -> None:
@@ -1556,11 +1620,12 @@ app.on_exception(lambda e: logs.log.error("unhandled error in the GUI", exc_info
 
 
 @ui.page("/")
-async def index() -> None:
-    # The starting folder comes from `kigit gui [PROJECT_DIR]` (see main()).
-    folder = os.environ.get("KIGIT_PROJECT", os.getcwd())
+async def index(folder: str = "", board: str = "") -> None:
+    # The starting folder comes from `kigit gui [PROJECT_DIR]` (see main()),
+    # or ?folder= (a project opened in a new tab).
+    folder = folder or os.environ.get("KIGIT_PROJECT", os.getcwd())
     open_folder = build(folder)
-    await open_folder(folder, startup=True)
+    await open_folder(folder, startup=True, prefer=board)
 
 
 # Probe for a native window, run in a separate Python: pywebview picks its
