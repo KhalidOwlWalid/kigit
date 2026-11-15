@@ -13,6 +13,9 @@ def test_page_loads_the_model_with_the_bundled_three() -> None:
     # Render stats: off until ?stats=1 or S; scripts can read them.
     assert 'has("stats")' in page and "window.kigit3dStats = report" in page
     assert 'id="stats"' in page and "#stats.on { display: flex; }" in page
+    # Meshes are merged per material on load, board and parts apart.
+    assert 'import { mergeGeometries } from "BufferGeometryUtils"' in page
+    assert 'mergeByMaterial(partNodes, "parts")' in page
 
 
 def test_routes() -> None:

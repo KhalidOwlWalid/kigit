@@ -319,7 +319,14 @@ at once. localStorage settings are per origin, so per port.
   input (> 25 ms counts as dropped), long tasks, `renderer.info` calls and
   triangles. `window.kigit3dStats()` returns the report. On CM5 KiCad's
   export gives ~37k meshes and draw calls for ~500k triangles: draw calls,
-  not triangles, are the cost. Headless
+  not triangles, are the cost. So on load `mergeByMaterial` bakes every
+  mesh into world space and merges them per material (`mergeGeometries`,
+  position and normal only), once for the board's own meshes and once for
+  the parts (one `parts` group, which the Parts button hides): CM5 went
+  from 36,759 meshes to 32, 37,163 draw calls to 36, CPU per redraw from
+  ~240 ms to ~1.3 ms (headless), in ~0.4 s at load. `window.kigit3dMerge`
+  has the counts. Per-part objects are gone, so anything per part (picking,
+  highlighting) would need a part id per vertex. Headless
   Chrome renders big models in software and slowly.
 - Reviews (GUI only): pick one commit and press Review; it's diffed against
   its `parent` and a right drawer opens. One Markdown file per commit in

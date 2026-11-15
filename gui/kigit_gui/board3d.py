@@ -121,6 +121,7 @@ button.on { color: var(--accent); border-color: rgba(232,184,77,.45); }
 import * as THREE from "three";
 import { GLTFLoader } from "GLTFLoader";
 import { OrbitControls } from "OrbitControls";
+import { mergeGeometries } from "BufferGeometryUtils";
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
@@ -214,29 +215,86 @@ addEventListener("keydown", (e) => {
 });
 
 const fill = document.getElementById("fill"), msg = document.getElementById("msg"), loading = document.getElementById("loading");
+// KiCad's export is tens of thousands of small meshes (36,759 on a CM5
+// carrier), each its own draw call: that, not the triangle count, is what
+// makes redraws slow. Nothing moves, so the meshes under `roots` are baked
+// into world space and merged into one mesh per material: a few dozen draw
+// calls, same picture.
+function mergeByMaterial(roots, name) {
+  const buckets = new Map(), keep = [];
+  for (const r of roots) r.traverse((o) => {
+    if (!o.isMesh) return;
+    if (Array.isArray(o.material)) { keep.push(o); return; } // several materials: left as it is
+    if (!buckets.has(o.material)) buckets.set(o.material, []);
+    buckets.get(o.material).push(o);
+  });
+  const group = new THREE.Group();
+  group.name = name;
+  for (const [material, meshes] of buckets) {
+    // mergeGeometries needs the same attributes everywhere, all indexed or none.
+    const indexed = meshes.every((m) => m.geometry.index);
+    const geos = meshes.map((m) => {
+      let g = m.geometry.clone();
+      if (!indexed && g.index) g = g.toNonIndexed();
+      for (const a of Object.keys(g.attributes)) if (a !== "position" && a !== "normal") g.deleteAttribute(a);
+      if (!g.attributes.normal) g.computeVertexNormals();
+      g.applyMatrix4(m.matrixWorld);
+      return g;
+    });
+    const merged = mergeGeometries(geos, false);
+    geos.forEach((g) => g.dispose());
+    if (!merged) { meshes.forEach((m) => keep.push(m)); continue; } // shouldn't happen; keep them as they are
+    const mesh = new THREE.Mesh(merged, material);
+    mesh.matrixAutoUpdate = false;
+    group.add(mesh);
+  }
+  for (const m of keep) { // in world space too, outside their old parents
+    const c = m.clone();
+    m.matrixWorld.decompose(c.position, c.quaternion, c.scale);
+    group.add(c);
+  }
+  return group;
+}
+
 new GLTFLoader().load(%%GLB%%, (gltf) => {
-  model = gltf.scene;
-  scene.add(model);
+  const t0 = performance.now();
+  const loaded = gltf.scene;
+  loaded.updateMatrixWorld(true);
   // KiCad writes its colours as screen (sRGB) values where glTF expects
   // linear ones, so as they are the dark green mask shows as pale mint.
   // Read them as KiCad means them. Each material once (they're shared).
   const seen = new Set();
-  model.traverse((o) => [].concat(o.material || []).forEach((m) => {
+  loaded.traverse((o) => [].concat(o.material || []).forEach((m) => {
     if (seen.has(m)) return;
     seen.add(m);
     m.color?.convertSRGBToLinear();
   }));
-  // Nothing moves: work out every part's position once, not every frame.
+  // Parts are the top-level nodes named by reference (J502, U3); the board's
+  // own layers are named "=>[...]". Each side is merged on its own, so the
+  // Parts button still hides just the parts.
+  const root = loaded.children.length === 1 && !loaded.children[0].name ? loaded.children[0] : loaded;
+  const isPart = (n) => n.name && !n.name.startsWith("=>");
+  const partNodes = root.children.filter(isPart);
+  const before = { meshes: 0 };
+  loaded.traverse((o) => { if (o.isMesh) before.meshes++; });
+  model = new THREE.Group();
+  model.add(mergeByMaterial(root.children.filter((n) => !isPart(n)), "board"));
+  const partsGroup = mergeByMaterial(partNodes, "parts");
+  model.add(partsGroup);
+  loaded.traverse((o) => { if (o.isMesh) o.geometry.dispose(); }); // the originals aren't drawn any more
   model.updateMatrixWorld(true);
   model.traverse((o) => { o.matrixAutoUpdate = false; o.matrixWorldAutoUpdate = false; });
+  scene.add(model);
+  let after = 0;
+  model.traverse((o) => { if (o.isMesh) after++; });
+  window.kigit3dMerge = { meshes_before: before.meshes, meshes_after: after, ms: Math.round(performance.now() - t0) };
   box.setFromObject(model);
   size = box.getSize(new THREE.Vector3()).length();
   camera.near = size / 500; camera.far = size * 50; camera.updateProjectionMatrix();
   controls.minDistance = size / 50; controls.maxDistance = size * 10;
   sun.position.copy(box.getCenter(new THREE.Vector3())).add(new THREE.Vector3(size, size * 2, size));
   under.position.copy(box.getCenter(new THREE.Vector3())).add(new THREE.Vector3(-size, -size * 2, -size));
-  const root = model.children.length === 1 && !model.children[0].name ? model.children[0] : model;
-  parts = root.children.filter((n) => n.name && !n.name.startsWith("=>"));
+  parts = partNodes.length ? [partsGroup] : [];
   if (!parts.length) partsBtn.disabled = true, partsBtn.title = "No 3D models of parts in this board";
   view("iso", false);
   loading.remove();
@@ -316,6 +374,7 @@ const stats = (() => {
       input_to_drawn_ms: row(s.input), cpu_ms: row(s.cpu), gpu_ms: timer ? row(s.gpu) : "no GPU timer in this browser",
       frame_gap_ms: row(s.gap), dropped_frames: s.gap.filter((g) => g > 25).length, long_tasks: longTasks,
       long_task_ms: Math.round(longMs), draw_calls: info.calls, triangles: info.triangles, meshes,
+      merged: window.kigit3dMerge || null,
       parts_shown: partsBtn.classList.contains("on"), pixels: `${size.x}x${size.y}`,
       pixel_ratio: renderer.getPixelRatio(), gpu: (() => {
         const d = gl.getExtension("WEBGL_debug_renderer_info");
@@ -339,6 +398,7 @@ const stats = (() => {
       `<tr><th>draw calls</th><td colspan=3>${r.draw_calls.toLocaleString()}</td></tr>` +
       `<tr><th>triangles</th><td colspan=3>${r.triangles.toLocaleString()}</td></tr>` +
       `<tr><th>meshes shown</th><td colspan=3>${r.meshes.toLocaleString()}</td></tr>` +
+      (r.merged ? `<tr><th>merged on load</th><td colspan=3>${r.merged.meshes_before.toLocaleString()} → ${r.merged.meshes_after} meshes, ${r.merged.ms} ms</td></tr>` : "") +
       `<tr><th>pixels</th><td colspan=3>${r.pixels} @${r.pixel_ratio}</td></tr>`;
   }
   setInterval(show, 500);
