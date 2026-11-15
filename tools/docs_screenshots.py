@@ -279,7 +279,7 @@ def drive(base: str, project: Path, extras: list[Path], seeded: dict, shots: Sho
         # ---- a discussion: asking for attention, then the chat
         page.locator(".q-drawer--right").get_by_role("button", name="Request").click()
         page.get_by_placeholder("e.g. R704 is too close to the mounting hole").fill("Check the decoupling placement")
-        page.get_by_placeholder("What needs attention, and why. Markdown.").fill(
+        page.get_by_placeholder("What needs attention, and why.", exact=False).fill(
             "Keep it within 2 mm of the **VCC** pin.")
         page.wait_for_timeout(500)
         shots.save("discussion-request", lambda f: page.locator(".q-dialog .q-card").last.screenshot(path=f))
@@ -287,7 +287,7 @@ def drive(base: str, project: Path, extras: list[Path], seeded: dict, shots: Sho
         page.wait_for_timeout(500)
         page.locator("button:has(i:text('forum'))").first.click()
         page.locator(".q-dialog").get_by_text("sits on the keep-out").first.click()
-        page.get_by_placeholder("Reply: what you changed, or a question. Markdown.").fill("Looks good, thanks!")
+        page.get_by_placeholder("Reply: what you changed, or a question.", exact=False).fill("Looks good, thanks!")
         page.mouse.move(W // 2, 20)
         page.wait_for_timeout(800)
         shots.save("discussion-thread", lambda f: page.locator(".q-dialog .q-card").last.screenshot(path=f))
@@ -303,10 +303,18 @@ def drive(base: str, project: Path, extras: list[Path], seeded: dict, shots: Sho
         doc.set_viewport_size({"width": W, "height": H})
         doc.wait_for_load_state()
         doc.wait_for_timeout(1500)
-        shots.save("reviews-page", lambda f: doc.screenshot(timeout=180000, path=f))
-        doc.locator(".review").first.scroll_into_view_if_needed()
+        shots.save("reviews-page", lambda f: doc.screenshot(timeout=180000, path=f))  # home
+        doc.locator(".tabl", has_text="Reviews").click()
+        doc.wait_for_load_state()
         doc.wait_for_timeout(800)
-        shots.save("reviews-page-timeline", lambda f: doc.screenshot(timeout=180000, path=f))
+        shots.save("reviews-timeline", lambda f: doc.screenshot(timeout=180000, path=f))
+        doc.locator(".rtitle a").first.click()
+        doc.wait_for_load_state()
+        doc.wait_for_timeout(800)
+        shots.save("reviews-review", lambda f: doc.screenshot(timeout=180000, path=f))
+        doc.locator("#q").fill("model")  # in the seeded review's summary
+        doc.wait_for_timeout(1000)
+        shots.save("reviews-search", lambda f: doc.screenshot(timeout=180000, path=f))
         doc.close()
 
         # ---- 3D: one commit (with its build progress), mask off

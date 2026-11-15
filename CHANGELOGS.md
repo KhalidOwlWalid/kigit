@@ -6,6 +6,7 @@ All notable changes to kigit, newest first. The format follows [Keep a Changelog
 
 ### Added
 
+- The **Reviews page** is now a small docs site instead of one long page: tabs for Reviews, Discussions, each folder of your own notes in `reviews/`, and Tags; a sidebar of that tab's pages; one page per review, note and discussion with "On this page"; and a search box over everything that shows results as you type. The Reviews tab opens on the timeline, by month.
 - Review and discussion text boxes are Markdown editors like GitHub's: Write and Preview tabs, a formatting toolbar (heading, bold, italic, quote, code, link, lists, task list; Ctrl+B, Ctrl+I, Ctrl+K), and any file added by paste, drop or click: pictures show inline, other files (datasheets, logs) become links.
 
 ### Fixed

@@ -1144,7 +1144,7 @@ async def test_panels_hide_to_a_rail(user: User, monkeypatch, tmp_path: Path) ->
     await user.should_see("Written", retries=50)
     user.find(marker="review-newtab").click()
     url = opened[-1][0]
-    assert url.startswith("/reviews-doc/") and "#r-" in url
+    assert url.startswith("/reviews-doc/") and "/reviews/" in url  # the review's own page
 
     user.find(marker="review-hide").click()
     user.find(marker="review-button").click()  # asking for it shows it again
@@ -1173,7 +1173,7 @@ async def test_reviews_page_button(user: User, monkeypatch) -> None:
     url = opened[0][0]
     assert url.startswith("/reviews-doc/")
     page = await review_doc._doc(url.rsplit("/", 1)[1])  # noqa: SLF001
-    assert page.status_code == 200 and b"reviews</title>" in page.body
+    assert page.status_code == 200 and b"Home</a>" in page.body and b">Reviews</a>" in page.body  # the home page
 
 
 async def test_wrap_messages(user: User, monkeypatch) -> None:

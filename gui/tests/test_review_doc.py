@@ -1,6 +1,8 @@
-"""The all-reviews page (review_doc.py)."""
+"""The reviews site (review_doc.py): tabs, one page per review, note and
+discussion, the timeline, search."""
 
 import asyncio
+import json
 from pathlib import Path
 
 from kigit_gui import review, review_doc
@@ -25,168 +27,205 @@ def make(tmp_path: Path) -> tuple[Review, Review]:
     return old, new
 
 
-def test_page_has_every_review_newest_first(tmp_path: Path) -> None:
-    old, new = make(tmp_path)
-    page = review_doc.render(tmp_path, "owl")
-    assert "<title>owl reviews</title>" in page
-    assert "0 notes · 2 reviews" in page
-    assert page.index(f'id="r-{new.id}"') < page.index(f'id="r-{old.id}"')  # newest commit first
-    assert f'href="#r-{new.id}"' in page  # in the list on the left
-    assert "first &lt;board&gt;" in page and "first <board>" not in page  # escaped
-    assert f'<code title="{A}">0123456</code>' in page
-
-
-def test_page_shows_notes_with_anchor_tags_and_times(tmp_path: Path) -> None:
-    _, new = make(tmp_path)
-    page = review_doc.render(tmp_path)
-    assert '<span class="anchor removed"' in page and "Footprint C1 · removed" in page
-    assert '<span class="anchor general">General note</span>' in page
-    assert '<span class="tag t-reason">reason</span>' in page and 'data-tag="reason"' in page
-    assert f"Written {new.notes[0].created}" in page
-    assert '<a href="https://example.com/1">issue</a>' in page  # Markdown rendered
-
-
-def test_page_embeds_images(tmp_path: Path) -> None:
-    make(tmp_path)
-    page = review_doc.render(tmp_path)
-    assert "data:image/png;base64," in page and "](assets/" not in page and 'src="assets/' not in page
-
-
-def test_page_is_named_after_the_kicad_project(tmp_path: Path) -> None:
-    (tmp_path / "owl.kicad_pro").write_text("{}")
-    assert "<title>owl reviews</title>" in review_doc.render(tmp_path)
-
-
-def test_page_without_reviews(tmp_path: Path) -> None:
-    page = review_doc.render(tmp_path, "empty")
-    assert "Nothing here yet" in page and "0 notes · 0 reviews" in page
-
-
-def test_page_route(tmp_path: Path) -> None:
-    make(tmp_path)
-    ok = asyncio.run(review_doc._doc(project_key(tmp_path)))  # noqa: SLF001
-    assert ok.status_code == 200 and b"remove C1" in ok.body
-    assert asyncio.run(review_doc._doc("nope")).status_code == 404  # noqa: SLF001
+def page(tmp_path: Path, url: str = "", **kw) -> str:
+    out = review_doc.render(tmp_path, url, **kw)
+    assert out is not None, f"no page {url!r}"
+    assert "%%" not in out  # every placeholder filled
+    return out
 
 
 def own(tmp_path: Path, rel: str, text: str) -> Path:
     p = tmp_path / "reviews" / rel
     p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(text)
+    p.write_text(text, encoding="utf-8")
     return p
 
 
-def test_own_notes_are_on_the_page(tmp_path: Path) -> None:
-    """Any other Markdown in reviews/ shows as a note: title, properties, tags."""
-    _, new = make(tmp_path)
-    own(tmp_path, "decisions/buck.md",
-        "---\nstatus: accepted\ntags: [decision, power]\n---\n# Buck for 3V3\n\nLDO ran hot. #thermal\n")
-    own(tmp_path, "scratch.md", "Just text, no heading.\n\n```\n#notatag [[nolink]]\n```\n")
-    page = review_doc.render(tmp_path)
-    assert "2 notes · 2 reviews" in page
-    assert page.index('<h1 class="group">Notes</h1>') < page.index('<h1 class="group">Reviews</h1>')
-    assert 'href="#d-decisions-buck" title="Link to this note">#</a>Buck for 3V3</h2>' in page  # title from the # heading
-    assert "<code>decisions/buck.md</code>" in page
-    assert "<th>status</th><td>accepted</td>" in page
-    assert 'data-tags="decision power thermal"' in page and 'data-tag="thermal"' in page
-    assert ">scratch</h2>" in page  # no heading: the file name
-    assert "#notatag [[nolink]]" in page  # code is left as it is
-    assert 'data-tag="notatag"' not in page
-    assert '<span class="itag">#thermal</span>' in page  # a #tag in the text shows as one
+def test_tabs_one_per_section_and_folder(tmp_path: Path) -> None:
+    """Home, Reviews, Discussions (when there are some), a tab per top folder
+    of your own notes, Notes for loose files, Tags."""
+    from kigit_gui import threads
+
+    make(tmp_path)
+    own(tmp_path, "decisions/buck.md", "# Buck\n")
+    own(tmp_path, "meetings/2025/kickoff.md", "# Kickoff\n")
+    own(tmp_path, "scratch.md", "x")
+    threads.start(tmp_path, "Check C1", "", A, "Author A", A)
+    book = review_doc.build(tmp_path)
+    assert [t.label for t in book.tabs] == ["Home", "Reviews", "Discussions", "decisions", "meetings", "Notes",
+                                            "Tags"]
+    home = page(tmp_path)
+    assert '<a class="tabl cur" href="/">Home</a>' in home and 'href="/notes/meetings/">meetings</a>' in home
+    meet = page(tmp_path, "notes/meetings/")  # the folder's overview, subfolders as groups
+    assert "Kickoff" in meet and "2025/" in meet and '<a class="tabl cur" href="/notes/meetings/">' in meet
+    assert review_doc.render(tmp_path, "nope") is None
 
 
-def test_page_layout_bits(tmp_path: Path) -> None:
-    """Header numbers, the timeline, anchor badges, [[subject]] links, and
-    #tags in code or link targets left alone."""
+def test_timeline_newest_first_by_month(tmp_path: Path) -> None:
     old, new = make(tmp_path)
-    own(tmp_path, "n.md", f"See [[{new.subject}]], [top](#r-{new.id}) and `#nottag`.\n")
-    page = review_doc.render(tmp_path)
-    assert '<div class="stat"><b>2</b><span>reviews</span></div>' in page
-    assert '<div class="timeline">' in page and '<div class="when"><time>' in page
-    assert '<b class="tab tab-pcb">PCB</b>' in page or '<b class="tab tab-sch">SCH</b>' in page
-    assert f'<a class="wl" href="#r-{new.id}">' in page  # a review by its commit subject
-    assert "<code>#nottag</code>" in page and f'href="#r-{new.id}">top</a>' in page
-    assert 'class="itag"' not in page
-    assert "%%" not in page  # every placeholder filled
+    t = page(tmp_path, "reviews", name="owl")
+    assert "<title>Timeline · owl</title>" in t
+    assert t.index(f'id="r-{new.id}"') < t.index(f'id="r-{old.id}"')  # newest commit first
+    assert '<h2 class="month" id="m-2025-03">March 2025</h2>' in t and "January 2025" in t
+    assert f'<a href="/reviews/{new.id}">remove C1</a>' in t  # each links to its page
+    assert f'href="/reviews/{new.id}#n-{new.notes[0].id}">Dropped C1</a>' in t  # its notes' headlines
+    assert "first &lt;board&gt;" in t and "first <board>" not in t  # escaped
+    assert f'<code title="{A}">0123456</code>' in t
+    assert '<div class="timeline">' in t and '<div class="when"><time>' in t
+
+
+def test_review_page_has_its_notes(tmp_path: Path) -> None:
+    old, new = make(tmp_path)
+    r = page(tmp_path, f"reviews/{new.id}")
+    assert '<span class="anchor removed"' in r and "Footprint C1 · removed" in r
+    assert '<span class="anchor general">General note</span>' in r
+    assert '<span class="tag t-reason">reason</span>' in r
+    assert f"Written {new.notes[0].created}" in r
+    assert '<a href="https://example.com/1">issue</a>' in r  # Markdown rendered
+    assert "data:image/png;base64," in r and 'src="assets/' not in r  # no file route: embedded
+    assert f'href="#n-{new.notes[0].id}">Dropped C1</a>' in r  # on this page
+    assert f'<a class="pn next" href="/reviews/{old.id}"><small>Older →</small>' in r
+    assert f'class="nl cur" href="/reviews/{new.id}"' in r  # marked in the sidebar
+    served = page(tmp_path, f"reviews/{new.id}", files_url="/reviews-doc/K/files/")
+    assert 'src="/reviews-doc/K/files/assets/' in served  # in the GUI: served, not embedded
+
+
+def test_named_after_the_kicad_project(tmp_path: Path) -> None:
+    (tmp_path / "owl.kicad_pro").write_text("{}")
+    assert "<title>owl</title>" in page(tmp_path)
+
+
+def test_home(tmp_path: Path) -> None:
+    empty = page(tmp_path, name="empty")
+    assert "Nothing here yet" in empty and "0 notes · 0 reviews" in empty
+    _, new = make(tmp_path)
+    home = page(tmp_path)
+    assert '<div class="stat"><b>2</b><span>reviews</span></div>' in home
+    assert "Latest reviews" in home and f'href="/reviews/{new.id}"' in home
+
+
+def test_routes(tmp_path: Path) -> None:
+    _, new = make(tmp_path)
+    key = project_key(tmp_path)
+    ok = asyncio.run(review_doc._doc(key))  # noqa: SLF001
+    assert ok.status_code == 200 and b"remove C1" in ok.body
+    one = asyncio.run(review_doc._doc_page_route(key, f"reviews/{new.id}"))  # noqa: SLF001
+    assert one.status_code == 200 and f'href="/reviews-doc/{key}/reviews"'.encode() in one.body
+    assert asyncio.run(review_doc._doc_page_route(key, "reviews/zzz")).status_code == 404  # noqa: SLF001
+    assert asyncio.run(review_doc._doc("nope")).status_code == 404  # noqa: SLF001
+
+
+def test_search_index(tmp_path: Path) -> None:
+    """Every review, note, discussion, and each note in a review on its own."""
+    from kigit_gui import threads
+
+    _, new = make(tmp_path)
+    own(tmp_path, "decisions/buck.md", "---\ntags: [power]\n---\n# Buck\n\nThe LDO ran **hot**.\n")
+    threads.start(tmp_path, "Check C1", "Too close.", A, "Author A", A)
+    key = project_key(tmp_path)
+    found = json.loads(asyncio.run(review_doc._search(key)).body)  # noqa: SLF001
+    by_title = {e["t"]: e for e in found}
+    assert by_title["remove C1"]["u"] == f"/reviews-doc/{key}/reviews/{new.id}"
+    assert by_title["remove C1"]["x"].startswith("remove C1 See issue")  # text first, the hash last
+    assert by_title["Dropped C1"]["u"].endswith(f"#n-{new.notes[0].id}") and by_title["Dropped C1"]["g"] == ["reason"]
+    assert by_title["Buck"]["k"] == "Note" and "The LDO ran hot." in by_title["Buck"]["x"]
+    assert by_title["Buck"]["u"] == f"/reviews-doc/{key}/notes/decisions/buck"
+    assert by_title["Check C1"]["k"] == "Discussion" and "Too close." in by_title["Check C1"]["x"]
+
+
+def test_own_notes(tmp_path: Path) -> None:
+    """Any other Markdown in reviews/ is a page: title, properties, tags."""
+    make(tmp_path)
+    own(tmp_path, "decisions/buck.md",
+        "---\nstatus: accepted\ntags: [decision, power]\n---\n# Buck for 3V3\n\n## Why\nLDO ran hot. #thermal\n")
+    own(tmp_path, "scratch.md", "Just text, no heading.\n\n```\n#notatag [[nolink]]\n```\n")
+    buck = page(tmp_path, "notes/decisions/buck")
+    assert '<h1 class="title">Buck for 3V3</h1>' in buck  # title from the # heading
+    assert "<code>decisions/buck.md</code>" in buck
+    assert "<th>status</th><td>accepted</td>" in buck
+    assert 'href="/tags/thermal">thermal</a>' in buck  # tags link to their page
+    assert '<span class="itag">#thermal</span>' in buck  # a #tag in the text shows as one
+    assert '<h2 id="h-why">Why</h2>' in buck and 'href="#h-why">Why</a>' in buck  # on this page
+    scratch = page(tmp_path, "notes/scratch")
+    assert '<h1 class="title">scratch</h1>' in scratch  # no heading: the file name
+    assert "#notatag [[nolink]]" in scratch  # code is left as it is
+    assert "tags/notatag" not in page(tmp_path, "tags")
+    tag = page(tmp_path, "tags/thermal")
+    assert 'href="/notes/decisions/buck"' in tag
 
 
 def test_kigit_files_are_not_notes(tmp_path: Path) -> None:
     make(tmp_path)
     own(tmp_path, "assets/readme.md", "x")
     own(tmp_path, ".obsidian/x.md", "x")
-    page = review_doc.render(tmp_path)
-    assert "0 notes · 2 reviews" in page and "Reviews</h1>" in page and "Notes</h1>" not in page
+    book = review_doc.build(tmp_path)
+    assert not book.docs and [t.label for t in book.tabs] == ["Home", "Reviews", "Tags"]
 
 
-def test_obsidian_links_and_embeds(tmp_path: Path) -> None:
+def test_links_between_pages(tmp_path: Path) -> None:
+    """[[links]], [[subject]], relative note/review/file links, embeds."""
     _, new = make(tmp_path)
     (tmp_path / "reviews" / "pics").mkdir(parents=True)
     (tmp_path / "reviews" / "pics" / "scope.png").write_bytes(PNG)
     (tmp_path / "secret.png").write_bytes(PNG)
-    own(tmp_path, "decisions/buck.md", "# Buck for 3V3\nSee [[thermal test|the test]] and [[" + new.id + "]].\n"
-        "![[scope.png|200]] ![](../pics/scope.png) ![](../../secret.png) [[Nowhere]]\n")
-    own(tmp_path, "thermal test.md", "Back to [[Buck for 3V3]].\n")
-    page = review_doc.render(tmp_path)
-    assert '<a class="wl" href="#d-thermal-test">the test</a>' in page
-    assert f'<a class="wl" href="#r-{new.id}">{new.id}</a>' in page  # a review by its ID
-    assert '<a class="wl" href="#d-decisions-buck">Buck for 3V3</a>' in page  # a note by its title
-    assert '<span class="wl missing" title="Not in reviews/">Nowhere</span>' in page
-    assert 'width="200"' in page and page.count("data:image/png;base64,") >= 3
-    assert "../../secret.png" in page  # outside reviews/: not read
-
-
-def test_links(tmp_path: Path) -> None:
-    """Web, bare, relative note/review/file links and [[file]] links."""
-    _, new = make(tmp_path)
     (tmp_path / "reviews" / "docs").mkdir()
     (tmp_path / "reviews" / "docs" / "ds 1.pdf").write_bytes(b"%PDF")
-    own(tmp_path, "Bench test.md", "# Bench\n")
-    own(tmp_path, "decisions/buck.md",
-        "# Buck\nSee https://ti.com/x, [the bench](../Bench%20test.md#results), "
-        f"[review](../{new.id}.md), [ds](../docs/ds%201.pdf), [[ds 1.pdf]], [gone](../nope.md), "
-        "[web](https://example.com).\n")
-    page = review_doc.render(tmp_path, files_url="/reviews-doc/K/files/")
-    assert '<a href="https://ti.com/x">https://ti.com/x</a>' in page
-    assert '<a href="#d-bench-test">the bench</a>' in page
-    assert f'<a href="#r-{new.id}">review</a>' in page
-    assert '<a href="/reviews-doc/K/files/docs/ds%201.pdf">ds</a>' in page
-    assert '<a class="wl" href="/reviews-doc/K/files/docs/ds%201.pdf">ds 1.pdf</a>' in page
-    assert '<a href="../nope.md">gone</a>' in page  # not there: left as written
-    assert '<a href="https://example.com">web</a>' in page
+    own(tmp_path, "decisions/buck.md", "# Buck for 3V3\nSee [[thermal test|the test]], [[" + new.id + "]], "
+        f"[[{new.subject}]] and `#nottag`.\n![[scope.png|200]] ![](../pics/scope.png) ![](../../secret.png) "
+        "[[Nowhere]]\n[the bench](../thermal%20test.md#results), [review](../" + new.id + ".md), "
+        "[ds](../docs/ds%201.pdf), [[ds 1.pdf]], [gone](../nope.md), https://ti.com/x\n")
+    own(tmp_path, "thermal test.md", "Back to [[Buck for 3V3]].\n")
+    buck = page(tmp_path, "notes/decisions/buck", files_url="/F/")
+    assert '<a class="wl" href="/notes/thermal%20test">the test</a>' in buck
+    assert f'<a class="wl" href="/reviews/{new.id}">{new.id}</a>' in buck  # a review by its ID
+    assert f'<a class="wl" href="/reviews/{new.id}">{new.subject}</a>' in buck  # ... by its subject
+    assert '<span class="wl missing" title="Not in reviews/">Nowhere</span>' in buck
+    assert 'width="200"' in buck and buck.count('src="/F/pics/scope.png"') == 2
+    assert "../../secret.png" in buck  # outside reviews/: not read
+    assert '<a href="/notes/thermal%20test">the bench</a>' in buck
+    assert f'<a href="/reviews/{new.id}">review</a>' in buck
+    assert '<a href="/F/docs/ds%201.pdf">ds</a>' in buck and '<a class="wl" href="/F/docs/ds%201.pdf">' in buck
+    assert '<a href="../nope.md">gone</a>' in buck  # not there: left as written
+    assert '<a href="https://ti.com/x">https://ti.com/x</a>' in buck
+    assert "<code>#nottag</code>" in buck
+    assert '<a class="wl" href="/notes/decisions/buck">Buck for 3V3</a>' in page(tmp_path, "notes/thermal test")
 
 
 def test_file_route(tmp_path: Path) -> None:
     make(tmp_path)
     (tmp_path / "reviews" / "docs").mkdir()
     (tmp_path / "reviews" / "docs" / "ds.pdf").write_bytes(b"%PDF")
+    (tmp_path / "reviews" / "docs" / "x.html").write_text("<script>1</script>")
     (tmp_path / "secret.txt").write_text("no")
     key = project_key(tmp_path)
     ok = asyncio.run(review_doc._file(key, "docs/ds.pdf"))  # noqa: SLF001
-    assert ok.status_code == 200 and Path(ok.path).read_bytes() == b"%PDF"
+    assert ok.status_code == 200 and Path(ok.path).read_bytes() == b"%PDF" and ok.media_type == "application/pdf"
+    html_file = asyncio.run(review_doc._file(key, "docs/x.html"))  # noqa: SLF001
+    assert html_file.media_type == "application/octet-stream"  # a download, never a page
     assert asyncio.run(review_doc._file(key, "../secret.txt")).status_code == 404  # noqa: SLF001
     assert asyncio.run(review_doc._file(key, "docs/none.pdf")).status_code == 404  # noqa: SLF001
 
 
-def test_math_on_the_page(tmp_path: Path) -> None:
+def test_math(tmp_path: Path) -> None:
     own(tmp_path, "filter.md", "# RC filter\n\n$f_c = \\frac{1}{2 \\pi R C}$ with [[RC filter|itself]].\n\n"
         "$$\nH(s) = \\frac{1}{1 + sRC}\n$$\n")
-    page = review_doc.render(tmp_path)
-    assert 'display="inline"' in page and 'display="block"' in page and "<mi>&#x003C0;</mi>" in page  # π
-    assert '<a class="wl" href="#d-filter">itself</a>' in page
+    p = page(tmp_path, "notes/filter")
+    assert 'display="inline"' in p and 'display="block"' in p and "<mi>&#x003C0;</mi>" in p  # π
+    assert '<a class="wl" href="/notes/filter">itself</a>' in p
 
 
-def test_discussions_on_the_page(tmp_path: Path) -> None:
-    """Discussions get their own section (needing attention first); their
-    files aren't listed as notes of your own."""
+def test_discussions(tmp_path: Path) -> None:
+    """Discussions get their own tab, grouped by status; their files aren't
+    notes of your own."""
     from kigit_gui import threads
 
     make(tmp_path)
     a = threads.start(tmp_path, "Check <C1>", "Too close.", "a" * 40, "Author A", "a" * 40)
     b = threads.start(tmp_path, "GND pour", "Fine?", "a" * 40, "Author B", "a" * 40)
     threads.add(tmp_path, b.id, "Author A", "b" * 40, "Yes.", "accepted")
-    page = review_doc.render(tmp_path)
-    assert '<h1 class="group">Discussions</h1>' in page
-    assert page.index(f'id="t-{a.id}"') < page.index(f'id="t-{b.id}"')  # attention first
-    assert "Check &lt;C1&gt;" in page and "Needs attention" in page and "Accepted" in page
-    assert "<b>Author A</b> accepted" in page and "<code>bbbbbbb</code>" in page
-    assert f"threads/{a.id}" not in page  # not shown as a note of your own
+    d = page(tmp_path, "discussions")
+    assert d.index(f'href="/discussions/{a.id}"') < d.index(f'href="/discussions/{b.id}"')  # attention first
+    assert "Check &lt;C1&gt;" in d and "Needs attention" in d and "Accepted" in d
+    one = page(tmp_path, f"discussions/{b.id}")
+    assert "<b>Author A</b> accepted" in one and "<code>bbbbbbb</code>" in one
+    assert not review_doc.build(tmp_path).docs  # threads/ isn't a folder of notes

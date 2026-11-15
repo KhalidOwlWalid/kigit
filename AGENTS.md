@@ -529,27 +529,36 @@ at once. localStorage settings are per origin, so per port.
   the open review (ticked when the commit message names their hash or
   subject, `squashed_into`); their files are in `Review.absorbed` and
   deleted by `review.save`, so nothing changes until Write.
-- Reviews page (`review_doc.py`): the header's Reviews button opens
-  `/reviews-doc/{key}` in a new tab: your own notes (any other `.md` in
-  `reviews/` or its folders, not `index.md`, `assets/` or hidden folders;
-  newest first, frontmatter shown as properties, `tags:` and #tags) then
-  every written review (newest commit first), with a list, search and tag
-  filters. Obsidian `[[name|text]]` links resolve to notes (title, file name
-  or path) and reviews (ID or file name) on the page; `![[pic.png|200]]`
-  finds the picture by name in `reviews/`. Relative pictures are read only
-  from inside `reviews/`. Links: bare `https://`/`www.` addresses are
-  linked (`review.autolink`, also in the panel's preview); relative
-  `[text](x.md)` to a note or review jumps on the page; links to other files
-  in `reviews/` (and `[[file.pdf]]`) go to `/reviews-doc/{key}/files/...`;
-  links leaving the page open in a new tab.
-  Page design: `_PAGE` is one template with `%%NAME%%` placeholders (plain
-  CSS/JS braces); a header with counts, reviews as a timeline (`.review`
-  grid: date column, rail, body), notes with a PCB/SCH badge on the anchor
-  and a left border by their first known tag (`_TAG_KINDS`). Colours are CSS
-  variables, dark by default, light under `prefers-color-scheme` or
-  `data-theme` (the Theme button, `kigit.docTheme` in localStorage). #tags
-  in your own notes show as `.itag` (not in code). `[[commit subject]]`
-  links to that review.
+- Reviews site (`review_doc.py`): the header's Reviews button opens
+  `/reviews-doc/{key}/` in a new tab: a docs site, one page each, built
+  from `reviews/` on every request (`build()` -> `Book` of `Page`s; nothing
+  cached). Addresses under the base: `""` home, `reviews` (the timeline,
+  by month), `reviews/<id>`, `discussions`, `discussions/<id>`,
+  `notes/<folder>/` and `notes/<path without .md>` for your own notes (any
+  other `.md` in `reviews/`, not `index.md`, `assets/`, `threads/` or hidden
+  folders), `tags`, `tags/<tag>`. Tabs: Home, Reviews, Discussions (if
+  any), one per top folder of notes, Notes (loose files), Tags (if any).
+  Left: the tab's pages (`_sidebar`); right: "On this page" (notes, or the
+  note's h2/h3, given ids by `_with_ids`); prev/next (Newer/Older for
+  reviews). Search: `/reviews-doc/{key}/search.json` (`search_index`: every
+  review, discussion and note, plus each note in a review with its
+  `#n-<id>`), fetched by the page on first use; all words must match, title
+  hits first. Routes: `files/` and `search.json` are registered before the
+  `{page:path}` catch-all. Obsidian `[[name|text]]` links resolve to notes
+  (title, file name or path) and reviews (ID, file name, commit subject);
+  `![[pic.png|200]]` finds the picture by name in `reviews/`; pictures are
+  served from `files/` in the GUI (data URLs without `files_url`). Relative
+  pictures are read only from inside `reviews/`. Links: bare
+  `https://`/`www.` addresses are linked (`review.autolink`); relative
+  `[text](x.md)` to a note or review goes to its page; links to other files
+  in `reviews/` (and `[[file.pdf]]`) go to `/reviews-doc/{key}/files/...`
+  (pictures, PDFs and text shown, anything else a download); links leaving
+  the site open in a new tab. `_PAGE` is one template with `%%NAME%%`
+  placeholders (plain CSS/JS braces). Colours are CSS variables, dark by
+  default, light under `prefers-color-scheme` or `data-theme` (the Theme
+  button, `kigit.docTheme` in localStorage). Notes in reviews have a
+  PCB/SCH badge on the anchor and a left border by their first known tag
+  (`_TAG_KINDS`); #tags in your own notes show as `.itag` (not in code).
 - Markdown rendering for reviews: `review.to_html` (the panel's preview and
   the page both use it): bare links, then `$inline$` / `$$block$$` LaTeX
   converted to MathML by latex2mathml (browsers draw it; no JavaScript, works

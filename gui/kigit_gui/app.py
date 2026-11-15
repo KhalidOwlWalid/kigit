@@ -695,7 +695,7 @@ body.kigit-dragging iframe { pointer-events: none; }  /* else the frames swallow
     panel = ReviewPanel(focus=focus, on_saved=on_review_saved, resizer=resizer,
                         strays=lambda: state["strays"], on_moved=lambda: background_tasks.create(check_strays()),
                         discussions=disc, panels=panels, editors=editors, open_in_tab=lambda rid: ui.navigate.to(
-                            f"/reviews-doc/{project_key(Path(state['board']).parent)}#r-{rid}", new_tab=True))
+                            f"/reviews-doc/{project_key(Path(state['board']).parent)}/reviews/{rid}", new_tab=True))
     panels.finish()
 
     # ------------------------------------------------- rewritten commits

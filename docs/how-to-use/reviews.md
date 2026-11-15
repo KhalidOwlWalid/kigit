@@ -111,21 +111,34 @@ The [Reviews page](#the-reviews-page) shows the discussions too, needing attenti
 
 ## The Reviews page
 
-**Reviews** in the header opens all of the project's reviews and notes as one page, in a new tab.
+**Reviews** in the header opens the project's reviews, notes and discussions in a new tab, laid out like a documentation site: one page each, with tabs, a sidebar and a search box.
 
 <figure markdown="span">
-  ![The Reviews page: your notes, then every review as a timeline](../img/gui/reviews-page.png)
-  <figcaption>The Reviews page: a list to jump around, a search box and tag filters on the left.</figcaption>
+  ![The Reviews site's home page](../img/gui/reviews-page.png)
+  <figcaption>Home: counts, open discussions, the latest reviews and recently edited notes.</figcaption>
 </figure>
 
-- **Reviews** are a timeline, newest commit first. Each note is marked with what it points at (PCB or schematic; red if it was removed) and coloured by its first tag.
-- **Your own notes** are any other Markdown files in `reviews/` (design decisions, test results, ...), for example written in Obsidian: frontmatter shows as properties, `tags:` and `#tags` work with the filter, `[[links]]` and `[text](other-note.md)` jump to other notes or to a review (by its ID or its commit's message), links to other files in `reviews/` (a datasheet PDF, say) open them, and `![[picture.png]]` embeds a picture.
-- ++slash++ jumps to the search; the `#` next to a heading copies a link to it. It follows your system's light or dark theme, or the Theme button's choice.
-- The pictures are inside the page, so saving it from the browser keeps a complete copy.
+- **Tabs** across the top: **Home**, **Reviews**, **Discussions**, then one tab for each folder you keep in `reviews/` (for example `decisions/` or `meetings/`), **Notes** for Markdown files directly in `reviews/`, and **Tags**.
+- The **sidebar** on the left lists the pages in that tab (reviews by month, discussions by status, a folder's notes by subfolder). **On this page**, on the right, lists a page's notes or headings.
+- **Search** (or press ++slash++) looks through every review, note in a review, note of your own and discussion as you type. Use ++arrow-up++ / ++arrow-down++ and ++enter++ to open a result.
 
 <figure markdown="span">
-  ![A review on the Reviews page](../img/gui/reviews-page-timeline.png)
-  <figcaption>A review: its commit and author, the summary, then the notes with what they point at.</figcaption>
+  ![The Reviews tab: a timeline of every review](../img/gui/reviews-timeline.png)
+  <figcaption>The Reviews tab opens on the timeline: every review, newest commit first, by month, with its summary and its notes' titles.</figcaption>
+</figure>
+
+- **Reviews** have a page each: the commit and author, the summary, then every note, marked with what it points at (PCB or schematic; red if it was removed) and coloured by its first tag. **Newer** and **Older** at the bottom step through the timeline.
+- **Your own notes** are any other Markdown files in `reviews/` (design decisions, test results, ...), for example written in Obsidian. Frontmatter shows as properties, and `tags:` and `#tags` go to the Tags tab. `[[links]]` and `[text](other-note.md)` go to other notes, or to a review by its ID or its commit's message. Links to other files in `reviews/` (a datasheet PDF, say) open them, and `![[picture.png]]` embeds a picture.
+- It follows your system's light or dark theme, or the Theme button's choice.
+
+<figure markdown="span">
+  ![A review's own page](../img/gui/reviews-review.png)
+  <figcaption>A review's page: its notes, with On this page on the right.</figcaption>
+</figure>
+
+<figure markdown="span">
+  ![Searching the Reviews site](../img/gui/reviews-search.png)
+  <figcaption>Search shows matches as you type.</figcaption>
 </figure>
 
 ## After a rebase, amend or squash

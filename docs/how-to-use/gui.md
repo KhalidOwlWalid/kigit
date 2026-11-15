@@ -79,7 +79,7 @@ Each panel can also be hidden for more room, and opened in a new browser tab. Th
 | Panel | Hide | Open in a new tab |
 | --- | --- | --- |
 | Commit list | :material-chevron-left: folds it to a **Commits** rail on the left edge; click the rail to bring it back | :material-open-in-new: opens the same project in another kigit tab, with its own commit list and viewer |
-| Review panel | :material-chevron-right: folds it to a **Review** rail on the right edge; nothing is lost, and pressing Review again shows it | :material-open-in-new: opens the [Reviews page](reviews.md) at this review, as last written |
+| Review panel | :material-chevron-right: folds it to a **Review** rail on the right edge; nothing is lost, and pressing Review again shows it | :material-open-in-new: opens this review's page on the [Reviews site](reviews.md#the-reviews-page), as last written |
 | The comparison's sidebar | **«** by the board's name folds it to a **Sidebar** rail; **»** brings it back | **↗**, by the board's name or on the rail: the comparison in a tab of its own |
 | 3D view (in the main area) | — | **↗ New tab** in its toolbar (one board, or the side-by-side boards) |
 | 3D dock | :material-chevron-down: folds it to its bar, under the comparison; the board stays loaded | :material-open-in-new: in its own tab; closing that tab docks it again |
