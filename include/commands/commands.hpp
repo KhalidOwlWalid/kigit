@@ -15,6 +15,8 @@ int run_history(const Options& o, const std::filesystem::path& project);
 int run_rewritten(const Options& o, const std::filesystem::path& project);
 // `kigit --3d [REV]`: the board as a 3D model (.glb), made by kicad-cli.
 int run_board3d(const Options& o, const std::filesystem::path& project);
+// `kigit --render -o board.png`: a picture of the board on disk, by kicad-cli.
+int run_render(const Options& o, const std::filesystem::path& project);
 // `kigit --projects`: KiCad projects in a folder as JSON.
 int run_projects(const std::filesystem::path& dir, int depth);
 // `kigit gui [args]`: the desktop app.

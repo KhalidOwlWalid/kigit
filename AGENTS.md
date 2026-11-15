@@ -76,6 +76,8 @@ Other folders:
   `review.py` (review file format), `review_panel.py` (the review drawer),
   `rewritten.py` (reviews of rebased/amended/squashed commits),
   `buildtime.py` (3D build time estimates for the progress bar),
+  `sessions.py` (recent projects for the landing page),
+  `shortcuts.py` (every shortcut, for the header's list),
   `board3d.py` (the 3D view page),
   `resize.py` (drag handles for the drawers).
 - `submodules/`: the libraries (json, spdlog, doctest) as pinned git submodules.
@@ -383,6 +385,34 @@ at once. localStorage settings are per origin, so per port.
   has the counts. Per-part objects are gone, so anything per part (picking,
   highlighting) would need a part id per vertex. Headless
   Chrome renders big models in software and slowly.
+- Landing page: `open_folder(folder, startup=True)` (from `index()`)
+  shows it instead of an error when the start folder has no project with a
+  board (none at all, or only a .kicad_pro, like this repo's fixtures); an
+  explicit Open still says why. Also the header's "kigit"
+  (`show_landing`). `sessions.py` keeps `<app data>/kigit/sessions.json`
+  (atomic write, max 30, one entry per board, broken entries skipped):
+  `opened()` from `load_history`, `compared()` from `run_diff` (revisions
+  as compared, labels and the newer commit's subject). Cards: Open
+  (`open_folder(dir, prefer=board)` picks that board when the folder has
+  several), Resume (then `run_diff(last.old, last.new)`), forget. The
+  scroll area needs an explicit height (NiceGUI's default is 256 px).
+  Pictures: `kigit --render -o x.png` (`run_render` in board3d.cpp:
+  `kicad-cli pcb render --side top`, 480x480 so wide and tall boards both
+  fit, transparent, made in a temp folder and moved) of the board on disk,
+  kept as `thumbnails/<sha1(board)[:16]>.png` next to sessions.json and
+  served at `/session-thumb/{key}.png`. `take_snapshots` renders one at a
+  time in the background after `load_history` and for stale cards on the
+  landing page (`thumb_fresh`: picture newer than the board), then fills
+  the card's slot; no kicad-cli turns it off for the session. GUI tests set
+  `KIGIT_KICAD_CLI` to a missing file and fake `kigit.render`.
+  GUI tests point `KIGIT_LOG_DIR` at a temp folder (conftest), so they
+  never write the real sessions or build times.
+- Shortcuts (`shortcuts.py`): the header's keyboard button and "?"
+  (outside text boxes, `kigit_shortcuts`) show `GROUPS`. Each shortcut
+  names where it's handled (`where`: file, code); `test_shortcuts` fails
+  when that code is gone, so add or change the entry when you add or
+  change a shortcut. The dialog sets its own width (Quasar caps dialogs at
+  560 px).
 - Notifications (`notices.py`): `notices.add(level, title, detail,
   headers, rows)` keeps up to 200 per GUI process (newest first); `notify()`
   adds warnings and errors it shows (`notice=False` when the caller adds a

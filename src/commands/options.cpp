@@ -101,6 +101,9 @@ LOGGING
                         folder, or at $KIGIT_KICAD_CLI). With the board's 3D
                         models, tracks, pads, zones, silkscreen and solder mask.
                         Prints the file's path. Used by the GUI's 3D view.
+        --render        Write a picture of the board as it is on disk (top
+                        view, made by kicad-cli's 3D render) to the -o
+                        file (.png). Used by the GUI's recent projects.
         --json          Write the data (PCB diff + both schematics' nets) as
                         JSON instead of the HTML viewer
         --check-netlist FILE
@@ -157,6 +160,8 @@ std::optional<int> parse_options(int argc, char** argv, Options& o) {
             o.source = true;
         } else if (a == "--projects") {
             o.projects_mode = true;
+        } else if (a == "--render") {
+            o.render_mode = true;
         } else if (a == "--3d") {
             o.board3d_mode = true;
         } else if (a == "--rewritten") {
@@ -223,6 +228,7 @@ std::optional<int> parse_options(int argc, char** argv, Options& o) {
             o.revs.push_back(a);
         }
     }
+    if (o.render_mode) return std::nullopt; // the board on disk: no revisions
     if (o.board3d_mode) {
         if (o.files_mode || o.revs.size() > 1) {
             std::cerr << "kigit: --3d shows one revision of the project's board (see --help)\n";

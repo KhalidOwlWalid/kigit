@@ -105,8 +105,22 @@ async def test_compare_needs_two_and_opens_schematic(user: User, monkeypatch) ->
 
 
 async def test_empty_folder_is_flagged(user: User, monkeypatch, tmp_path: Path) -> None:
+    """Started outside a project: the landing page. Opening that folder on
+    purpose: it says there's no project."""
     await open_at(user, monkeypatch, str(tmp_path))
+    await user.should_see(marker="landing", retries=50)
+    user.find(marker="open-button").click()
     await user.should_see("No KiCad project found", retries=50)
+
+
+async def test_start_in_a_project_without_board_shows_landing(user: User, monkeypatch, tmp_path: Path) -> None:
+    """A .kicad_pro without a board (like the kigit repo's test fixtures):
+    nothing to open, so kigit gui starts on the landing page."""
+    (tmp_path / "x.kicad_pro").write_text("{}")
+    await open_at(user, monkeypatch, str(tmp_path))
+    await user.should_see(marker="landing", retries=50)
+    user.find(marker="open-button").click()  # opened on purpose: it says why
+    await user.should_see("Found a KiCad project, but no board file.", retries=50)
 
 
 async def test_project_three_levels_down_is_not_found(user: User, monkeypatch, tmp_path: Path) -> None:
@@ -115,7 +129,96 @@ async def test_project_three_levels_down_is_not_found(user: User, monkeypatch, t
     (deep / "x.kicad_pro").write_text("{}")
     (deep / "x.kicad_pcb").write_text("(kicad_pcb)")
     await open_at(user, monkeypatch, str(tmp_path))
+    await user.should_see(marker="landing", retries=50)
+    user.find(marker="open-button").click()
     await user.should_see("No KiCad project found", retries=50)
+
+
+async def test_landing_page_recent_projects(user: User, monkeypatch, tmp_path: Path) -> None:
+    """Opening a project lists it on the landing page; from there it opens
+    again, or resumes the last comparison."""
+    from kigit_gui import sessions
+
+    monkeypatch.setattr(sessions, "path", lambda: tmp_path / "sessions.json")
+    project = make_fixture_repo(tmp_path / "repo")
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    await open_at(user, monkeypatch, str(empty))
+    await user.should_see(marker="landing-empty", retries=50)  # nothing opened yet
+
+    # Open it, compare two commits: both remembered.
+    user.find(marker="folder-input").clear().type(str(project))
+    user.find(marker="open-button").click()
+    await user.should_see("Pick two commits on the left", retries=50)
+    rows = commit_table(user).rows
+    await select(user, [rows[1], rows[2]])
+    user.find(marker="compare-button").click()
+    viewer = marked(user, "viewer")
+    for _ in range(100):
+        if "/diffs/" in (viewer.props.get("src") or "") and sessions.load() and sessions.load()[0].last:
+            break
+        await asyncio.sleep(0.1)
+    s = sessions.load()[0]
+    assert s.name == "demo" and s.last.new_label == rows[1]["short"]
+
+    # Home (the header's "kigit"): the project's card; Resume compares again.
+    user.find(marker="home").click()
+    await user.should_see(marker="session-card")
+    await user.should_see(f"Last compared {rows[2]['short']} ↔ {rows[1]['short']}")
+    viewer.props["src"] = ""
+    user.find(marker="session-resume").click()
+    for _ in range(100):
+        if "/diffs/" in (viewer.props.get("src") or ""):
+            break
+        await asyncio.sleep(0.1)
+    assert "/diffs/" in viewer.props["src"] and not marked(user, "landing").visible
+
+
+async def test_landing_cards_show_board_pictures(user: User, monkeypatch, tmp_path: Path) -> None:
+    """Opening a project takes a picture of its board (kigit --render) for
+    its card on the landing page; once, until the board changes."""
+    from kigit_gui import kigit, sessions
+
+    monkeypatch.setattr(sessions, "path", lambda: tmp_path / "state" / "sessions.json")
+    made = []
+
+    async def fake_render(board: str, out: Path) -> None:
+        made.append(board)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_bytes(b"\x89PNG\r\n\x1a\n")
+
+    monkeypatch.setattr(kigit, "render", fake_render)
+    project = make_fixture_repo(tmp_path / "repo")
+    await open_at(user, monkeypatch, str(project))
+    await user.should_see("Pick two commits on the left", retries=50)
+    for _ in range(50):
+        if made:
+            break
+        await asyncio.sleep(0.1)
+    board = str(project / "demo.kicad_pcb")
+    assert made == [board] and sessions.thumb_fresh(board)
+    user.find(marker="home").click()
+    await user.should_see(marker="session-thumb", retries=30)
+    img = user.find(marker="session-thumb").elements.pop()
+    assert img.source.startswith(f"/session-thumb/{sessions.thumb_key(board)}.png")
+    assert made == [board]  # fresh: not made again
+    from kigit_gui import app as gui_app
+    response = await gui_app._session_thumb(sessions.thumb_key(board))  # noqa: SLF001
+    assert response.status_code == 200
+    assert (await gui_app._session_thumb("../../etc")).status_code == 404  # noqa: SLF001
+
+
+async def test_shortcuts_list(user: User, monkeypatch) -> None:
+    """The header's keyboard button (and "?") lists every shortcut, by area."""
+    from kigit_gui import shortcuts
+
+    await open_at(user, monkeypatch, PROJECT)
+    await user.should_see("Pick two commits on the left", retries=50)
+    user.find(marker="shortcuts-button").click()
+    await user.should_see("Shortcuts")
+    assert len(user.find(marker="shortcut-group").elements) == len(shortcuts.GROUPS)
+    await user.should_see("Render stats")
+    await user.should_see("Up to the parent sheet")
 
 
 async def test_project_without_git_is_flagged(user: User, monkeypatch, tmp_path: Path) -> None:

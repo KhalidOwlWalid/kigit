@@ -73,6 +73,8 @@ async def test_messages_shown_to_the_user_are_logged(user: User, monkeypatch, se
     empty = tmp_path / "empty"
     empty.mkdir()
     await open_at(user, monkeypatch, str(empty))
+    await user.should_see(marker="landing", retries=50)  # started outside a project
+    user.find(marker="open-button").click()
     await user.should_see("No KiCad project found", retries=50)
     assert "shown to user: No KiCad project found" in session.read_text()
 

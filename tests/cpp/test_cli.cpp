@@ -154,6 +154,23 @@ TEST_CASE("--3d: one revision, made by kicad-cli") {
 #endif
 }
 
+TEST_CASE("--render: a picture of the board on disk, by kicad-cli") {
+    TempDir tmp;
+    make_fixture_repo(tmp.path());
+    std::string dir = quote((tmp / "board").string());
+    if (!kigit::platform::find_kicad_cli()) {
+        CHECK(run_kigit("--render -o x.png -C " + dir).code == 1); // says why
+        return;
+    }
+    CHECK(run_kigit("--render -C " + dir).code == 1); // needs -o
+    std::string png = (tmp / "pics/board.png").string();
+    RunResult r = run_kigit("--render -o " + quote(png) + " -C " + dir);
+    INFO("stderr: " << r.err);
+    REQUIRE(r.code == 0);
+    CHECK(r.out.find("board.png") != std::string::npos);
+    CHECK(read_text(png).substr(1, 3) == "PNG");
+}
+
 TEST_CASE("diff across the folder rename, as JSON on stdout") {
     TempDir tmp;
     make_fixture_repo(tmp.path());

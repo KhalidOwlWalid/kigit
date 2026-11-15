@@ -10,6 +10,12 @@ On Windows the GUI opens in its own window (Edge WebView2, built into Windows 10
 
 It serves on port 8765, or the next free one when another kigit GUI already has it, so you can run several at once (say, one per project); the address it uses is printed when it starts. `--port N` picks the port yourself, and stops with a message if it's taken. Panel widths and other display settings are remembered per port.
 
+## Landing page
+
+When `kigit gui` starts in a folder without a KiCad project to open (say, your home folder), it opens on a landing page instead: your recent projects, newest first, each with a picture of its board, when you last opened it and the last two commits you compared there. KiCad renders the picture (`kicad-cli pcb render`, a few seconds, in the background) when you open a project, and again once the board file has changed; without KiCad the card shows an icon. **Open** opens the project; **Resume** opens it and compares those commits again; the cross takes it off the list (the project itself is untouched). A project whose folder has gone is shown greyed out. Click **kigit** in the header to come back to it any time.
+
+The list is kept in `sessions.json` in kigit's app data folder (next to the logs), shared by every `kigit gui` you run.
+
 ## Steps
 
 ### 1. Open a project
@@ -71,6 +77,10 @@ Git deletes replaced commits after a while (about a month), so a review you neve
 | Include silkscreen | Compare and draw F/B silkscreen (bigger pages) |
 | Include source | Add the [source panel](source-panel.md) (bigger pages) |
 | Compare folders | Compare two copies of a project without git |
+
+## Shortcuts
+
+The :material-keyboard: button in the header (or **?** anywhere outside a text box) lists every keyboard and mouse shortcut, by where it works: the comparison's PCB and schematic tabs, the 3D view, the review editor and the Reviews page.
 
 ## Notifications and the log
 

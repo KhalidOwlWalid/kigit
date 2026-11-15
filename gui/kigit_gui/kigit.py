@@ -166,6 +166,11 @@ async def rewritten(project_dir: str, hashes: list[str]) -> list[Rewritten]:
     return found
 
 
+async def render(board: str, out_file: Path) -> None:
+    """Writes a picture of the board on disk (top view, KiCad's 3D render)."""
+    await _run("-C", board, "-q", "--render", "-o", str(out_file))
+
+
 @dataclass
 class Made3d:
     """What kigit --3d said besides making the model."""

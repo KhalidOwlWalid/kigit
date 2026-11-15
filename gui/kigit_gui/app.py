@@ -23,6 +23,7 @@ import hashlib
 import json
 import logging
 import os
+import re
 import socket
 import subprocess
 import sys
@@ -34,7 +35,7 @@ from pathlib import Path
 
 from nicegui import app, background_tasks, ui
 
-from . import buildtime, kigit, logs, notices, review, rewritten
+from . import buildtime, kigit, logs, notices, review, rewritten, sessions, shortcuts
 from .folder_picker import FolderPicker
 from .resize import Resizer
 from . import board3d, review_doc  # noqa: F401  (register the /board3d and /reviews-doc pages)
@@ -169,6 +170,52 @@ def show_log() -> None:
     dialog.open()
 
 
+@app.get("/session-thumb/{key}.png")
+async def _session_thumb(key: str):
+    """A recent project's picture (sessions.thumb), for the landing page."""
+    from fastapi.responses import FileResponse, Response
+
+    if not re.fullmatch(r"[0-9a-f]{16}", key):
+        return Response(status_code=404)
+    f = sessions.path().parent / "thumbnails" / f"{key}.png"
+    return FileResponse(f, headers={"Cache-Control": "no-cache"}) if f.is_file() else Response(status_code=404)
+
+
+_SHORTCUTS_CSS = """<style>
+.kigit-keys { border-collapse: collapse; width: 100%; }
+.kigit-keys td { padding: 3px 0; vertical-align: baseline; }
+.kigit-keys td.k { white-space: nowrap; padding-right: 14px; text-align: right; width: 1%; }
+.kigit-keys td.d { color: #c9d1d9; font-size: 13px; }
+.kigit-keys .mouse { color: #e8b84d; font-size: 12px; }
+.kigit-keys kbd { display: inline-block; min-width: 1.6em; padding: 1px 7px; border: 1px solid #3a424d;
+  border-bottom-width: 2px; border-radius: 6px; background: #1c2128; color: #e6e9ee; text-align: center;
+  font: 12px/1.5 ui-monospace, Menlo, Consolas, monospace; white-space: nowrap; }
+.kigit-keys .or { color: #6b7584; font-size: 11px; margin: 0 2px; }
+</style>"""
+
+
+def show_shortcuts() -> None:
+    """Every keyboard and mouse shortcut, by where it works (shortcuts.py)."""
+    with ui.dialog() as dialog, ui.card().classes("bg-[#161a20] gap-2").style(
+            "width: 92vw; max-width: 64rem"):  # Quasar caps a dialog at 560 px otherwise
+        with ui.row().classes("w-full items-center"):
+            ui.icon("keyboard").classes("text-amber-500")
+            ui.label("Shortcuts").classes("text-base font-semibold")
+            ui.space()
+            ui.label("? opens this list").classes("text-xs text-gray-500")
+        with ui.scroll_area().classes("w-full").style("height: min(36rem, 70vh)"):
+            with ui.element("div").classes("w-full grid gap-x-10 gap-y-5 grid-cols-1 md:grid-cols-2 pr-3"):
+                for title, icon, items in shortcuts.GROUPS:
+                    with ui.column().classes("gap-1 min-w-0").mark("shortcut-group"):
+                        with ui.row().classes("items-center gap-2 pb-1 border-b border-[#29303a] w-full"):
+                            ui.icon(icon, size="xs").classes("text-amber-500")
+                            ui.label(title).classes("text-sm font-semibold")
+                        ui.html(shortcuts.group_html(items)).classes("w-full")
+        with ui.row().classes("w-full justify-end"):
+            ui.button("Close", on_click=dialog.close).props("flat")
+    dialog.open()
+
+
 _LEVEL_LOOK = {"error": ("error", "red-4"), "warning": ("warning", "amber-5"), "info": ("info", "blue-4")}
 
 
@@ -217,12 +264,14 @@ def build(start_folder: str):
 
     # ---------------------------------------------------------------- header
     with ui.header().classes("items-center gap-3 py-2 px-4 bg-[#161a20] border-b border-[#29303a] no-wrap"):
-        ui.label("kigit").classes("text-lg font-bold text-[#e8b84d]")
+        ui.label("kigit").classes("text-lg font-bold text-[#e8b84d] cursor-pointer").on(
+            "click", lambda: show_landing()).tooltip("Home: recent projects").mark("home")
         folder_input = ui.input(value=start_folder, placeholder="KiCad project folder").props(
             "dense dark outlined").classes("w-[30rem]")
+        folder_input.mark("folder-input")
         folder_input.on("keydown.enter", lambda: open_folder(folder_input.value))
         ui.button("Browse", icon="folder_open", on_click=lambda: browse()).props("flat dense")
-        ui.button("Open", on_click=lambda: open_folder(folder_input.value)).props("flat dense")
+        ui.button("Open", on_click=lambda: open_folder(folder_input.value)).props("flat dense").mark("open-button")
         status = ui.label("").classes("text-sm text-gray-400 ml-auto truncate")
         dock_btn = ui.button("3D", icon="view_in_ar", on_click=lambda: dock_toggle()).props("flat dense").tooltip(
             "Show the board in 3D beside the comparison (New, Old or both)").mark("dock-button")
@@ -231,6 +280,8 @@ def build(start_folder: str):
             "All of this project's written reviews as one page, in a new tab").mark("reviews-doc")
         ui.button("Compare folders", icon="difference", on_click=lambda: compare_folders()).props(
             "flat dense").tooltip("Compare two copies of a KiCad project, without git").mark("compare-folders")
+        ui.button(icon="keyboard", on_click=lambda: show_shortcuts()).props("flat dense round").tooltip(
+            "Keyboard and mouse shortcuts (?)").mark("shortcuts-button")
         with ui.button(icon="notifications", on_click=lambda: (show_notices(), bell_refresh())).props(
                 "flat dense round").mark("notices-button") as bell:
             bell_badge = ui.badge("!", color="red").props("floating rounded").mark("notices-badge")
@@ -368,6 +419,18 @@ def build(start_folder: str):
         bell_tip.text = f"Notifications: {n} new warning{'s' if n != 1 else ''} or error{'s' if n != 1 else ''}" \
             if n else "Notifications"
     ui.timer(1.0, bell_refresh)
+    ui.add_head_html(_SHORTCUTS_CSS)
+    # "?" anywhere outside a text box opens the shortcuts list.
+    ui.add_body_html("""<script>
+document.addEventListener("keydown", (e) => {
+  if (e.key !== "?" || e.ctrlKey || e.metaKey || e.altKey) return;
+  const t = e.target;
+  if (t && (t.isContentEditable || /^(input|textarea|select)$/i.test(t.tagName))) return;
+  e.preventDefault();
+  emitEvent("kigit_shortcuts");
+});
+</script>""")
+    ui.on("kigit_shortcuts", lambda: show_shortcuts())
     ui.add_head_html("""<style>
 .kigit-notice-table { border-collapse: collapse; font-size: 12px; margin: 4px 0 8px; }
 .kigit-notice-table td:first-child { white-space: nowrap; }
@@ -397,6 +460,11 @@ def build(start_folder: str):
                 no_git_button = ui.button("Compare two copies of this project", icon="difference").props(
                     "unelevated dense color=amber-8").mark("no-git-compare")
                 no_git_button.set_visibility(False)
+            # The landing page: recent projects (sessions.py). Shown when kigit
+            # gui starts outside a project, and from the header's "kigit".
+            landing = ui.scroll_area().classes("absolute inset-0 bg-[#0f1115]").style(
+                "height: 100%").mark("landing")  # a scroll area is 256 px tall unless told
+            landing.set_visibility(False)
         dock_grip = ui.element("div").classes("kigit-dock-grip").props(
             'title="Drag to resize; double-click to reset"').mark("dock-grip")
         with ui.column().classes("kigit-dock h-full gap-0 no-wrap bg-[#0f1115]") as dock:
@@ -626,6 +694,7 @@ body.kigit-dragging iframe { pointer-events: none; }  /* else the frames swallow
     def show_message(icon: str, text: str, more: str = "", tone: str = "text-gray-400") -> None:
         panel.close()
         no_comparison()
+        landing.set_visibility(False)
         build_bar.set_visibility(False)
         build_time.set_visibility(False)
         no_git_button.set_visibility(False)
@@ -652,9 +721,16 @@ body.kigit-dragging iframe { pointer-events: none; }  /* else the frames swallow
         count.text = ""
         on_select()
 
-    async def open_folder(folder: str) -> None:
+    async def open_folder(folder: str, startup: bool = False, prefer: str = "") -> bool:
+        """Opens the KiCad project in folder (or up to two levels below).
+        startup: kigit gui was started here; with no project it shows the
+        landing page instead of a complaint. prefer: the board to take when
+        there are several. Returns whether a project's history was loaded."""
         folder = str(Path(folder or ".").expanduser())
         clear_project()
+        if startup and not Path(folder).is_dir():
+            show_landing()
+            return False
         if not Path(folder).is_dir():
             status.text = ""
             show_message("error_outline", f"{folder} isn't a folder.", tone="text-red-400")
@@ -667,16 +743,21 @@ body.kigit-dragging iframe { pointer-events: none; }  /* else the frames swallow
         except kigit.KigitError as e:
             status.text = ""
             show_message("error_outline", "Couldn't search this folder.", str(e), "text-red-400")
-            return
+            return False
 
         boards = [p for p in found if p.pcb]
+        if startup and not boards:  # nothing to open here (no project, or none with a board)
+            status.text = ""
+            logs.log.info("no KiCad project with a board in %s: landing page", folder)
+            show_landing()
+            return False
         if not found:
             status.text = ""
             show_message("search_off", "No KiCad project found.",
                          f"Looked in {folder} and {SEARCH_DEPTH} levels below it for a .kicad_pro or .kicad_pcb.",
                          "text-red-400")
             notify("No KiCad project found in this folder (searched 2 levels deep)", type="negative")
-            return
+            return False
         if not boards:
             names = ", ".join(p.name for p in found)
             status.text = ""
@@ -684,16 +765,17 @@ body.kigit-dragging iframe { pointer-events: none; }  /* else the frames swallow
                          f"{names}: kigit compares projects through their .kicad_pcb, which isn't there.",
                          "text-red-400")
             notify("KiCad project has no .kicad_pcb", type="negative")
-            return
+            return False
 
         logs.log.info("found %d KiCad project(s): %s", len(found), ", ".join(f"{p.name} ({p.dir})" for p in found))
-        project = boards[0] if len(boards) == 1 else await choose_project(folder, boards)
+        chosen = [b for b in boards if prefer and Path(b.board).resolve() == Path(prefer).resolve()]
+        project = chosen[0] if chosen else boards[0] if len(boards) == 1 else await choose_project(folder, boards)
         if project is not None:
             logs.log.info("opening project %s (%s)", project.name, "in git" if project.git else "not in git")
         if project is None:
             status.text = ""
             show_message("folder_open", "Several projects here; none chosen.")
-            return
+            return False
         if not project.git:
             status.text = ""
             show_message("history_toggle_off", f"{project.name} isn't in a git repository.",
@@ -703,8 +785,8 @@ body.kigit-dragging iframe { pointer-events: none; }  /* else the frames swallow
             no_git_button.on_click(lambda: compare_folders(new=project.dir))
             no_git_button.set_visibility(True)
             notify(f"{project.name} isn't in a git repository", type="negative")
-            return
-        await load_history(project)
+            return False
+        return await load_history(project)
 
     async def choose_project(folder: str, boards: list[kigit.Project]):
         with ui.dialog() as dialog, ui.card().classes("w-[36rem] bg-[#161a20] gap-1"):
@@ -749,14 +831,17 @@ body.kigit-dragging iframe { pointer-events: none; }  /* else the frames swallow
         if moved:
             count.text += f" · project was also in: {', '.join(moved)}"
 
-    async def load_history(project: kigit.Project) -> None:
+    async def load_history(project: kigit.Project) -> bool:
         status.text = f"Reading {project.name} history..."
         h = await query(project.board)
         if h is None:
             status.text = ""
             show_message("error_outline", "Couldn't read the history.", tone="text-red-400")
-            return
+            return False
         logs.log.info("loaded %s: %d of %d commits listed", project.board, len(h.commits), h.total)
+        sessions.opened(project.dir, project.board, project.name)
+        background_tasks.create(take_snapshots([project.board]))
+        commits_drawer.show()
         state["board"], state["history"], state["name"] = project.board, h, project.name
         folder_input.value = project.dir
         project_label.text = project.name
@@ -766,6 +851,138 @@ body.kigit-dragging iframe { pointer-events: none; }  /* else the frames swallow
         await check_strays()
         show_message("compare_arrows", "Pick two commits on the left, then press Compare.",
                      "The newest entry is your working tree: HEAD plus any uncommitted changes.")
+        return True
+
+    # ---------------------------------------------------------- landing page
+    def show_landing() -> None:
+        """Home: recent projects, to open or carry on where you left off."""
+        panel.close()
+        no_comparison()
+        frame.set_visibility(False)
+        placeholder.set_visibility(False)
+        build_bar.set_visibility(False)
+        build_time.set_visibility(False)
+        if not state["board"]:
+            commits_drawer.hide()  # nothing to list yet
+        render_landing()
+        landing.set_visibility(True)
+        logs.log.info("landing page")
+
+    async def open_session(s: sessions.Session, resume: bool = False) -> None:
+        if not await open_folder(s.dir, prefer=s.board):
+            return
+        if resume and s.last:
+            await run_diff(s.last.old, s.last.new, compare_btn)
+
+    # Each card's picture: KiCad renders it (kigit --render, a few seconds),
+    # one at a time in the background; a card waiting for one is updated
+    # when it's ready.
+    thumb_slots: dict[str, ui.element] = {}  # board -> its card's picture area
+
+    def show_thumb(board: str) -> None:
+        slot = thumb_slots.get(board)
+        if slot is None or slot.is_deleted:
+            return
+        slot.clear()
+        with slot:
+            if sessions.thumb(board).is_file():
+                src = f"/session-thumb/{sessions.thumb_key(board)}.png?v={int(sessions.thumb(board).stat().st_mtime)}"
+                ui.image(src).props("fit=contain no-spinner").classes("w-full h-full").mark("session-thumb")
+            else:
+                ui.icon("developer_board", color="grey-8").classes("text-6xl")
+
+    async def take_snapshots(boards: list[str]) -> None:
+        for board in boards:
+            if state.get("snapshots_off") or sessions.thumb_fresh(board) or not Path(board).exists():
+                continue
+            if board in state.setdefault("snapshotting", set()):
+                continue
+            state["snapshotting"].add(board)
+            try:
+                await kigit.render(board, sessions.thumb(board))
+                logs.log.info("snapshot of %s", board)
+            except kigit.KigitError as e:
+                if "kicad-cli" in str(e) and "wasn't found" in str(e):
+                    state["snapshots_off"] = True  # no KiCad: cards keep their icon
+                logs.log.warning("no snapshot of %s: %s", board, str(e).splitlines()[0])
+            finally:
+                state["snapshotting"].discard(board)
+            show_thumb(board)
+
+    def forget_session(s: sessions.Session) -> None:
+        sessions.forget(s.board)
+        render_landing()
+
+    def render_landing() -> None:
+        landing.clear()
+        recent = sessions.load()
+        with landing, ui.column().classes("w-full max-w-[72rem] mx-auto px-8 py-10 gap-6"):
+            with ui.column().classes("gap-1"):
+                ui.label("kigit").classes("text-4xl font-bold text-[#e8b84d]")
+                ui.label("Visual diffs for KiCad PCBs and schematics, straight from git.").classes(
+                    "text-gray-400")
+            with ui.row().classes("gap-2"):
+                ui.button("Open a project folder", icon="folder_open", on_click=lambda: browse()).props(
+                    "unelevated color=amber-8").mark("landing-browse")
+                ui.button("Compare folders", icon="difference", on_click=lambda: compare_folders()).props(
+                    "flat color=grey-4")
+                if state["board"]:
+                    ui.button(f"Back to {state.get('name') or 'the project'}", icon="arrow_back",
+                              on_click=lambda: show_message(
+                                  "compare_arrows", "Pick two commits on the left, then press Compare.")).props(
+                        "flat color=grey-4").mark("landing-back")
+            with ui.row().classes("w-full items-baseline gap-3"):
+                ui.label("Recent projects").classes("text-lg font-semibold")
+                ui.label(f"{len(recent)}" if recent else "").classes("text-sm text-gray-500")
+            if not recent:
+                with ui.column().classes("w-full items-center gap-2 py-16 border border-dashed border-[#323a45] "
+                                         "rounded-xl").mark("landing-empty"):
+                    ui.icon("history").classes("text-5xl text-gray-600")
+                    ui.label("No recent projects yet.").classes("text-gray-300")
+                    ui.label("Open a KiCad project folder; it'll be listed here next time, with the last "
+                             "commits you compared.").classes("text-sm text-gray-500")
+                return
+            with ui.element("div").classes("w-full grid gap-3 "
+                                           "grid-cols-[repeat(auto-fill,minmax(20rem,1fr))]"):
+                for s in recent:
+                    session_card(s)
+        stale = [s.board for s in recent if s.exists and not sessions.thumb_fresh(s.board)]
+        if stale:
+            background_tasks.create(take_snapshots(stale))
+
+    def session_card(s: sessions.Session) -> None:
+        here = s.exists
+        with ui.card().classes("bg-[#161a20] gap-1 p-4" + ("" if here else " opacity-60")).props(
+                "flat bordered").mark("session-card"):
+            # The board's picture (or an icon until there is one).
+            slot = ui.element("div").classes("w-full h-44 mb-2 rounded-lg bg-[#0f1115] flex items-center "
+                                             "justify-center overflow-hidden")
+            thumb_slots[s.board] = slot
+            show_thumb(s.board)
+            with ui.row().classes("w-full items-center gap-2 no-wrap"):
+                ui.icon("developer_board", color="amber-6" if here else "grey-6")
+                ui.label(s.name).classes("text-base font-semibold truncate")
+                ui.space()
+                ui.button(icon="close", on_click=lambda s=s: forget_session(s)).props(
+                    "flat dense round size=sm color=grey-6").tooltip("Remove from this list (the project stays)")
+            ui.label(s.dir).classes("text-xs text-gray-500 truncate w-full").tooltip(s.board)
+            if not here:
+                ui.label("Folder not found: moved or deleted?").classes("text-xs text-red-300")
+                return
+            ui.label(f"Opened {sessions.ago(s.opened)}").classes("text-xs text-gray-400")
+            if s.last:
+                with ui.row().classes("items-center gap-1 text-xs text-gray-400 no-wrap w-full"):
+                    ui.icon("compare_arrows", size="xs")
+                    ui.label(f"Last compared {s.last.old_label} ↔ {s.last.new_label}").classes("whitespace-nowrap")
+                    if s.last.subject:
+                        ui.label(f"· {s.last.subject}").classes("truncate text-gray-500")
+            with ui.row().classes("gap-2 mt-2"):
+                ui.button("Open", icon="folder_open", on_click=lambda s=s: open_session(s)).props(
+                    "unelevated dense color=amber-8").mark("session-open")
+                if s.last:
+                    ui.button("Resume", icon="replay", on_click=lambda s=s: open_session(s, resume=True)).props(
+                        "flat dense color=grey-4").tooltip(
+                        f"Open it and compare {s.last.old_label} ↔ {s.last.new_label} again").mark("session-resume")
 
     async def find() -> None:
         if not state["board"]:
@@ -973,6 +1190,7 @@ body.kigit-dragging iframe { pointer-events: none; }  /* else the frames swallow
         panel.close()
         panel.set_pinned(None)
         no_comparison()
+        landing.set_visibility(False)
         frame.props(f'src="{board3d_src([(names[r["hash"]], r["short"], r.get("subject", "")) for r in rows])}"')
         placeholder.set_visibility(False)
         no_git_button.set_visibility(False)
@@ -1137,6 +1355,7 @@ body.kigit-dragging iframe { pointer-events: none; }  /* else the frames swallow
         if a in order and b in order and order[a] < order[b]:
             a, b = b, a
         state["pair"] = (a, b)
+        sessions.compared(board, sessions.Compared(a, b, short_rev(a), short_rev(b), subject_of(b)))
         dock_btn.set_visibility(True)
         if dock.visible:
             background_tasks.create(dock_load())
@@ -1148,6 +1367,7 @@ body.kigit-dragging iframe { pointer-events: none; }  /* else the frames swallow
 
     def show_page(name: str) -> None:
         # Open on the schematic; the cache-buster makes a regenerated page reload.
+        landing.set_visibility(False)
         panel.set_pinned(None)
         frame.props(f'src="/diffs/{name}?t={int(time.time())}#sch"')
         placeholder.set_visibility(False)
@@ -1285,7 +1505,7 @@ async def index() -> None:
     # The starting folder comes from `kigit gui [PROJECT_DIR]` (see main()).
     folder = os.environ.get("KIGIT_PROJECT", os.getcwd())
     open_folder = build(folder)
-    await open_folder(folder)
+    await open_folder(folder, startup=True)
 
 
 # Probe for a native window, run in a separate Python: pywebview picks its

@@ -169,4 +169,44 @@ int run_board3d(const Options& o, const fs::path& project) {
     return 0;
 }
 
+int run_render(const Options& o, const fs::path& project) {
+    // A picture of the board as it is on disk, for the GUI's recent
+    // projects: KiCad's own 3D render, from the top, square (KiCad fits the
+    // board to the width; square fits wide and tall boards alike).
+    std::optional<fs::path> cli = platform::find_kicad_cli();
+    if (!cli)
+        throw std::runtime_error("a board picture needs KiCad's kicad-cli (KiCad 8 or newer), which wasn't found.\n"
+                                 "Install KiCad, or set KIGIT_KICAD_CLI to the path of kicad-cli.");
+    if (o.output.empty() || o.output == "-") throw std::runtime_error("--render writes a .png file: name it with -o");
+    fs::path board = o.board_args.empty() ? find_board(project) : board_from_arg(o.board_args[0], project);
+    if (!fs::exists(board)) throw std::runtime_error(board.string() + " doesn't exist");
+    fs::path out = fs::absolute(expand_home(o.output));
+    if (out.has_parent_path()) fs::create_directories(out.parent_path());
+    // Rendered into our own temp folder and moved, like --3d: never half a
+    // picture where the GUI reads it.
+    fs::path tmp = fs::temp_directory_path() / ("kigit-render-" + std::to_string(platform::process_id()));
+    fs::remove_all(tmp);
+    fs::create_directories(tmp);
+    fs::path made = tmp / "board.png";
+    platform::RunResult r = platform::run({cli->string(), "pcb", "render", "--side", "top", "--width", "480",
+                                           "--height", "480", "--background", "transparent", "--quality", "basic",
+                                           "--zoom", "0.95", "--output", made.string(), fs::absolute(board).string()},
+                                          true);
+    for (const auto& text : {r.out, r.err}) {
+        std::istringstream in(text);
+        for (std::string l; std::getline(in, l);)
+            if (!l.empty()) spdlog::debug("kicad-cli: {}", l);
+    }
+    std::error_code ec;
+    if (r.ok && fs::exists(made)) {
+        fs::rename(made, out, ec);
+        if (ec) { ec.clear(); fs::copy_file(made, out, fs::copy_options::overwrite_existing, ec); }
+    }
+    fs::remove_all(tmp, ec);
+    if (!r.ok || !fs::exists(out))
+        throw std::runtime_error("kicad-cli couldn't render the board" + tail(r.err + "\n" + r.out));
+    std::printf("%s\n", out.string().c_str());
+    return 0;
+}
+
 } // namespace kigit::cmd
