@@ -43,10 +43,58 @@ reviews/
   index.md        every review: ID, commit, date, author, subject (rebuilt on each Write)
   3f9a1c0e.md     one review; its ID is its file name
   assets/         pasted pictures
+  threads/        discussions, one file each (see below)
   decisions/      your own notes, if you like (see below)
 ```
 
 Each review gets an ID when first written, which is also its file name. Commit the folder with the project to keep the reviews with the design.
+
+## Discussions: asking for attention
+
+Notes explain a commit. When something in it **needs someone to act**, like a part that's too close to a hole or a value to double-check, open a discussion instead, as you would comment on a pull request. Anyone with the project can reply, mark it done, and accept it.
+
+### Ask for attention
+
+In a commit's review, pin what it's about in the viewer (or nothing, for the commit as a whole) and press **Request**. Give it a title and say what needs attention.
+
+<figure markdown="span">
+  ![Asking for attention on a footprint](../img/gui/discussion-request.png){ width="560" }
+</figure>
+
+### Talk it through
+
+The :material-forum: **Discussions** button in the header lists them, with a count while any are active: red while one needs attention. Open one to see it as a chat, and reply: what you changed, or a question.
+
+<figure markdown="span">
+  ![A discussion: a request, a question, then marked done](../img/gui/discussion-thread.png){ width="640" }
+  <figcaption>Each message shows who wrote it, when, and which commit the project was at.</figcaption>
+</figure>
+
+A discussion moves through three states:
+
+| State | Means | Buttons |
+| --- | --- | --- |
+| :material-alert-circle:{ style="color: #f07178" } **Needs attention** | Someone asked; nobody has dealt with it yet | **Mark as done** |
+| :material-check-circle-outline:{ style="color: #e8b84d" } **Done, to be accepted** | It's been dealt with; the reviewer checks it | **Accept**, **Reopen** |
+| :material-check-decagram:{ style="color: #5fc48a" } **Accepted** | Settled: the discussion is closed | **Reopen** |
+
+Anything you type in the reply box goes along with the button you press ("Moved it 1 mm left", then **Mark as done**).
+
+### Across commits
+
+A discussion belongs to the **project**, not just the commit it was opened on. Until it's accepted, it stays on:
+
+- **every review**, under *Still open from other commits*, so the commit with the fix is where you mark it done;
+- the **commit list**, as a flag on the commit it was opened on (red: needs attention, amber: done, green: accepted);
+- the **Discussions** list and its count in the header.
+
+### Sharing them
+
+Each discussion is one Markdown file in `reviews/threads/`, written the moment you send a message: there's no Write step. Commit and push it like any other change; whoever pulls sees the discussion, and the GUI notices new or changed ones by itself (within a few seconds). Messages are signed with your git name (`git config user.name`).
+
+Messages are only ever added at the end of the file, so two people replying to *different* discussions never conflict. If two of you reply to the same one at the same time, git shows a small conflict at its end: keep both messages.
+
+The [Reviews page](#the-reviews-page) shows the discussions too, needing attention first.
 
 ## The Reviews page
 

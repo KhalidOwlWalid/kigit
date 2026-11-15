@@ -81,6 +81,9 @@ struct Rewritten {
 // For each hash given, whether it's still live and where it may have gone.
 std::vector<Rewritten> rewritten(const std::string& root, const std::vector<std::string>& hashes);
 
+// A git setting as git sees it in that repository ("" if unset), e.g. user.name.
+std::string config(const std::string& root, const std::string& key);
+
 // True if commit `ancestor` is an ancestor of `descendant`.
 bool is_ancestor(const std::string& dir, const Revision& ancestor, const Revision& descendant);
 

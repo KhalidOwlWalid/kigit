@@ -67,6 +67,8 @@ TEST_CASE("--log: all commits, tags, filters and the renamed folder") {
     CHECK(log["commits"][3]["sch"] == true);
     CHECK(log["commits"][0]["parent"] == log["commits"][1]["hash"]);
     CHECK(log["commits"][3]["parent"] == "");
+    CHECK(log["user"]["name"] == "kigit tests"); // from the repo's git config
+    CHECK(log["head"] == log["commits"][0]["hash"]);
 
     json kicad = parse(run_kigit("--log --kicad-only --max 0 -C " + board));
     CHECK(kicad["commits"].size() == 3);

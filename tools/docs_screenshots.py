@@ -112,6 +112,20 @@ def seed_reviews(project: Path, kigit: str) -> dict:
         "---\ntags: [decision, mechanical]\nstatus: accepted\n---\n# Mounting holes\n\nM2.5 holes, 3.5 mm "
         "from each edge, to fit the standard carrier spacing. #enclosure\n\n| Hole | X | Y |\n|---|---|---|\n"
         "| H1 | 3.5 | 3.5 |\n| H2 | 61.5 | 3.5 |\n")
+    # A discussion between two reviewers, waiting to be accepted.
+    tdir = rdir / "threads"
+    tdir.mkdir()
+    anchor = json.dumps(a2 or a1)
+    msg = lambda who, when, kind, text: (f"**{who}** · {when} · at {commit[:7]}\n<!-- kigit-msg "
+                                         f"{json.dumps({'author': who, 'time': when, 'head': commit, 'kind': kind})}"
+                                         f" -->\n\n{text}\n\n")
+    (tdir / "5d1e2a90.md").write_text(
+        f"---\nid: 5d1e2a90\ntitle: {(a2 or a1)['name']} sits on the keep-out\nopened: 2026-11-12 09:40\nby: Sam\n"
+        f"commit: {commit}\nanchor: {anchor}\n---\n\n"
+        + msg("Sam", "2026-11-12 09:40", "comment", "Its courtyard overlaps the mounting hole's keep-out. "
+              "Can it move inwards?")
+        + msg("Ada", "2026-11-12 11:15", "comment", "Why not rotate it 90°? That keeps the trace short.")
+        + msg("Sam", "2026-11-12 16:02", "done", "Rotated and moved 0.8 mm in; DRC is clean."))
     # A reviewed HEAD, then amended: the GUI finds its review a new home.
     head = git(project, "rev-parse", "HEAD")
     if head != commit:
@@ -260,6 +274,27 @@ def drive(base: str, project: Path, extras: list[Path], seeded: dict, shots: Sho
         shots.save("review-tags", lambda f: page.screenshot(timeout=180000, path=f, clip={"x": W - 500, "y": 300, "width": 500,
                                                                             "height": 520}))
         page.keyboard.press("Escape")
+        page.wait_for_timeout(400)
+
+        # ---- a discussion: asking for attention, then the chat
+        page.locator(".q-drawer--right").get_by_role("button", name="Request").click()
+        page.get_by_placeholder("e.g. R704 is too close to the mounting hole").fill("Check the decoupling placement")
+        page.get_by_placeholder("What needs attention, and why. Markdown.").fill(
+            "Keep it within 2 mm of the **VCC** pin.")
+        page.wait_for_timeout(500)
+        shots.save("discussion-request", lambda f: page.locator(".q-dialog .q-card").last.screenshot(path=f))
+        page.keyboard.press("Escape")
+        page.wait_for_timeout(500)
+        page.locator("button:has(i:text('forum'))").first.click()
+        page.locator(".q-dialog").get_by_text("sits on the keep-out").first.click()
+        page.get_by_placeholder("Reply: what you changed, or a question. Markdown.").fill("Looks good, thanks!")
+        page.mouse.move(W // 2, 20)
+        page.wait_for_timeout(800)
+        shots.save("discussion-thread", lambda f: page.locator(".q-dialog .q-card").last.screenshot(path=f))
+        page.keyboard.press("Escape")
+        page.wait_for_timeout(300)
+        page.keyboard.press("Escape")
+        page.wait_for_timeout(500)
 
         # ---- the reviews page, in its own tab
         with ctx.expect_page() as info:

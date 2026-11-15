@@ -88,6 +88,8 @@ class History:
     total: int            # commits matching the filters, before the limit
     commits: list[Commit]
     local: Local
+    head: str = ""        # HEAD's full hash
+    user: str = ""        # git user.name in this repository ("" if unset)
 
 
 @dataclass
@@ -133,6 +135,8 @@ async def history(project: str, max_count: int = 200, since: str = "", until: st
         total=data["total"],
         commits=[Commit(**c) for c in data["commits"]],
         local=Local(**data["local"]),
+        head=data.get("head", ""),
+        user=(data.get("user") or {}).get("name", ""),
     )
 
 

@@ -227,7 +227,7 @@ def own_notes(folder: Path, reviews: set[Path]) -> list[Path]:
     out = []
     for p in folder.rglob("*.md"):
         rel = p.relative_to(folder)
-        if p in reviews or rel == Path(review.INDEX) or rel.parts[0] == review.ASSETS:
+        if p in reviews or rel == Path(review.INDEX) or rel.parts[0] in (review.ASSETS, "threads"):
             continue
         if any(part.startswith(".") for part in rel.parts):
             continue
@@ -267,6 +267,34 @@ def _anchor_html(n: review.Note) -> str:
     label = a.label + (" · removed" if a.removed else "")
     return (f'<span class="{cls}" title="{esc(a.where)}"><b class="tab tab-{esc(a.tab)}">{esc(a.tab.upper())}</b>'
             f'{esc(label)}</span>')
+
+
+_THREAD_LOOK = {"open": ("Needs attention", "t-risk"), "done": ("Done, to be accepted", "t-todo"),
+                "accepted": ("Accepted", "t-ok")}
+
+
+def _thread_html(t, site: Site) -> str:
+    """A discussion (threads.py): its status, what it's about, then the chat."""
+    from . import threads
+
+    label, cls = _THREAD_LOOK[t.status]
+    about = ""
+    if t.anchor:
+        about = (f'<span class="anchor"><b class="tab tab-{esc(t.anchor.tab)}">{esc(t.anchor.tab.upper())}</b>'
+                 f'{esc(t.anchor.label)}</span>')
+    msgs = []
+    for m in t.messages:
+        verb = threads.VERB.get(m.kind, "")
+        head = f' <span class="dot">·</span> at <code>{esc(m.head[:7])}</code>' if m.head else ""
+        msgs.append(f'<div class="msg{" ev" if verb else ""}"><div class="mh"><b>{esc(m.author)}</b>'
+                    f'{" " + esc(verb) if verb else ""}<span class="dot">·</span>{esc(m.time)}{head}</div>'
+                    + (f'<div class="md">{site.md(m.text)}</div>' if m.text.strip() else "") + "</div>")
+    return (f'<section class="doc thread" id="t-{esc(t.id)}" data-tags="{esc(t.status)}">'
+            f'<div class="crumb"><span class="tstatus {cls}">{label}</span><span class="dot">·</span>opened by '
+            f'{esc(t.by)} on <code>{esc(t.commit[:7])}</code><span class="dot">·</span>{esc(t.opened)}</div>'
+            f'<h2><a class="hash" href="#t-{esc(t.id)}" title="Link to this discussion">#</a>{esc(t.title)}</h2>'
+            + (f'<div class="noterow">{about}</div>' if about else "")
+            + f'<div class="msgs">{"".join(msgs)}</div></section>')
 
 
 def _review_html(r: Review, site: Site) -> str:
@@ -368,6 +396,15 @@ def render(project_dir: str | Path, name: str = "", files_url: str = "") -> str:
     for t in [t for r, _ in reviews for n in r.notes for t in n.tags] + [t for d in docs for t in d.tags]:
         counts[t] = counts.get(t, 0) + 1
     nav, body = [], []
+    from . import threads
+
+    talks = threads.all_threads(project)  # needing attention first
+    if talks:
+        nav.append(f'<div class="group">Discussions <span>{len(talks)}</span></div>')
+        nav += [f'<a href="#t-{esc(t.id)}" data-r="t-{esc(t.id)}"><span class="s">{esc(t.title)}</span>'
+                f'<span class="m">{_THREAD_LOOK[t.status][0]}</span></a>' for t in talks]
+        body.append('<h1 class="group">Discussions</h1>')
+        body += [_thread_html(t, site) for t in talks]
     if docs:
         nav.append(f'<div class="group">Notes <span>{len(docs)}</span></div>')
         nav += [f'<a href="#{d.anchor}" data-r="{d.anchor}"><span class="s">{esc(d.title)}</span>'
@@ -552,6 +589,13 @@ h2:hover .hash, .hash:focus { opacity: 1; }
 .props th { text-align: left; color: var(--muted); font-weight: 500; padding: 3px 18px 3px 0; vertical-align: top;
   white-space: nowrap; }
 .props td { padding: 3px 0; } .props td p { margin: 0; }
+.tstatus { border-radius: 999px; padding: 0 9px; font-size: 12px; border: 1px solid currentColor; }
+.tstatus.t-risk { color: var(--t-risk); } .tstatus.t-todo { color: var(--t-todo); } .tstatus.t-ok { color: #5fc48a; }
+.msgs { margin-top: 10px; display: flex; flex-direction: column; gap: 8px; }
+.msg { background: var(--card2); border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; }
+.msg.ev { border-left: 3px solid var(--accent); }
+.msg .mh { font-size: 12.5px; color: var(--muted); } .msg .mh b { color: var(--text); }
+.msg .dot { margin: 0 5px; color: var(--faint); }
 .itag { color: var(--accent); background: var(--accent-soft); border-radius: 4px; padding: 0 4px; font-size: .92em; }
 
 /* Reviews: a timeline, newest first */

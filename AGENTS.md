@@ -74,6 +74,7 @@ Other folders:
 - `gui/kigit_gui/`: `app.py` (the UI), `kigit.py` (runs the CLI with
   `asyncio.to_thread(subprocess.run)`), `logs.py`, `folder_picker.py`,
   `review.py` (review file format), `review_panel.py` (the review drawer),
+  `threads.py` + `discussions.py` (PR-style discussions),
   `rewritten.py` (reviews of rebased/amended/squashed commits),
   `buildtime.py` (3D build time estimates for the progress bar),
   `sessions.py` (recent projects for the landing page),
@@ -464,6 +465,20 @@ at once. localStorage settings are per origin, so per port.
   (`ReviewPanel.drafts`), and the page warns before closing while anything
   is unwritten (an element with class `kigit-unsaved`). Comparing a commit with its parent opens its review
   too.
+- Discussions (PR-style "needs attention", `threads.py` + `discussions.py`):
+  one file per discussion in `reviews/threads/<id>.md` (frontmatter: id,
+  title, opened, by, commit it was opened on, anchor JSON), then messages,
+  each a bold line for people and `<!-- kigit-msg {author, time, head,
+  kind} -->` (kind: comment, done, accepted, reopened); the status is the
+  last status message's (open/done/accepted). Messages are appended and
+  written at once (no Write); `threads.add` re-reads the file first.
+  Author: git `user.name` (`kigit --log` now gives `user` and `head`).
+  GUI: Request in the review panel (`Discussions.request`), the header's
+  Discussions list with a badge (red while any is open), a chat dialog with
+  Mark as done / Accept / Reopen; the review panel lists this commit's and
+  those still open from other commits; commit rows get a `thread` flag.
+  `watch_threads` polls the folder's mtimes every 4 s (a pull shows up).
+  The Reviews page has a Discussions section; `own_notes` skips threads/.
 - Rewritten commits (`rewritten.py`): after each history load the GUI asks
   `kigit --rewritten` about reviews whose commit isn't listed; those on no
   branch are "strays" (`state["strays"]`), shown in a bar above the list.

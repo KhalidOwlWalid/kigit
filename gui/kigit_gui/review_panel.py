@@ -170,8 +170,10 @@ class ReviewPanel:
     that took some in."""
 
     def __init__(self, focus: Callable[[Anchor], None], on_saved: Callable[[str], None], resizer=None,
-                 strays: Callable[[], list] | None = None, on_moved: Callable[[], None] | None = None) -> None:
+                 strays: Callable[[], list] | None = None, on_moved: Callable[[], None] | None = None,
+                 discussions=None) -> None:
         self.focus_cb, self.on_saved = focus, on_saved
+        self.discussions = discussions  # discussions.Discussions: "Request" and this commit's discussions
         self.strays_cb, self.on_moved = strays or (lambda: []), on_moved or (lambda: None)
         self.message = ""  # the open commit's whole message
         self.known_tags: list[str] = list(review.TAGS)  # offered in the tags dropdown
@@ -374,6 +376,7 @@ class ReviewPanel:
             self.summary_view()
             ui.separator().classes("my-1")
             self.pinned_view()
+            self.threads_view()
             self.notes_view()
         self._sync_status()
 
@@ -562,6 +565,51 @@ class ReviewPanel:
             ui.button("Note", icon="add", on_click=self.add_note).props(
                 "unelevated dense color=amber-8").tooltip(
                 f"Add a note about {self.pinned.label}" if self.pinned else "Add a note").mark("review-add-note")
+            if self.discussions is not None:
+                ui.button("Request", icon="priority_high", on_click=self.request).props(
+                    "unelevated dense color=red-9").tooltip(
+                    "Ask for attention" + (f" on {self.pinned.label}" if self.pinned else "") +
+                    ": a discussion that stays open on later commits until someone accepts it").mark(
+                    "review-request")
+
+    async def request(self) -> None:
+        if self.review and await self.discussions.request(self.review.commit, self.pinned):
+            self.threads_view.refresh()
+
+    @ui.refreshable_method
+    def threads_view(self) -> None:
+        """Discussions to open: this commit's, and the ones still open from
+        other commits."""
+        if self.discussions is None or not self.review:
+            return
+        every = self.discussions.all()
+        here = [t for t in every if t.commit == self.review.commit]
+        # Still active elsewhere: carried along until someone accepts them, so
+        # the commit that fixes one is where it can be marked done.
+        carried = [t for t in every if t.commit != self.review.commit and t.status != "accepted"]
+        if not here and not carried:
+            return
+        from .discussions import STATUS_LOOK
+        for title, items in (("Discussions on this commit", here), ("Still open from other commits", carried)):
+            if not items:
+                continue
+            ui.label(title).classes("text-xs font-semibold text-gray-400 uppercase").mark(
+                "review-discussions-here" if items is here else "review-discussions-carried")
+            for t in items:
+                self._thread_row(t, STATUS_LOOK)
+
+    def _thread_row(self, t, STATUS_LOOK) -> None:
+        icon, color = STATUS_LOOK[t.status]
+        with ui.row().classes("w-full items-center gap-2 no-wrap cursor-pointer rounded px-2 py-1 "
+                              "bg-[#1c2128]").on("click", lambda: self.discussions.show_thread(t.id)).mark(
+                "review-discussion"):
+            ui.icon(icon, color=color, size="xs")
+            ui.label(t.title).classes("text-sm truncate flex-grow")
+            if t.anchor:
+                ui.label(t.anchor.name).classes("text-xs text-amber-300 whitespace-nowrap")
+            if t.commit != self.review.commit:
+                ui.label(t.commit[:7]).classes("text-xs text-gray-500 font-mono").tooltip("Opened on this commit")
+            ui.label(str(len(t.messages))).classes("text-xs text-gray-500").tooltip("messages")
 
     @ui.refreshable_method
     def notes_view(self) -> None:

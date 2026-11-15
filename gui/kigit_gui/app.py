@@ -35,7 +35,8 @@ from pathlib import Path
 
 from nicegui import app, background_tasks, ui
 
-from . import buildtime, kigit, logs, notices, review, rewritten, sessions, shortcuts
+from . import buildtime, kigit, logs, notices, review, rewritten, sessions, shortcuts, threads
+from .discussions import Discussions
 from .folder_picker import FolderPicker
 from .resize import Resizer
 from . import board3d, review_doc  # noqa: F401  (register the /board3d and /reviews-doc pages)
@@ -74,6 +75,10 @@ TAGS_CELL = r"""
   <q-badge v-if="props.row.pcb" outline color="blue-4" label="PCB" class="q-mr-xs" />
   <q-badge v-if="props.row.sch" outline color="green-4" label="SCH" class="q-mr-xs" />
   <q-icon v-if="props.row.reviewed" name="rate_review" color="amber-5" size="xs"><q-tooltip>Reviewed</q-tooltip></q-icon>
+  <q-icon v-if="props.row.thread" :name="{open: 'priority_high', done: 'task_alt', accepted: 'verified'}[props.row.thread]"
+    :color="{open: 'red-4', done: 'amber-5', accepted: 'green-5'}[props.row.thread]" size="xs">
+    <q-tooltip>{{ {open: 'A discussion here needs attention', done: 'Discussions here are done, to be accepted',
+      accepted: 'Discussions here are accepted'}[props.row.thread] }}</q-tooltip></q-icon>
 </q-td>
 """
 
@@ -267,7 +272,7 @@ def build(start_folder: str):
         ui.label("kigit").classes("text-lg font-bold text-[#e8b84d] cursor-pointer").on(
             "click", lambda: show_landing()).tooltip("Home: recent projects").mark("home")
         folder_input = ui.input(value=start_folder, placeholder="KiCad project folder").props(
-            "dense dark outlined").classes("w-[30rem]")
+            "dense dark outlined").classes("w-[30rem] shrink min-w-[12rem]")
         folder_input.mark("folder-input")
         folder_input.on("keydown.enter", lambda: open_folder(folder_input.value))
         ui.button("Browse", icon="folder_open", on_click=lambda: browse()).props("flat dense")
@@ -282,6 +287,11 @@ def build(start_folder: str):
             "flat dense").tooltip("Compare two copies of a KiCad project, without git").mark("compare-folders")
         ui.button(icon="keyboard", on_click=lambda: show_shortcuts()).props("flat dense round").tooltip(
             "Keyboard and mouse shortcuts (?)").mark("shortcuts-button")
+        with ui.button(icon="forum", on_click=lambda: disc.show_list()).props("flat dense round").mark(
+                "discussions-button") as disc_btn:
+            disc_badge = ui.badge("", color="red").props("floating rounded").mark("discussions-badge")
+            disc_tip = ui.tooltip("Discussions")
+        disc_badge.set_visibility(False)
         with ui.button(icon="notifications", on_click=lambda: (show_notices(), bell_refresh())).props(
                 "flat dense round").mark("notices-button") as bell:
             bell_badge = ui.badge("!", color="red").props("floating rounded").mark("notices-badge")
@@ -420,6 +430,8 @@ def build(start_folder: str):
             if n else "Notifications"
     ui.timer(1.0, bell_refresh)
     ui.add_head_html(_SHORTCUTS_CSS)
+    # A crowded header: labels stay beside their icons; the folder box gives way.
+    ui.add_head_html("<style>.q-header .q-btn__content { flex-wrap: nowrap; white-space: nowrap; }</style>")
     # "?" anywhere outside a text box opens the shortcuts list.
     ui.add_body_html("""<script>
 document.addEventListener("keydown", (e) => {
@@ -606,8 +618,42 @@ body.kigit-dragging iframe { pointer-events: none; }  /* else the frames swallow
                 r["reviewed"] = True
         table.update()
 
+    # ---------------------------------------------------------- discussions
+    def threads_changed() -> None:
+        """Discussions were added to or changed (here, or pulled): the header
+        count, the commit list's flags, the open review's list."""
+        items = disc.all()
+        n = threads.counts(items)
+        active = n["open"] + n["done"]
+        disc_badge.set_text(str(active))
+        disc_badge.props(f"color={'red' if n['open'] else 'amber-8'}")
+        disc_badge.set_visibility(active > 0)
+        disc_tip.text = (f"Discussions: {n['open']} need attention, {n['done']} done, to be accepted"
+                         if active else "Discussions")
+        state["thread_sig"] = threads_sig()
+        if state.get("history"):
+            fill()
+        if panel.review:
+            panel.threads_view.refresh()
+
+    def threads_sig() -> tuple:
+        d = threads.folder(disc.project) if disc.project else None
+        try:
+            return tuple(sorted((p.name, p.stat().st_mtime_ns) for p in d.glob("*.md"))) if d and d.is_dir() else ()
+        except OSError:
+            return ()
+
+    def watch_threads() -> None:  # e.g. after a git pull
+        if disc.project and threads_sig() != state.get("thread_sig"):
+            logs.log.info("discussions changed on disk")
+            threads_changed()
+
+    disc = Discussions(focus=focus, changed=lambda: threads_changed())
+    ui.timer(4.0, watch_threads)
+
     panel = ReviewPanel(focus=focus, on_saved=on_review_saved, resizer=resizer,
-                        strays=lambda: state["strays"], on_moved=lambda: background_tasks.create(check_strays()))
+                        strays=lambda: state["strays"], on_moved=lambda: background_tasks.create(check_strays()),
+                        discussions=disc)
 
     # ------------------------------------------------- rewritten commits
     async def check_strays() -> None:
@@ -714,6 +760,7 @@ body.kigit-dragging iframe { pointer-events: none; }  /* else the frames swallow
 
     def clear_project() -> None:
         state["board"] = state["history"] = None
+        disc.set_project(None)
         table.rows = []
         table.selected = []
         table.update()
@@ -840,6 +887,7 @@ body.kigit-dragging iframe { pointer-events: none; }  /* else the frames swallow
             return False
         logs.log.info("loaded %s: %d of %d commits listed", project.board, len(h.commits), h.total)
         sessions.opened(project.dir, project.board, project.name)
+        disc.set_project(Path(project.board).parent, h.user, h.head)
         background_tasks.create(take_snapshots([project.board]))
         commits_drawer.show()
         state["board"], state["history"], state["name"] = project.board, h, project.name
@@ -848,6 +896,7 @@ body.kigit-dragging iframe { pointer-events: none; }  /* else the frames swallow
         status.text = h.repo
         show_count(h)
         fill()
+        threads_changed()
         await check_strays()
         show_message("compare_arrows", "Pick two commits on the left, then press Compare.",
                      "The newest entry is your working tree: HEAD plus any uncommitted changes.")
@@ -1008,6 +1057,12 @@ body.kigit-dragging iframe { pointer-events: none; }  /* else the frames swallow
         rows = []
         local = h.local
         reviewed = set(review.all_reviews(Path(state["board"]).parent))
+        # Each commit's discussions (opened on it): the one most in need shows.
+        rank = {"open": 0, "done": 1, "accepted": 2}
+        thread_of: dict[str, str] = {}
+        for t in disc.all():
+            if t.commit not in thread_of or rank[t.status] < rank[thread_of[t.commit]]:
+                thread_of[t.commit] = t.status
         head = h.commits[0] if h.commits else None
         if local.dirty:
             subject = f"HEAD + uncommitted changes ({len(local.files)} file{'s' if len(local.files) != 1 else ''})"
@@ -1026,7 +1081,7 @@ body.kigit-dragging iframe { pointer-events: none; }  /* else the frames swallow
             tip = f"{message}\n\n{c.author} · {c.date}\n{c.hash}"
             rows.append({"hash": c.hash, "short": c.short, "pcb": c.pcb, "sch": c.sch, "date": c.date[:16],
                          "subject": c.subject, "tip": tip, "parent": c.parent, "author": c.author, "body": c.body,
-                         "reviewed": c.hash in reviewed})
+                         "reviewed": c.hash in reviewed, "thread": thread_of.get(c.hash, "")})
         table.rows = rows
         keep = {r["hash"] for r in rows}
         table.selected = [r for r in table.selected if r["hash"] in keep]

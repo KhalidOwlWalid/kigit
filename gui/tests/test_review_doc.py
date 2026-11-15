@@ -173,3 +173,20 @@ def test_math_on_the_page(tmp_path: Path) -> None:
     page = review_doc.render(tmp_path)
     assert 'display="inline"' in page and 'display="block"' in page and "<mi>&#x003C0;</mi>" in page  # π
     assert '<a class="wl" href="#d-filter">itself</a>' in page
+
+
+def test_discussions_on_the_page(tmp_path: Path) -> None:
+    """Discussions get their own section (needing attention first); their
+    files aren't listed as notes of your own."""
+    from kigit_gui import threads
+
+    make(tmp_path)
+    a = threads.start(tmp_path, "Check <C1>", "Too close.", "a" * 40, "Khalid", "a" * 40)
+    b = threads.start(tmp_path, "GND pour", "Fine?", "a" * 40, "Ada", "a" * 40)
+    threads.add(tmp_path, b.id, "Khalid", "b" * 40, "Yes.", "accepted")
+    page = review_doc.render(tmp_path)
+    assert '<h1 class="group">Discussions</h1>' in page
+    assert page.index(f'id="t-{a.id}"') < page.index(f'id="t-{b.id}"')  # attention first
+    assert "Check &lt;C1&gt;" in page and "Needs attention" in page and "Accepted" in page
+    assert "<b>Khalid</b> accepted" in page and "<code>bbbbbbb</code>" in page
+    assert f"threads/{a.id}" not in page  # not shown as a note of your own

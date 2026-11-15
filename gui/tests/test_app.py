@@ -825,6 +825,82 @@ async def test_3d_view_without_kicad(user: User, monkeypatch) -> None:
     assert user.find(marker="view3d-button").elements.pop().enabled  # can try again
 
 
+async def test_discussion_from_request_to_accepted(user: User, monkeypatch, tmp_path: Path) -> None:
+    """PR-style review: ask for attention on something in a commit's review;
+    it shows in the header and the commit list, people reply, mark it done,
+    and it's accepted. Everything goes to reviews/threads/ as it's sent."""
+    from kigit_gui import threads
+
+    project = make_fixture_repo(tmp_path / "repo")
+    await open_at(user, monkeypatch, str(project))
+    await user.should_see("Pick two commits on the left", retries=50)
+    badge = marked(user, "discussions-badge")
+    assert not badge.visible
+    v2 = next(r for r in commit_table(user).rows if r["subject"].startswith("v2"))
+    await select(user, [v2])
+    user.find(marker="review-button").click()
+    await user.should_see(marker="review-request", retries=100)
+    emit(user, "kigit_pinned", {"tab": "pcb", "kind": "footprint", "name": "C1"})
+    user.find(marker="review-request").click()
+    await user.should_see("About Footprint C1")
+    user.find(marker="request-title").type("C1 too close to U1")
+    user.find(marker="request-body").type("Move it 1 mm.")
+    user.find(marker="request-go").click()
+    await user.should_see("Asked for attention: C1 too close to U1")
+
+    t = threads.all_threads(project)[0]
+    assert (t.title, t.status, t.commit, t.by, t.anchor.name) == ("C1 too close to U1", "open", v2["hash"], "kigit tests", "C1")
+    assert badge.visible and badge.text == "1"
+    assert next(r for r in commit_table(user).rows if r["hash"] == v2["hash"])["thread"] == "open"
+    await user.should_see(marker="review-discussion")  # in this commit's review too
+
+    # Reviewing another commit (where the fix would go): still listed there.
+    moved = next(r for r in commit_table(user).rows if r["subject"] == "move project folder")
+    await select(user, [moved])
+    user.find(marker="review-button").click()
+    await user.should_see(marker="review-discussions-carried", retries=100)
+    await select(user, [v2])
+    user.find(marker="review-button").click()
+    await user.should_see(marker="review-discussions-here", retries=100)
+
+    # The list, then the chat: a reply, done, accepted.
+    user.find(marker="discussions-button").click()
+    await user.should_see(marker="discussion-row")
+    user.find(marker="discussion-row").click()
+    await user.should_see(marker="discussion-title")
+    user.find(marker="discussion-reply").type("Moved it.")
+    user.find(marker="discussion-done").click()
+    await user.should_see(marker="discussion-accept")
+    assert threads.all_threads(project)[0].status == "done"
+    user.find(marker="discussion-accept").click()
+    await user.should_see(marker="status-accepted")
+    t = threads.all_threads(project)[0]
+    assert t.status == "accepted" and [m.kind for m in t.messages] == ["comment", "done", "accepted"]
+    assert t.messages[1].text == "Moved it." and t.messages[1].head == git(project, "rev-parse", "HEAD")
+    for _ in range(30):
+        if not badge.visible:
+            break
+        await asyncio.sleep(0.1)
+    assert not badge.visible  # nothing active
+
+
+async def test_pulled_discussions_show_up(user: User, monkeypatch, tmp_path: Path) -> None:
+    """A discussion that arrives on disk (a git pull) is picked up by itself."""
+    from kigit_gui import threads
+
+    project = make_fixture_repo(tmp_path / "repo")
+    await open_at(user, monkeypatch, str(project))
+    await user.should_see("Pick two commits on the left", retries=50)
+    head = git(project, "rev-parse", "HEAD")
+    threads.start(project, "From a colleague", "Please check the GND pour.", head, "Ada", head)
+    badge = marked(user, "discussions-badge")
+    for _ in range(80):  # checked every 4 s
+        if badge.visible:
+            break
+        await asyncio.sleep(0.1)
+    assert badge.visible and badge.text == "1"
+
+
 async def test_first_commit_has_nothing_to_review_against(user: User, monkeypatch) -> None:
     await open_at(user, monkeypatch, PROJECT)
     await user.should_see("Pick two commits on the left", retries=50)

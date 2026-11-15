@@ -79,7 +79,10 @@ void print_log(const std::string& root, const std::string& board_rel, git::LogQu
         {"folders", past},
         {"total", total},
         {"commits", commits},
-        {"local", nlohmann::json{{"dirty", !changed.empty()}, {"pcb", pcb}, {"sch", sch}, {"files", changed}}}};
+        {"local", nlohmann::json{{"dirty", !changed.empty()}, {"pcb", pcb}, {"sch", sch}, {"files", changed}}},
+        // HEAD and who you are in this repository (for the GUI's discussions).
+        {"head", [&] { try { return git::resolve(root, "HEAD").hash; } catch (const std::exception&) { return std::string(); } }()},
+        {"user", nlohmann::json{{"name", git::config(root, "user.name")}, {"email", git::config(root, "user.email")}}}};
     std::printf("%s\n", out.dump().c_str());
 }
 

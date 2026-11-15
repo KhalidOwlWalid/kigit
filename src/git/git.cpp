@@ -298,6 +298,13 @@ std::vector<Rewritten> rewritten(const std::string& root, const std::vector<std:
     return result;
 }
 
+std::string config(const std::string& root, const std::string& key) {
+    bool ok;
+    std::string v = git(root, {"config", "--get", key}, ok);
+    while (!v.empty() && (v.back() == '\n' || v.back() == '\r')) v.pop_back();
+    return ok ? v : "";
+}
+
 bool is_ancestor(const std::string& dir, const Revision& ancestor, const Revision& descendant) {
     if (ancestor.local || descendant.local) return descendant.local && !ancestor.local;
     bool ok;
