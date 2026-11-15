@@ -85,6 +85,17 @@ Other folders:
   `regression.sh`.
 - `gui/tests/`: pytest with NiceGUI's simulated `user` fixture.
 - `packaging/windows/kigit.iss`: Windows installer (Inno Setup).
+- `docs/` + `mkdocs.yml`: the docs site (MkDocs Material; published with
+  `mkdocs gh-deploy`, `mkdocs build --strict` to check). GUI screenshots
+  live in `docs/img/gui/` and are made by `tools/docs_screenshots.py`
+  (Playwright + headless Chrome driving the real GUI on scratch clones of
+  the projects given, with demo reviews; needs KiCad for the 3D shots):
+  `uv run --no-project --with playwright --with pillow python
+  tools/docs_screenshots.py --project <repo> --extra <repo>`, `--only` to
+  redo some. Retake them when the GUI changes how something looks.
+  `docs/app-folder.md` lists what's kept in `<app data>/kigit`; update it
+  when something new is stored there, and link to it from the page that
+  mentions it.
 - `.github/workflows/`: `ci.yml` (build and test on Windows and Linux on
   every push), `release.yml` (Windows release on a `v*` tag).
 

@@ -8,6 +8,8 @@ What it can do:
 - Show what changed on your symbols and their fields
 - Show your buses and where they're routed
 - Work without git too: just point it at two folders (see [Without Git](examples/without-git.md))
+- Keep notes on why each commit changed the board ([Reviews](how-to-use/reviews.md))
+- Show any commit's board in 3D, side by side or next to the diff ([3D View](how-to-use/3d-view.md))
 
 Have a look at the demo below to get a feel for it.
 
@@ -45,7 +47,19 @@ Have a look at the demo below to get a feel for it.
 
     ---
 
-    Open a project, pick two commits from its history and compare. No command line needed.
+    Open a project, pick two commits from its history and compare. Your recent projects wait on a landing page. No command line needed.
+
+-   :material-comment-edit: [**Reviews**](how-to-use/reviews.md)
+
+    ---
+
+    Write down why a commit changed what it changed, with notes pinned to the nets and parts they're about. Plain Markdown, Obsidian-friendly.
+
+-   :material-cube-outline: [**3D View**](how-to-use/3d-view.md)
+
+    ---
+
+    Any commit's board in 3D, as KiCad draws it. Several side by side, or docked beside a comparison.
 
 </div>
 

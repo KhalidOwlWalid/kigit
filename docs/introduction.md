@@ -84,7 +84,7 @@ Follow the given order to see how kigit works from end-to-end:
 - [Installing kigit](installation.md)
 - [Using kigit Command Line (cli)](how-to-use/command-line.md)
 - [Using kigit GUI](how-to-use/gui.md)
-- [General kigit User Interface (UI) Overview](how-to-use/ui-overview.md)
+- [General kigit User Interface (UI) Overview](how-to-use/overview.md)
 - [Using PCB viewer](how-to-use/pcb-viewer.md)
 - [Using schematic viewer](how-to-use/schematic-viewer.md)
 

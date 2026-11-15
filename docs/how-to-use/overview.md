@@ -34,6 +34,8 @@ The page is written to `.kigit/` next to the board (or wherever `-o FILE` says) 
 | Browse the history and click two commits | [GUI](gui.md) |
 | Compare from a script, a hook or CI | [Command Line](command-line.md) |
 | Compare two copies of a project without git | [Without Git](../examples/without-git.md) |
+| Write down why a commit changed the board | [Reviews](reviews.md) |
+| See a commit's board in 3D | [3D View](3d-view.md) |
 
 ## Colours
 

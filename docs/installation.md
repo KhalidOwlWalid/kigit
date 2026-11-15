@@ -18,6 +18,8 @@ It adds `kigit` to your PATH and a **kigit** entry to the Start menu that opens 
     quick from the start.)
 
 
+To uninstall, use **Apps & features** (or **Installed apps**) in Windows Settings. It leaves kigit's [app folder](app-folder.md) (`%LOCALAPPDATA%\kigit`: logs, recent projects, the GUI's Python); delete it too if you like.
+
 !!! tip "Portable"
     The Releases page also has a zip. Unzip it anywhere and run `bin\kigit.exe`.
 
@@ -39,8 +41,10 @@ To uninstall:
 ```sh
 rm ~/.local/bin/kigit
 rm -r ~/.local/share/kigit ~/.local/libexec/kigit
-rm -r ~/.local/state/kigit    # optional: the GUI's Python environment and the logs
+rm -r ~/.local/state/kigit    # optional: the app folder (logs, recent projects, the GUI's Python)
 ```
+
+See [App Folder](app-folder.md) for what's in that last one.
 
 ## Build from source
 

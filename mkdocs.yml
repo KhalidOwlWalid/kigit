@@ -40,10 +40,13 @@ nav:
   - Getting Started:
     - Introduction: introduction.md
     - Installation: installation.md
+    - App Folder: app-folder.md
     - Architecture: architecture.md
   - How to Use:
     - Overview: how-to-use/overview.md
     - GUI: how-to-use/gui.md
+    - Reviews: how-to-use/reviews.md
+    - 3D View: how-to-use/3d-view.md
     - Command Line: how-to-use/command-line.md
     - PCB Viewer: how-to-use/pcb-viewer.md
     - Schematic Viewer: how-to-use/schematic-viewer.md
@@ -66,6 +69,7 @@ markdown_extensions:
       line_spans: __span
       pygments_lang_class: true
   - pymdownx.inlinehilite
+  - pymdownx.keys
   - pymdownx.snippets
   - pymdownx.tabbed:
       alternate_style: true
