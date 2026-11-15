@@ -14,7 +14,7 @@ PARENT = "fedcba9876543210fedcba9876543210fedcba98"
 
 def sample() -> Review:
     return Review(
-        commit=COMMIT, parent=PARENT, subject="v2: add C1, move R2", date="2025-03-01 12:00", author="Ada | L",
+        commit=COMMIT, parent=PARENT, subject="v2: add C1, move R2", date="2025-03-01 12:00", author="Author B | L",
         created="2026-11-13 10:00",
         summary="Why: rev B feedback.\n\nSee [the issue](https://example.com/1).",
         notes=[
@@ -115,7 +115,7 @@ def test_notes_from_before_times_were_kept(tmp_path: Path) -> None:
 
 
 def test_index_lists_every_review(tmp_path: Path) -> None:
-    old = Review(commit=PARENT, subject="first board", date="2025-01-10 12:00", author="Ada")
+    old = Review(commit=PARENT, subject="first board", date="2025-01-10 12:00", author="Author B")
     review.save(tmp_path, old)
     new = sample()
     review.save(tmp_path, new)
@@ -123,9 +123,9 @@ def test_index_lists_every_review(tmp_path: Path) -> None:
     index = (tmp_path / "reviews" / "index.md").read_text()
     rows = [line for line in index.splitlines() if line.startswith("| [")]
     # Newest commit first; each row links its file, with the full hash.
-    assert rows[0].startswith(f"| [{new.id}]({new.id}.md) | `{COMMIT}` | 2025-03-01 12:00 | Ada \\| L | ")
+    assert rows[0].startswith(f"| [{new.id}]({new.id}.md) | `{COMMIT}` | 2025-03-01 12:00 | Author B \\| L | ")
     assert "| 4 |" in rows[0]  # notes
-    assert rows[1].startswith(f"| [{old.id}]({old.id}.md) | `{PARENT}` | 2025-01-10 12:00 | Ada | first board | 0 |")
+    assert rows[1].startswith(f"| [{old.id}]({old.id}.md) | `{PARENT}` | 2025-01-10 12:00 | Author B | first board | 0 |")
 
 
 def test_new_ids_are_unique(tmp_path: Path, monkeypatch) -> None:
@@ -229,8 +229,8 @@ def test_retarget_moves_anchors_pinned_in_the_commit() -> None:
         Note(anchor=Anchor("pcb", "net", "GND", Seen(PARENT, COMMIT, "new"))),
         Note(anchor=Anchor("sch", "part", "R1", Seen(other, COMMIT, "old"))),
         Note(anchor=Anchor("sch", "part", "R2"))])
-    review.retarget(r, NEW, NEW_PARENT, "reworded", "2025-03-02 12:00", "Ada", {COMMIT: NEW})
-    assert (r.commit, r.parent, r.subject, r.date, r.author) == (NEW, NEW_PARENT, "reworded", "2025-03-02 12:00", "Ada")
+    review.retarget(r, NEW, NEW_PARENT, "reworded", "2025-03-02 12:00", "Author B", {COMMIT: NEW})
+    assert (r.commit, r.parent, r.subject, r.date, r.author) == (NEW, NEW_PARENT, "reworded", "2025-03-02 12:00", "Author B")
     assert r.notes[0].anchor.seen == Seen(NEW_PARENT, NEW, "new")
     assert r.notes[1].anchor.seen == Seen(other, NEW, "old")
     assert r.notes[2].anchor.seen is None
@@ -251,14 +251,14 @@ def test_move_and_merge(tmp_path: Path) -> None:
     """move() rewrites the review for its new commit, or merges it into that
     commit's review and removes its file (on that write)."""
     a = review.save(tmp_path, Review(commit=COMMIT, parent=PARENT, summary="First.", notes=[Note(title="One")]))
-    moved = review.move(tmp_path, a, NEW, NEW_PARENT, "new subject", "2025-03-02 12:00", "Ada")
+    moved = review.move(tmp_path, a, NEW, NEW_PARENT, "new subject", "2025-03-02 12:00", "Author B")
     assert moved == a
     r = review.load(a)
     assert (r.commit, r.parent, r.subject) == (NEW, NEW_PARENT, "new subject")
     assert set(review.all_reviews(tmp_path)) == {NEW}
 
     b = review.save(tmp_path, Review(commit=COMMIT, summary="Second.", notes=[Note(title="Two")]))
-    into = review.move(tmp_path, b, NEW, NEW_PARENT, "new subject", "2025-03-02 12:00", "Ada")
+    into = review.move(tmp_path, b, NEW, NEW_PARENT, "new subject", "2025-03-02 12:00", "Author B")
     assert into == a and not b.exists()
     merged = review.load(a)
     assert [n.title for n in merged.notes] == ["One", "Two"]

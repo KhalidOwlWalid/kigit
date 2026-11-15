@@ -80,6 +80,17 @@ A discussion moves through three states:
 
 Anything you type in the reply box goes along with the button you press ("Moved it 1 mm left", then **Mark as done**).
 
+### Jump to the commits
+
+The commit hashes in a discussion are links (dotted underline). Click one to compare the commit the discussion was opened on with that commit, and the viewer shows what the discussion points at, pinned and zoomed to:
+
+| Click | Compares |
+| --- | --- |
+| a message's **at** *hash* | where it was opened → that message's commit: what had changed by then |
+| **Opened ... on commit** *hash* (or the first message's) | where it was opened → HEAD: where it stands now |
+
+So if a part was deleted along the way, you still see it, marked **removed**, at the place it was, instead of searching the history for where it went.
+
 ### Across commits
 
 A discussion belongs to the **project**, not just the commit it was opened on. Until it's accepted, it stays on:

@@ -14,8 +14,8 @@ PNG = b"\x89PNG not really"
 
 def make(tmp_path: Path) -> tuple[Review, Review]:
     img = review.save_image(tmp_path, PNG, "image/png")
-    old = Review(commit=B, subject="first <board>", date="2025-01-10 12:00", author="Ada")
-    new = Review(commit=A, parent=B, subject="remove C1", date="2025-03-01 12:00", author="Ada",
+    old = Review(commit=B, subject="first <board>", date="2025-01-10 12:00", author="Author B")
+    new = Review(commit=A, parent=B, subject="remove C1", date="2025-03-01 12:00", author="Author B",
                  summary="See [issue](https://example.com/1).",
                  notes=[Note(title="Dropped C1", body=f"Gone. ![shot]({img})", tags=["reason"],
                              anchor=Anchor("pcb", "footprint", "C1", Seen(B, A, "old"))),
@@ -181,12 +181,12 @@ def test_discussions_on_the_page(tmp_path: Path) -> None:
     from kigit_gui import threads
 
     make(tmp_path)
-    a = threads.start(tmp_path, "Check <C1>", "Too close.", "a" * 40, "Khalid", "a" * 40)
-    b = threads.start(tmp_path, "GND pour", "Fine?", "a" * 40, "Ada", "a" * 40)
-    threads.add(tmp_path, b.id, "Khalid", "b" * 40, "Yes.", "accepted")
+    a = threads.start(tmp_path, "Check <C1>", "Too close.", "a" * 40, "Author A", "a" * 40)
+    b = threads.start(tmp_path, "GND pour", "Fine?", "a" * 40, "Author B", "a" * 40)
+    threads.add(tmp_path, b.id, "Author A", "b" * 40, "Yes.", "accepted")
     page = review_doc.render(tmp_path)
     assert '<h1 class="group">Discussions</h1>' in page
     assert page.index(f'id="t-{a.id}"') < page.index(f'id="t-{b.id}"')  # attention first
     assert "Check &lt;C1&gt;" in page and "Needs attention" in page and "Accepted" in page
-    assert "<b>Khalid</b> accepted" in page and "<code>bbbbbbb</code>" in page
+    assert "<b>Author A</b> accepted" in page and "<code>bbbbbbb</code>" in page
     assert f"threads/{a.id}" not in page  # not shown as a note of your own

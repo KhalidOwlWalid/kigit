@@ -524,7 +524,7 @@ def reviews() -> dict[str, str]:
     note = lambda title, body, anchor, tags, created: (
         f"## {title}\n<!-- kigit-note {json.dumps({'id': uid('note', title)[:8], 'anchor': anchor, 'tags': tags, 'created': created})} -->\n\n{body}\n\n")
     r2 = ("---\nid: 2a5c0e11\ncommit: " + c(2) + "\nparent: " + c(1) + "\nsubject: Add two more LEDs\n"
-          "date: 2026-01-12 10:00\nauthor: Robin\ncreated: 2026-01-12 18:20\nupdated: 2026-01-12 18:20\n---\n\n"
+          "date: 2026-01-12 10:00\nauthor: Author A\ncreated: 2026-01-12 18:20\nupdated: 2026-01-12 18:20\n---\n\n"
           "Four status LEDs instead of two: one per state of the firmware's state machine. "
           "J2 grows from 3 to 5 pins to bring the extra lines out.\n\n"
           + note("D3 and D4 added", "Same LED and 1k resistor as D1/D2, so the brightness matches.\n\n"
@@ -533,7 +533,7 @@ def reviews() -> dict[str, str]:
           + note("LED bus widened", "The bus to the LEDs sheet is now `LED[0..3]`.",
                  {"tab": "sch", "kind": "bus", "name": "LED[0..3]", "seen": seen(2)}, ["reason"], "2026-01-12 18:22"))
     r3 = ("---\nid: 3b6d1f22\ncommit: " + c(3) + "\nparent: " + c(2) + "\nsubject: Rework the power\n"
-          "date: 2026-01-19 10:00\nauthor: Robin\ncreated: 2026-01-19 17:05\nupdated: 2026-01-20 09:12\n---\n\n"
+          "date: 2026-01-19 10:00\nauthor: Author A\ncreated: 2026-01-19 17:05\nupdated: 2026-01-20 09:12\n---\n\n"
           "Rev B power: the regulator moves next to the LED rail and the power tracks get wider.\n\n"
           + note("U1 moved 3 mm right", "Shorter +3V3 run to C2. Its pads keep their nets, so the diff shows it "
                  "as **moved**, not removed and added.",
@@ -546,13 +546,13 @@ def reviews() -> dict[str, str]:
     msg = lambda who, when, kind, head, text: (
         f"**{who}** · {when} · at {{{{short:{head}}}}}\n<!-- kigit-msg "
         f"{json.dumps({'author': who, 'time': when, 'head': c(head), 'kind': kind})} -->\n\n{text}\n\n")
-    t1 = ("---\nid: 7e3a90c4\ntitle: TP1 is in the way of the rail\nopened: 2026-01-19 17:30\nby: Sam\n"
+    t1 = ("---\nid: 7e3a90c4\ntitle: TP1 is in the way of the rail\nopened: 2026-01-19 17:30\nby: Author B\n"
           f"commit: {c(3)}\nanchor: {json.dumps({'tab': 'pcb', 'kind': 'footprint', 'name': 'TP1', 'seen': seen(3)})}\n---\n\n"
-          + msg("Sam", "2026-01-19 17:30", "comment", 3, "TP1 sits right where the +3V3 rail turns. Do we still need it now that C2 has a big pad?")
-          + msg("Robin", "2026-01-21 11:02", "done", 4, "Removed TP1 and its stub; probe C2 instead."))
-    t2 = ("---\nid: 9c41b2d7\ntitle: D4 shares LED2: intended?\nopened: 2026-01-26 09:15\nby: Sam\n"
+          + msg("Author B", "2026-01-19 17:30", "comment", 3, "TP1 sits right where the +3V3 rail turns. Do we still need it now that C2 has a big pad?")
+          + msg("Author A", "2026-01-21 11:02", "done", 4, "Removed TP1 and its stub; probe C2 instead."))
+    t2 = ("---\nid: 9c41b2d7\ntitle: D4 shares LED2: intended?\nopened: 2026-01-26 09:15\nby: Author C\n"
           f"commit: {c(4)}\nanchor: {json.dumps({'tab': 'sch', 'kind': 'part', 'name': 'D4', 'seen': seen(4)})}\n---\n\n"
-          + msg("Sam", "2026-01-26 09:15", "comment", 4, "D4's cathode now joins LED2, so D3 and D4 always light together. "
+          + msg("Author C", "2026-01-26 09:15", "comment", 4, "D4's cathode now joins LED2, so D3 and D4 always light together. "
                 "Is that what the firmware expects? If not, it needs its own line back."))
     decisions = ("---\ntags: [decision, power]\nstatus: accepted\n---\n# Why an LDO\n\nThe LEDs draw under 100 mA in "
                  "total, so a small LDO is simpler and quieter than a buck converter. See [[3b6d1f22]] for the "
@@ -586,7 +586,7 @@ def main() -> None:
             p.write_bytes(text.encode("utf-8"))
     history = {
         "name": NAME,
-        "author": {"name": "Robin Example", "email": "robin@example.invalid"},
+        "author": {"name": "Author A", "email": "author-a@example.invalid"},
         "commits": [{"step": s, "folder": folder, "message": msg, "date": date} for s, folder, msg, date in STEPS],
         "uncommitted": {"step": 7, "folder": "hardware"},
     }

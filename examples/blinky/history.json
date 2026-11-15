@@ -1,8 +1,8 @@
 {
   "name": "blinky",
   "author": {
-    "name": "Robin Example",
-    "email": "robin@example.invalid"
+    "name": "Author A",
+    "email": "author-a@example.invalid"
   },
   "commits": [
     {

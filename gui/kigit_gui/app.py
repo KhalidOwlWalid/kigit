@@ -676,7 +676,18 @@ body.kigit-dragging iframe { pointer-events: none; }  /* else the frames swallow
             logs.log.info("discussions changed on disk")
             threads_changed()
 
-    disc = Discussions(focus=focus, changed=lambda: threads_changed())
+    async def compare_and_show(old: str, new: str, anchor) -> None:
+        """Compares two commits, then shows anchor in the viewer once it's loaded
+        (a discussion's commit links)."""
+        if not await run_diff(old, new, compare_btn) or anchor is None:
+            return
+        msg = json.dumps({"kigit": "focus", "anchor": anchor.to_dict()})
+        # The page is loading: ask once it's there (the viewer answers kigit_focused).
+        ui.run_javascript(f"""const f = getHtmlElement({frame.id});
+            if (f) f.addEventListener("load", () => setTimeout(() => f.contentWindow.postMessage({msg}, "*"), 300),
+                                      {{ once: true }});""")
+
+    disc = Discussions(focus=focus, changed=lambda: threads_changed(), compare=compare_and_show)
     ui.timer(4.0, watch_threads)
 
     panel = ReviewPanel(focus=focus, on_saved=on_review_saved, resizer=resizer,
@@ -1439,14 +1450,15 @@ body.kigit-dragging iframe { pointer-events: none; }  /* else the frames swallow
             return
         await run_diff(a, b, manual_btn)
 
-    async def run_diff(a: str, b: str, button: ui.button, review_of: dict | None = None) -> None:
+    async def run_diff(a: str, b: str, button: ui.button, review_of: dict | None = None) -> bool:
         """Diffs two revisions and shows the viewer. kigit orders them by
         history (older first); LOCAL is always the newest. review_of: the
-        commit row whose review opens alongside (a single commit's change)."""
+        commit row whose review opens alongside (a single commit's change).
+        False if it couldn't."""
         board = state["board"]
         if not board:
             notify("Open a project first", type="warning")
-            return
+            return False
         name = page_name(board + options_key(), a, b)
         out = CACHE / name
         # Only full hashes always mean the same commit; names like HEAD~1 or
@@ -1463,7 +1475,7 @@ body.kigit-dragging iframe { pointer-events: none; }  /* else the frames swallow
         except kigit.KigitError as e:
             status.text = ""
             notify(str(e), type="negative", multi_line=True, close_button=True)
-            return
+            return False
         finally:
             button.props(remove="loading")
         status.text = f"{short_rev(a)} ↔ {short_rev(b)} · {time.monotonic() - started:.1f} s"
@@ -1483,6 +1495,7 @@ body.kigit-dragging iframe { pointer-events: none; }  /* else the frames swallow
                        review_of.get("date", ""), review_of.get("author", ""), review_of.get("body", ""))
         else:
             panel.close()
+        return True
 
     def show_page(name: str) -> None:
         # Open on the schematic; the cache-buster makes a regenerated page reload.

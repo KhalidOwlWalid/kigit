@@ -43,7 +43,7 @@ The history, oldest first:
 
 1. **Compare** "Add two more LEDs" with "First board": the [PCB](how-to-use/pcb-viewer.md) and [schematic](how-to-use/schematic-viewer.md) diff. Hover a trace to light up its net; click D3 in the footprint list.
 2. **Review** "Rework the power": its review opens with three notes. Click a note's chip to show U1 or C2 in the viewer.
-3. **Discussions** in the header: one is done and waits to be accepted (TP1), one needs attention (D4 sharing LED2). Reply, mark done, accept: see [Reviews](how-to-use/reviews.md#discussions-asking-for-attention).
+3. **Discussions** in the header: one is done and waits to be accepted (TP1), one needs attention (D4 sharing LED2). Click a commit hash in TP1's discussion to compare where it was opened with that commit: TP1 shows as removed, at the place it was. Reply, mark done, accept: see [Reviews](how-to-use/reviews.md#discussions-asking-for-attention).
 4. **3D**: pick one commit and press 3D; pick two for side by side; turn **Mask** off to follow the tracks. See [3D View](how-to-use/3d-view.md).
 5. **Reviews** in the header: the notes, the reviews as a timeline, a design decision written as a plain Markdown note.
 6. **Wrap messages**, **Filter commits** ("only commits that changed the board or schematic" skips the design-notes commit), and **?** for every shortcut.

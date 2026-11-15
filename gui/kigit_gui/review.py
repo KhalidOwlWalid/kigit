@@ -15,7 +15,7 @@ A review reads fine on its own (GitHub, an editor, Obsidian):
     parent: <full hash>
     subject: v2: add C1
     date: 2025-03-01 12:00
-    author: Khalid
+    author: Author A
     created: 2026-11-13 14:02
     updated: 2026-11-13 14:30
     ---

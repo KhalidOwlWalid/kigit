@@ -14,17 +14,17 @@ One file per discussion, so two people rarely touch the same file:
     id: 7c2e19ab
     title: R704 too close to the mounting hole
     opened: 2026-11-15 18:02
-    by: Khalid
+    by: Author A
     commit: <full hash of the commit it was opened on>
     anchor: {"tab": "pcb", "kind": "footprint", "name": "R704", ...}
     ---
 
-    **Khalid** · 2026-11-15 18:02 · at 7cd6670
-    <!-- kigit-msg {"author": "Khalid", "time": "...", "head": "<hash>", "kind": "comment"} -->
+    **Author A** · 2026-11-15 18:02 · at 7cd6670
+    <!-- kigit-msg {"author": "Author A", "time": "...", "head": "<hash>", "kind": "comment"} -->
 
     The courtyard overlaps the keep-out.
 
-    **Ada** · 2026-11-16 09:30 · marked done at 4f2a1c0
+    **Author B** · 2026-11-16 09:30 · marked done at 4f2a1c0
     <!-- kigit-msg {... "kind": "done"} -->
 
     Moved it 1 mm left.

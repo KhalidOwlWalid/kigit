@@ -919,6 +919,54 @@ async def test_discussion_from_request_to_accepted(user: User, monkeypatch, tmp_
     assert not badge.visible  # nothing active
 
 
+async def test_discussion_commit_links_compare_and_show(user: User, monkeypatch, tmp_path: Path) -> None:
+    """A discussion's commit hashes are links: one compares the commit it was
+    opened on with that commit and shows its anchor; the opening commit's
+    own link compares it with HEAD (where it stands now)."""
+    from kigit_gui import kigit
+
+    hardware = await kigit.example(tmp_path / "ex")
+    await open_at(user, monkeypatch, str(hardware))
+    await user.should_see("Pick two commits on the left", retries=100)
+    rows = {r["subject"].split(":")[0].split(",")[0]: r for r in commit_table(user).rows}
+    opened_on = rows["Rework the power"]["hash"]
+    done_at = rows["Rename VIN to VBUS"]["hash"]
+    head = commit_table(user).rows[1]["hash"]
+    asked = []
+    monkeypatch.setattr(ui, "run_javascript", lambda code, **kw: asked.append(code))
+
+    user.find(marker="discussions-button").click()
+    await user.should_see(marker="discussion-row")
+    user.find(marker="discussion-7e3a90c4").click()  # TP1's, in the example
+    await user.should_see("TP1 is in the way of the rail")
+    links = [e for e in user.client.elements.values() if "discussion-commit" in e._markers]  # noqa: SLF001
+    # The header's (opened on), then one per message: Author B's (opened on), Author A's (done at).
+    assert [e.text for e in links] == [opened_on[:7], opened_on[:7], done_at[:7]]
+
+    # Done at d627454: compared with where it was opened, TP1 shown (gone by then: removed).
+    user.find(marker="discussion-commit", content=done_at[:7]).click()
+    viewer = marked(user, "viewer")
+    for _ in range(100):
+        if "/diffs/" in (viewer.props.get("src") or ""):
+            break
+        await asyncio.sleep(0.1)
+    await user.should_see(f"{opened_on[:7]} ↔ {done_at[:7]}", retries=50)
+    assert any('"name": "TP1"' in c and "postMessage" in c for c in asked)  # shown once it's loaded
+
+    # The opening commit's own link: where it stands now, at HEAD.
+    asked.clear()
+    user.find(marker="discussions-button").click()
+    user.find(marker="discussion-7e3a90c4").click()
+    await user.should_see("TP1 is in the way of the rail")
+    links = [e for e in user.client.elements.values() if "discussion-commit" in e._markers]  # noqa: SLF001
+    with user.client:  # links[0], the header's (two links have that text)
+        from nicegui.events import GenericEventArguments, handle_event
+        for listener in list(links[0]._event_listeners.values()):  # noqa: SLF001
+            handle_event(listener.handler, GenericEventArguments(sender=links[0], client=user.client, args=None))
+    await user.should_see(f"{opened_on[:7]} ↔ {head[:7]}", retries=50)
+    assert any('"name": "TP1"' in c for c in asked)
+
+
 async def test_pulled_discussions_show_up(user: User, monkeypatch, tmp_path: Path) -> None:
     """A discussion that arrives on disk (a git pull) is picked up by itself."""
     from kigit_gui import threads
@@ -927,7 +975,7 @@ async def test_pulled_discussions_show_up(user: User, monkeypatch, tmp_path: Pat
     await open_at(user, monkeypatch, str(project))
     await user.should_see("Pick two commits on the left", retries=50)
     head = git(project, "rev-parse", "HEAD")
-    threads.start(project, "From a colleague", "Please check the GND pour.", head, "Ada", head)
+    threads.start(project, "From a colleague", "Please check the GND pour.", head, "Author B", head)
     badge = marked(user, "discussions-badge")
     for _ in range(80):  # checked every 4 s
         if badge.visible:

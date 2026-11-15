@@ -120,12 +120,12 @@ def seed_reviews(project: Path, kigit: str) -> dict:
                                          f"{json.dumps({'author': who, 'time': when, 'head': commit, 'kind': kind})}"
                                          f" -->\n\n{text}\n\n")
     (tdir / "5d1e2a90.md").write_text(
-        f"---\nid: 5d1e2a90\ntitle: {(a2 or a1)['name']} sits on the keep-out\nopened: 2026-11-12 09:40\nby: Sam\n"
+        f"---\nid: 5d1e2a90\ntitle: {(a2 or a1)['name']} sits on the keep-out\nopened: 2026-11-12 09:40\nby: Author B\n"
         f"commit: {commit}\nanchor: {anchor}\n---\n\n"
-        + msg("Sam", "2026-11-12 09:40", "comment", "Its courtyard overlaps the mounting hole's keep-out. "
+        + msg("Author B", "2026-11-12 09:40", "comment", "Its courtyard overlaps the mounting hole's keep-out. "
               "Can it move inwards?")
-        + msg("Ada", "2026-11-12 11:15", "comment", "Why not rotate it 90°? That keeps the trace short.")
-        + msg("Sam", "2026-11-12 16:02", "done", "Rotated and moved 0.8 mm in; DRC is clean."))
+        + msg("Author C", "2026-11-12 11:15", "comment", "Why not rotate it 90°? That keeps the trace short.")
+        + msg("Author B", "2026-11-12 16:02", "done", "Rotated and moved 0.8 mm in; DRC is clean."))
     # A reviewed HEAD, then amended: the GUI finds its review a new home.
     head = git(project, "rev-parse", "HEAD")
     if head != commit:
@@ -372,7 +372,7 @@ def drive(base: str, project: Path, extras: list[Path], seeded: dict, shots: Sho
         ready_3d()
         shots.save("3d-dock", lambda f: page.screenshot(timeout=180000, path=f))
         with ctx.expect_page() as info:
-            page.locator("button:has(i:text('open_in_new'))").first.click()
+            page.locator(".kigit-dock button:has(i:text('open_in_new'))").first.click()
         tab = info.value
         page.bring_to_front()  # a background tab isn't drawn, so it can't be screenshot
         page.get_by_text("in another tab").first.wait_for(timeout=60000)

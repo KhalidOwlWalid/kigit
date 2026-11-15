@@ -187,8 +187,8 @@ TEST_CASE("kigit example: the example project's history, the same everywhere") {
     // for everyone, on every OS (the reviews name them). Pinned on purpose:
     // after changing the example (tools/make_example.py), update these.
     CHECK(log.out.find("First board") != std::string::npos);
-    CHECK(run("git -C " + quote(dir) + " rev-list --max-parents=0 HEAD").out.substr(0, 40) == "9ea234ce51abd247897ff306d6837f1e641f0be3");
-    CHECK(run("git -C " + quote(dir) + " rev-parse HEAD").out.substr(0, 40) == "957795c5fbfa381196fb7d15adf9b500d9cbdea7");
+    CHECK(run("git -C " + quote(dir) + " rev-list --max-parents=0 HEAD").out.substr(0, 40) == "791d17b7cb4fd78a351a15d45783b3ad195d3e11");
+    CHECK(run("git -C " + quote(dir) + " rev-parse HEAD").out.substr(0, 40) == "b35493eae535b732fff2a2d632f584bf62b7b0d7");
     CHECK(!run("git -C " + quote(dir) + " status --porcelain").out.empty()); // an uncommitted change too
     // Commits named in the reviews are filled in.
     std::string review = read_text(tmp / "ex/hardware/reviews/3b6d1f22.md");

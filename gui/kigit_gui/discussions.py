@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import getpass
 from pathlib import Path
-from typing import Callable
+from typing import Awaitable, Callable
 
 from nicegui import ui
 
@@ -27,12 +27,17 @@ def status_chip(status: str) -> None:
         f"status-{status}")
 
 
+HASH_LINK = "font-mono cursor-pointer underline decoration-dotted underline-offset-2 hover:text-amber-300"
+
+
 class Discussions:
     """project: the project folder; me: your name (git user.name); head: HEAD's
-    hash; focus(anchor): show it in the viewer; changed(): the list changed."""
+    hash; focus(anchor): show it in the viewer; changed(): the list changed;
+    compare(old, new, anchor): compare two commits and show the anchor."""
 
-    def __init__(self, focus: Callable[[Anchor], None], changed: Callable[[], None]) -> None:
-        self.focus, self.changed = focus, changed
+    def __init__(self, focus: Callable[[Anchor], None], changed: Callable[[], None],
+                 compare: Callable[[str, str, Anchor | None], Awaitable[None]] | None = None) -> None:
+        self.focus, self.changed, self.compare_cb = focus, changed, compare
         self.project: Path | None = None
         self.me = ""
         self.head = ""
@@ -77,7 +82,7 @@ class Discussions:
             for t in shown:
                 last = t.messages[-1] if t.messages else None
                 with ui.card().classes("w-full bg-[#1c2128] p-3 gap-1 cursor-pointer").props("flat bordered").on(
-                        "click", lambda t=t: self.show_thread(t.id)).mark("discussion-row"):
+                        "click", lambda t=t: self.show_thread(t.id)).mark("discussion-row", f"discussion-{t.id}"):
                     with ui.row().classes("w-full items-center gap-2 no-wrap"):
                         status_chip(t.status)
                         ui.label(t.title).classes("text-sm font-semibold truncate")
@@ -120,7 +125,10 @@ class Discussions:
             if t.anchor:
                 ui.chip(chip_text(t.anchor), icon="my_location", on_click=lambda: self._focus(t)).props(
                     "dense outline color=amber-5 clickable").classes("text-xs").tooltip("Show it in the viewer")
-            ui.label(f"Opened by {t.by} on commit {t.commit[:7]} · {t.opened}")
+            with ui.row().classes("items-baseline gap-1"):
+                ui.label(f"Opened by {t.by} on commit")
+                self._hash_link(t, t.commit)
+                ui.label(f"· {t.opened}")
         with ui.scroll_area().classes("w-full").style("height: min(26rem, 50vh)") as area:
             for m in t.messages:
                 self._message(m)
@@ -155,7 +163,8 @@ class Discussions:
                     ui.label(m.author).classes("text-xs font-semibold")
                     ui.label(m.time).classes("text-[11px] text-gray-500")
                     if m.head:
-                        ui.label(f"at {m.head[:7]}").classes("text-[11px] text-gray-500 font-mono")
+                        ui.label("at").classes("text-[11px] text-gray-500 font-mono")
+                        self._hash_link(self._thread(), m.head, "text-[11px] text-gray-500")
                 if verb:
                     icon, color = STATUS_LOOK[threads.STATUS[m.kind]]
                     with ui.row().classes("items-center gap-1"):
@@ -163,6 +172,36 @@ class Discussions:
                         ui.label(verb.capitalize()).classes("text-xs").classes(f"text-{color.split('-')[0]}-300")
                 if m.text:
                     ui.html(review.to_html(m.text)).classes("kigit-md-view nicegui-markdown text-sm text-gray-200")
+
+    def jump_pair(self, t: threads.Thread, at: str) -> tuple[str, str]:
+        """What clicking commit `at` in discussion t compares: the commit it was
+        opened on with `at`, so you see what happened to it since. `at` being
+        that commit itself compares it with HEAD (where it stands now), and if
+        that's HEAD too, the comparison it was pinned in."""
+        if at != t.commit:
+            return t.commit, at
+        if self.head and self.head != t.commit:
+            return t.commit, self.head
+        seen = t.anchor.seen if t.anchor else None
+        if seen and seen.old and seen.new:
+            return seen.old, seen.new
+        return t.commit + "~1", t.commit
+
+    def _hash_link(self, t: threads.Thread | None, at: str, classes: str = "") -> None:
+        if t is None:
+            return
+        old, new = self.jump_pair(t, at)
+        what = chip_text(t.anchor) if t.anchor else "the change"
+        link = ui.label(at[:7]).classes(f"{HASH_LINK} {classes}").on("click", lambda: self._jump(t, old, new))
+        link.tooltip(f"Compare {old[:7]} with {new[:7]} and show {what}").mark("discussion-commit")
+
+    async def _jump(self, t: threads.Thread, old: str, new: str) -> None:
+        if not self.compare_cb:
+            return
+        self._thread_dialog.close()
+        if getattr(self, "_list_dialog", None) is not None:
+            self._list_dialog.close()  # the viewer is what you want to see now
+        await self.compare_cb(old, new, t.anchor)
 
     def _focus(self, t: threads.Thread) -> None:
         self._thread_dialog.close()
