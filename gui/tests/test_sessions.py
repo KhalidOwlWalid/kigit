@@ -36,7 +36,7 @@ def test_opened_and_compared(tmp_path: Path) -> None:
 def test_gone_folders_and_broken_files(tmp_path: Path, fresh: Path) -> None:
     sessions.opened(str(tmp_path / "gone"), str(tmp_path / "gone" / "x.kicad_pcb"), "gone")
     assert not sessions.load()[0].exists
-    data = json.loads(fresh.read_text())
+    data = json.loads(fresh.read_text(encoding="utf-8"))
     fresh.write_text(json.dumps(data + [{"no": "dir"}, "junk"]))
     assert len(sessions.load()) == 1  # broken entries are skipped
     fresh.write_text("{not json")

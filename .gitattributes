@@ -2,3 +2,6 @@
 tests/fixtures/** -text
 # Shell scripts must keep LF line endings to run.
 *.sh text eol=lf
+# The example project too: its commit hashes depend on the exact bytes
+# (pinned in tests/cpp/test_cli.cpp), so no CRLF on Windows checkouts.
+examples/** -text

@@ -6,6 +6,7 @@
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
+#include <fstream>
 #include <set>
 
 using namespace kigit::test;
@@ -196,6 +197,25 @@ TEST_CASE("kigit example: the example project's history, the same everywhere") {
     CHECK(review.find(run("git -C " + quote(dir) + " rev-parse HEAD~3").out.substr(0, 40)) != std::string::npos);
     // Not over an existing project.
     CHECK(run_kigit("example " + quote(dir)).code == 1);
+}
+
+TEST_CASE("kigit example: a CRLF checkout (git on Windows) gives the same commits") {
+    TempDir tmp;
+    const fs::path src = fs::path(KIGIT_FIXTURES) / ".." / ".." / "examples";
+    for (const auto& e : fs::recursive_directory_iterator(src)) {
+        fs::path to = tmp / "crlf" / fs::relative(e.path(), src);
+        if (e.is_directory()) { fs::create_directories(to); continue; }
+        std::string text = read_text(e.path()), crlf;
+        for (char c : text) crlf += c == '\n' ? std::string("\r\n") : std::string(1, c);
+        std::ofstream(to, std::ios::binary) << crlf;
+    }
+    kigit::platform::set_env("KIGIT_EXAMPLES_DIR", (tmp / "crlf").string());
+    RunResult made = run_kigit("example " + quote((tmp / "ex").string()));
+    kigit::platform::set_env("KIGIT_EXAMPLES_DIR", "");
+    INFO("stderr: " << made.err);
+    REQUIRE(made.code == 0);
+    CHECK(run("git -C " + quote((tmp / "ex").string()) + " rev-parse HEAD").out.substr(0, 40) ==
+          "b35493eae535b732fff2a2d632f584bf62b7b0d7");
 }
 
 TEST_CASE("diff across the folder rename, as JSON on stdout") {

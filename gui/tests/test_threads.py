@@ -35,7 +35,7 @@ def test_a_discussion_from_open_to_accepted(tmp_path: Path) -> None:
 def test_readable_file(tmp_path: Path) -> None:
     t = threads.start(tmp_path, "Check C1", "Value?", C1, "Author B <a@b>", C1)
     threads.add(tmp_path, t.id, "Author A", C2, "Fixed.", "done")
-    text = threads.path_of(tmp_path, t).read_text()
+    text = threads.path_of(tmp_path, t).read_text(encoding="utf-8")
     assert f"**Author B <a@b>** · {t.opened} · at 1111111" in text  # a line for people
     assert "· marked done at 2222222" in text
     assert "<!-- kigit-msg" in text and "\\u003ca@b\\u003e" in text  # a name can't end the comment

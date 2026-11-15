@@ -332,7 +332,7 @@ async def test_include_silkscreen_checkbox(user: User, monkeypatch) -> None:
                 break
             await asyncio.sleep(0.1)
         src = frame.props["src"]
-        return (app.CACHE / src.split("/diffs/")[1].split("?")[0]).read_text()
+        return (app.CACHE / src.split("/diffs/")[1].split("?")[0]).read_text(encoding="utf-8")
 
     assert '"silk":null' in await compare()
     box.value = True
@@ -358,7 +358,7 @@ async def test_include_source_checkbox(user: User, monkeypatch) -> None:
                 break
             await asyncio.sleep(0.1)
         src = frame.props["src"]
-        return (app.CACHE / src.split("/diffs/")[1].split("?")[0]).read_text()
+        return (app.CACHE / src.split("/diffs/")[1].split("?")[0]).read_text(encoding="utf-8")
 
     assert '"src":[' not in await compare()
     box.value = True
@@ -398,7 +398,7 @@ async def test_review_a_commit(user: User, monkeypatch, tmp_path: Path) -> None:
     await user.should_see(marker="viewer", retries=100)
     assert user.find(marker="review-panel").elements.pop().value  # the drawer is open
     src = user.find(marker="viewer").elements.pop().props["src"]
-    page = (app.CACHE / src.split("/diffs/")[1].split("?")[0]).read_text()
+    page = (app.CACHE / src.split("/diffs/")[1].split("?")[0]).read_text(encoding="utf-8")
     assert docs["short"] in page and v2["short"] in page  # its parent .. it
 
     # Nothing is written until there's something to keep.
@@ -437,7 +437,7 @@ async def test_review_a_commit(user: User, monkeypatch, tmp_path: Path) -> None:
     assert next(x for x in commit_table(user).rows if x["hash"] == v2["hash"])["reviewed"]
     assert (r.date, r.author) == (v2["date"], "kigit tests")
     await user.should_see(f"ID {r.id}")
-    assert f"[{r.id}]({r.id}.md)" in (project / "reviews" / "index.md").read_text()
+    assert f"[{r.id}]({r.id}.md)" in (project / "reviews" / "index.md").read_text(encoding="utf-8")
 
     # Something this commit removed is marked so.
     emit(user, "kigit_pinned", {"tab": "sch", "kind": "part", "name": "R9", "seen": {**seen, "side": "old"}})

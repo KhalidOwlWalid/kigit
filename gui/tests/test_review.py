@@ -120,7 +120,7 @@ def test_index_lists_every_review(tmp_path: Path) -> None:
     new = sample()
     review.save(tmp_path, new)
     assert old.id != new.id
-    index = (tmp_path / "reviews" / "index.md").read_text()
+    index = (tmp_path / "reviews" / "index.md").read_text(encoding="utf-8")
     rows = [line for line in index.splitlines() if line.startswith("| [")]
     # Newest commit first; each row links its file, with the full hash.
     assert rows[0].startswith(f"| [{new.id}]({new.id}.md) | `{COMMIT}` | 2025-03-01 12:00 | Author B \\| L | ")
@@ -263,7 +263,7 @@ def test_move_and_merge(tmp_path: Path) -> None:
     merged = review.load(a)
     assert [n.title for n in merged.notes] == ["One", "Two"]
     assert "First." in merged.summary and "Second." in merged.summary
-    assert b.name not in (tmp_path / "reviews" / "index.md").read_text()
+    assert b.name not in (tmp_path / "reviews" / "index.md").read_text(encoding="utf-8")
 
 
 def test_clean_tag() -> None:

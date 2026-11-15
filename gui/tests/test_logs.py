@@ -34,8 +34,8 @@ def test_starting_again_starts_a_new_file(tmp_path: Path) -> None:
     second = logs.start(str(tmp_path / "b"), console=False)
     logs.log.info("only in the second")
     logs.stop()
-    assert "only in the second" not in first.read_text()
-    assert "only in the second" in second.read_text()
+    assert "only in the second" not in first.read_text(encoding="utf-8")
+    assert "only in the second" in second.read_text(encoding="utf-8")
 
 
 def test_no_log_means_no_file(tmp_path: Path) -> None:
@@ -53,7 +53,7 @@ def test_log_dir_from_environment(monkeypatch, tmp_path: Path) -> None:
 
 async def test_kigit_calls_append_to_the_session_log(session: Path) -> None:
     await kigit.history(PROJECT)
-    text = session.read_text()
+    text = session.read_text(encoding="utf-8")
     assert "[kigit] [info] run: kigit" in text   # kigit's own lines, in the GUI's file
     assert "[kigit] [info] done: exit 0" in text
     assert "session start" not in text           # a step of the GUI's session, not its own
@@ -63,7 +63,7 @@ async def test_kigit_calls_append_to_the_session_log(session: Path) -> None:
 async def test_failed_kigit_call_is_logged(session: Path) -> None:
     with pytest.raises(kigit.KigitError):
         await kigit.diff_html(PROJECT, "no-such-commit", "HEAD", session.parent / "x.html")
-    text = session.read_text()
+    text = session.read_text(encoding="utf-8")
     assert "unknown revision 'no-such-commit'" in text
     assert "[kigit-gui] [warning]" in text
 
@@ -76,7 +76,7 @@ async def test_messages_shown_to_the_user_are_logged(user: User, monkeypatch, se
     await user.should_see(marker="landing", retries=50)  # started outside a project
     user.find(marker="open-button").click()
     await user.should_see("No KiCad project found", retries=50)
-    assert "shown to user: No KiCad project found" in session.read_text()
+    assert "shown to user: No KiCad project found" in session.read_text(encoding="utf-8")
 
 
 @pytest.mark.module_under_test(app)

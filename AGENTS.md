@@ -95,7 +95,8 @@ Other folders:
   UUIDs, so it's reproducible); installed to `share/kigit/examples`.
   `src/commands/example.cpp` commits the steps in order with fixed
   author/dates and `core.autocrlf=false`, so the hashes are the same on
-  every OS (pinned in the CLI test); `{{commit:N}}`/`{{short:N}}` in .md
+  every OS (pinned in the CLI test; `examples/** -text` in .gitattributes,
+  and text files are committed with LF even from a CRLF copy); `{{commit:N}}`/`{{short:N}}` in .md
   files become the Nth commit's hash. After changing the generator: check
   the nets against KiCad (`kicad-cli sch export netlist` per step,
   `kigit --check-netlist`), then update the pinned hashes.

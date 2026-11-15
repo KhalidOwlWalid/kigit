@@ -69,6 +69,15 @@ void put_step(const fs::path& src, const fs::path& dest, const fs::path& folder,
         fs::path to = dest / folder / fs::relative(e.path(), src);
         fs::create_directories(to.parent_path());
         std::string data = read_all(e.path());
+        // Text files are committed with LF whatever the checkout did (a
+        // Windows clone may have CRLF): the hashes depend on the bytes.
+        if (data.find('\0') == std::string::npos) {
+            std::string lf;
+            lf.reserve(data.size());
+            for (size_t i = 0; i < data.size(); ++i)
+                if (!(data[i] == '\r' && i + 1 < data.size() && data[i + 1] == '\n')) lf += data[i];
+            data = std::move(lf);
+        }
         if (e.path().extension() == ".md") data = fill(data, commits);
         std::ofstream(to, std::ios::binary) << data;
     }

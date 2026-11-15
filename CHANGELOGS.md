@@ -4,6 +4,8 @@ All notable changes to kigit, newest first. The format follows [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-15
+
 ### Added
 
 - **Hide any panel, or open it in a new tab**: the commit list, the review panel and the comparison's sidebar fold to a rail on their edge (click it to bring the panel back), and the 3D dock folds to its bar; each is remembered. Each panel has a new-tab button too: the project in another kigit tab, the review on the Reviews page, the comparison or 3D view on its own.
@@ -20,14 +22,21 @@ All notable changes to kigit, newest first. The format follows [Keep a Changelog
 - The **Reviews page** has a new design: a header with counts, reviews as a timeline, notes marked with PCB/SCH badges and tag colours, nicer Markdown (code, tables, quotes, task lists), a light/dark switch, `/` to search, and copyable heading links. `[[commit subject]]` links to that commit's review.
 - Reviews survive **rebase, amend and squash**: the GUI notices reviews of commits no branch has any more, moves them to the commit a rebase or amend made (found by author and author date), and a squashed commit's review can **Bring in** the reviews of the commits squashed into it. `kigit --rewritten HASH...` gives the GUI that information.
 - `kigit gui` takes the next free port when 8765 is in use, so several GUIs can run at once, and prints its address; `--port N` picks one (and says so if it's taken).
+- GUI panels (the commit list, the review panel, the viewer's sidebar and the 3D dock) **resize** by dragging their edge; double-click resets it, and the size is remembered.
 - **Wrap messages** switch above the GUI's commit list, for reading long commit messages (remembered).
 - `kigit --log` gives each commit's parent.
 - Documentation site at [khalidowlwalid.github.io/kigit](https://khalidowlwalid.github.io/kigit/), built with MkDocs (Material): installation, how-to guides for the GUI, command line, PCB and schematic viewers and source panel, examples, and an architecture page.
 - Demo videos and GIFs of the PCB and schematic diff.
 
+- `THIRD_PARTY_NOTICES.md`: the licences of the libraries kigit is built with, shipped with it.
+
 ### Changed
 
-- README rewritten to match the docs home page, with the detailed usage moved to the docs site.
+- README rewritten to match the docs home page, with the detailed usage moved to the docs site, plus badges.
+
+### Fixed
+
+- The GUI's tests failed on Python 3.14 (NiceGUI's vbuild uses `pkgutil.find_loader`, removed in 3.14): the GUI now asks uv for Python 3.10 to 3.13.
 
 ## [0.1.2] - 2026-10-28
 
@@ -100,7 +109,8 @@ The first release.
 - The GUI could freeze on Windows when stopped with Ctrl+C.
 - Build fixes for GitHub Actions (CMake policy minimum, doctest warnings on MSVC).
 
-[Unreleased]: https://github.com/KhalidOwlWalid/kigit/compare/v0.1.2...HEAD
+[Unreleased]: https://github.com/KhalidOwlWalid/kigit/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/KhalidOwlWalid/kigit/compare/v0.1.2...v0.2.0
 [0.1.2]: https://github.com/KhalidOwlWalid/kigit/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/KhalidOwlWalid/kigit/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/KhalidOwlWalid/kigit/releases/tag/v0.1.0
