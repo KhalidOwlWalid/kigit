@@ -10,6 +10,7 @@ folder to check the 2-level search).
 """
 
 import asyncio
+import json
 import atexit
 import os
 import shutil
@@ -467,6 +468,93 @@ async def test_add_a_link(user: User, monkeypatch, tmp_path: Path) -> None:
     box = user.find(marker="review-summary").elements.pop()
     assert box.value == "See the [datasheet](https://ti.com/lit/ds/tps62130.pdf) for limits."
     await user.should_see("Unsaved changes")
+
+
+async def test_markdown_editor(user: User, monkeypatch, tmp_path: Path) -> None:
+    """The review's text boxes are Markdown editors like GitHub's: Write and
+    Preview, a toolbar, and files added by paste, drop or click: stored in
+    reviews/assets/ and served back (pictures shown, others downloaded)."""
+    from starlette.requests import Request
+
+    from kigit_gui import review_panel
+
+    project = make_fixture_repo(tmp_path / "repo")
+    await open_at(user, monkeypatch, str(project))
+    await user.should_see("Pick two commits on the left", retries=50)
+    v2 = next(r for r in commit_table(user).rows if r["subject"].startswith("v2"))
+    await select(user, [v2])
+    user.find(marker="review-button").click()
+    await user.should_see(marker="review-summary", retries=100)
+    for action in ("heading", "bold", "italic", "quote", "code", "link", "bullets", "numbers", "tasks"):
+        button = marked(user, f"review-summary-{action}")
+        assert action == "link" or button.props.get("data-md") == action  # the page formats those
+    await user.should_see("Paste, drop, or click to add files")
+
+    # Preview renders what's written; Write goes back to the text.
+    user.find(marker="review-summary").type("**Rev B** and $x^2$")
+    user.find(marker="review-summary-preview").click()
+    rendered = marked(user, "review-summary-rendered")
+    assert rendered.visible and "<strong>Rev B</strong>" in rendered.content and "<math" in rendered.content
+    assert not marked(user, "review-summary").visible
+    user.find(marker="review-summary-write").click()
+    assert marked(user, "review-summary").visible and not rendered.visible
+
+    # The upload route (what the page calls with a dropped file).
+    key = marked(user, "review-summary-editor").props["data-key"]
+
+    async def post(body: bytes, name: str, mime: str):
+        async def receive():
+            return {"type": "http.request", "body": body, "more_body": False}
+        headers = [(b"content-type", mime.encode()), (b"x-filename", name.encode())]
+        scope = {"type": "http", "method": "POST", "path": "/", "headers": headers, "query_string": b""}
+        return await review_panel._upload(key, Request(scope, receive))  # noqa: SLF001
+
+    r = await post(b"%PDF-1.7", "data%20sheet.pdf", "application/pdf")
+    got = json.loads(r.body)
+    assert got["markdown"] == f"[data sheet.pdf]({got['path']})"
+    assert (project / "reviews" / got["path"]).read_bytes() == b"%PDF-1.7"
+    served = await review_panel._image(key, got["path"].split("/")[1])  # noqa: SLF001
+    assert served.media_type == "application/pdf"
+    r = await post(b"MZ\x90", "tool.exe", "application/octet-stream")
+    exe = json.loads(r.body)["path"]
+    served = await review_panel._image(key, exe.split("/")[1])  # noqa: SLF001
+    assert served.media_type == "application/octet-stream" and "attachment" in served.headers["content-disposition"]
+    assert (await post(b"", "empty.txt", "text/plain")).status_code == 400
+    assert (await review_panel._image(key, "../review.md")).status_code == 404  # noqa: SLF001
+
+
+async def test_emptied_review_loses_its_mark(user: User, monkeypatch, tmp_path: Path) -> None:
+    """A review emptied of everything and written is removed, so the commit
+    list doesn't mark the commit as reviewed; an empty file already there
+    doesn't mark it either."""
+    from kigit_gui import review
+
+    project = make_fixture_repo(tmp_path / "repo")
+    await open_at(user, monkeypatch, str(project))
+    await user.should_see("Pick two commits on the left", retries=50)
+    v2 = next(r for r in commit_table(user).rows if r["subject"].startswith("v2"))
+    await select(user, [v2])
+    user.find(marker="review-button").click()
+    await user.should_see(marker="review-summary", retries=100)
+    user.find(marker="review-summary").type("Worth a look.")
+    user.find(marker="review-write").click()
+    row = lambda: next(r for r in commit_table(user).rows if r["hash"] == v2["hash"])  # noqa: E731
+    for _ in range(30):
+        if row()["reviewed"]:
+            break
+        await asyncio.sleep(0.1)
+    assert row()["reviewed"] and v2["hash"] in review.all_reviews(project)
+
+    with user.client:
+        marked(user, "review-summary").value = ""  # everything deleted
+    user.find(marker="review-write").click()
+    await user.should_see("Nothing left in the review")
+    assert not row()["reviewed"] and v2["hash"] not in review.all_reviews(project)
+    assert v2["hash"] not in (project / "reviews" / "index.md").read_text(encoding="utf-8")
+
+    # An empty review file from before this fix: no mark.
+    review.save(project, review.Review(commit=v2["hash"], parent=v2["parent"], subject=v2["subject"]))
+    assert v2["hash"] not in review.reviewed_commits(project)
 
 
 async def test_unwritten_review_is_kept_as_a_draft(user: User, monkeypatch, tmp_path: Path) -> None:

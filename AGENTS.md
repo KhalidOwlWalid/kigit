@@ -81,7 +81,11 @@ Other folders:
   `shortcuts.py` (every shortcut, for the header's list),
   `board3d.py` (the 3D view page),
   `resize.py` (drag handles for the drawers), `panels.py` (hiding drawers
-  to a rail).
+  to a rail), `md_editor.py` (the GitHub-style Markdown editor: Write /
+  Preview, toolbar formatting done in page JS via `execCommand` so undo
+  works, files by paste/drop/click to `/review-upload/{key}` ->
+  `review.save_file` in reviews/assets/; `Editors` is one per page, used by
+  the review panel and discussions).
 - `submodules/`: the libraries (json, spdlog, doctest) as pinned git submodules.
 - `tests/`: `cpp/` (doctest), `fixtures/` (demo v1/v2, hier, bus projects),
   `regression.sh`.
@@ -479,7 +483,9 @@ at once. localStorage settings are per origin, so per port.
   never parsed back. Note times (`review.stamp`, on every save): `created`
   when a note is first written, `edited` when a later write changes its
   title, text, tags or anchor, compared with the file on disk. Notes from
-  older files have no times and get none.
+  older files have no times and get none. Writing a review with no summary
+  and no notes deletes its file (`review.remove`); the commit list's mark
+  is `review.reviewed_commits` (non-empty reviews only).
   A note is a `## title` line followed by
   `<!-- kigit-note {"id", "anchor", "tags", "created", "edited"} -->`; anything before the first
   note is the summary. Anchors are `{tab, kind, name, seen}`: pcb

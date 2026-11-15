@@ -4,6 +4,14 @@ All notable changes to kigit, newest first. The format follows [Keep a Changelog
 
 ## [Unreleased]
 
+### Added
+
+- Review and discussion text boxes are Markdown editors like GitHub's: Write and Preview tabs, a formatting toolbar (heading, bold, italic, quote, code, link, lists, task list; Ctrl+B, Ctrl+I, Ctrl+K), and any file added by paste, drop or click: pictures show inline, other files (datasheets, logs) become links.
+
+### Fixed
+
+- A review emptied of everything kept its file, so the commit list still marked the commit as reviewed. Writing it now removes the file, and empty review files don't count.
+
 ## [0.2.0] - 2026-11-15
 
 ### Added

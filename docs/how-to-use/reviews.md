@@ -18,14 +18,16 @@ In the [GUI](gui.md), pick **one** commit and press **Review**. kigit compares i
 
 - Each note shows when it was written and, if it was changed afterwards, when it was last edited.
 
-Press **Write** (or ++ctrl+s++) to save. Until then the panel says "Unsaved changes"; if you switch to another commit first, your edits are kept as a draft for the session, and closing the page asks before throwing them away. Reviewed commits get a :material-comment-edit: mark in the commit list.
+Press **Write** (or ++ctrl+s++) to save. Until then the panel says "Unsaved changes"; if you switch to another commit first, your edits are kept as a draft for the session, and closing the page asks before throwing them away. Reviewed commits get a :material-comment-edit: mark in the commit list. Delete everything in a review (summary and notes) and Write, and its file is removed, mark and all.
 
 ### Writing notes
 
-Text is Markdown: lists, code, tables, links.
+Text is Markdown: lists, code, tables, links. The text boxes (the summary, notes, and discussion messages) work like GitHub's comment box:
 
-- **Pictures:** paste or drop an image into a note. It's saved in `reviews/assets/`.
-- **Links:** select the words to link and press the :material-link: button in the text box (or ++ctrl+k++), then give the address. Web addresses typed as they are (`https://...`) become links by themselves.
+- **Write / Preview:** Preview shows it as it will look, math included.
+- **Toolbar:** heading, **bold** (++ctrl+b++), *italic* (++ctrl+i++), quote, code, link, bulleted, numbered and task lists. Select text first to format it; press again to undo it. ++ctrl+z++ undoes too.
+- **Files:** paste, drop, or click *Paste, drop, or click to add files* under the box. Pictures show in the text; any other file (a datasheet PDF, a scope capture, a log) becomes a link named after it. They're saved in `reviews/assets/`; PDFs and pictures open in the browser, other files download.
+- **Links:** select the words to link and press :material-link: (or ++ctrl+k++), then give the address. Web addresses typed as they are (`https://...`) become links by themselves.
 - **Math** is LaTeX, as in Obsidian: `$f_c = \frac{1}{2\pi RC}$` in a line, or `$$ ... $$` on lines of its own for a displayed equation. Prices like "$5 and $10" stay text; write `\$` for a dollar sign next to something that would look like math.
 - **Tags:** pick them from the dropdown: the built-in ones (reason, todo, question, risk) and any tag used elsewhere in the project. Type a new one and press Enter to add it; it's saved as one lower-case word ("Needs Review" becomes `needs-review`), as Obsidian expects.
 
@@ -42,7 +44,7 @@ One Markdown file per commit, in the `reviews/` folder next to the board:
 reviews/
   index.md        every review: ID, commit, date, author, subject (rebuilt on each Write)
   3f9a1c0e.md     one review; its ID is its file name
-  assets/         pasted pictures
+  assets/         added files: pictures, datasheets, ...
   threads/        discussions, one file each (see below)
   decisions/      your own notes, if you like (see below)
 ```

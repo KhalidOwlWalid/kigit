@@ -16,7 +16,8 @@ from nicegui import ui
 
 from . import logs, review, threads
 from .review import Anchor
-from .review_panel import chip_text
+from .md_editor import Editors, rewrite_assets
+from .review_panel import chip_text, project_key
 
 STATUS_LOOK = {"open": ("priority_high", "red-4"), "done": ("task_alt", "amber-5"), "accepted": ("verified", "green-5")}
 
@@ -36,8 +37,10 @@ class Discussions:
     compare(old, new, anchor): compare two commits and show the anchor."""
 
     def __init__(self, focus: Callable[[Anchor], None], changed: Callable[[], None],
-                 compare: Callable[[str, str, Anchor | None], Awaitable[None]] | None = None) -> None:
+                 compare: Callable[[str, str, Anchor | None], Awaitable[None]] | None = None,
+                 editors: Editors | None = None) -> None:
         self.focus, self.changed, self.compare_cb = focus, changed, compare
+        self.editors = editors
         self.project: Path | None = None
         self.me = ""
         self.head = ""
@@ -133,8 +136,8 @@ class Discussions:
             for m in t.messages:
                 self._message(m)
         area.scroll_to(percent=1.0)
-        box = ui.textarea(placeholder="Reply: what you changed, or a question. Markdown.").props(
-            "dark outlined autogrow dense").classes("w-full text-sm").mark("discussion-reply")
+        box = self._editor("Reply: what you changed, or a question. Markdown; paste, drop or click to add files.",
+                           "discussion-reply")
         with ui.row().classes("w-full items-center gap-2"):
             ui.label(f"as {self.me}").classes("text-xs text-gray-500")
             ui.space()
@@ -171,7 +174,7 @@ class Discussions:
                         ui.icon(icon, color=color, size="xs")
                         ui.label(verb.capitalize()).classes("text-xs").classes(f"text-{color.split('-')[0]}-300")
                 if m.text:
-                    ui.html(review.to_html(m.text)).classes("kigit-md-view nicegui-markdown text-sm text-gray-200")
+                    ui.html(review.to_html(rewrite_assets(m.text, project_key(self.project)))).classes("kigit-md-view nicegui-markdown text-sm text-gray-200")
 
     def jump_pair(self, t: threads.Thread, at: str) -> tuple[str, str]:
         """What clicking commit `at` in discussion t compares: the commit it was
@@ -203,6 +206,13 @@ class Discussions:
             self._list_dialog.close()  # the viewer is what you want to see now
         await self.compare_cb(old, new, t.anchor)
 
+    def _editor(self, placeholder: str, mark: str) -> ui.textarea:
+        """A Markdown editor (md_editor.py), or a plain box without one."""
+        if self.editors is None:
+            return ui.textarea(placeholder=placeholder).props("dark outlined autogrow dense").classes(
+                "w-full text-sm").mark(mark)
+        return self.editors.editor("", lambda v: None, placeholder, mark, project_key(self.project))
+
     def _focus(self, t: threads.Thread) -> None:
         self._thread_dialog.close()
         self.focus(t.anchor)
@@ -232,8 +242,8 @@ class Discussions:
                                                                 "text-xs text-gray-400")
             title = ui.input("Title", placeholder="e.g. R704 is too close to the mounting hole").props(
                 "dark dense outlined autofocus").classes("w-full").mark("request-title")
-            body = ui.textarea(placeholder="What needs attention, and why. Markdown.").props(
-                "dark outlined autogrow dense").classes("w-full text-sm").mark("request-body")
+            body = self._editor("What needs attention, and why. Markdown; paste, drop or click to add files.",
+                                "request-body")
             ui.label("It stays open on every later commit until someone accepts it. Saved in reviews/threads/; "
                      "commit it to share it.").classes("text-xs text-gray-500")
             with ui.row().classes("w-full justify-end gap-2"):

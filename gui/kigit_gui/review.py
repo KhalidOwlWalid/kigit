@@ -55,8 +55,11 @@ INDEX = "index.md"
 ASSETS = "assets"
 TAGS = ["reason", "todo", "question", "risk"]
 IMAGE_TYPES = {"image/png": "png", "image/jpeg": "jpg", "image/gif": "gif", "image/webp": "webp"}
-# Names the GUI gives pasted images: content hash plus extension.
-ASSET_NAME = re.compile(r"^[0-9a-f]{16}\.(png|jpg|gif|webp)$")
+# Names the GUI gives added files: content hash plus extension.
+ASSET_NAME = re.compile(r"^[0-9a-f]{16}\.[a-z0-9]{1,8}$")
+# Served as themselves (shown in the browser); any other file is a download.
+SHOWN_TYPES = {"png": "image/png", "jpg": "image/jpeg", "gif": "image/gif", "webp": "image/webp",
+               "pdf": "application/pdf", "txt": "text/plain"}
 
 _NOTE_META = re.compile(r"^<!-- kigit-note (\{.*\}) -->$")
 _KINDS = {("pcb", "net"): "PCB net", ("pcb", "footprint"): "Footprint",
@@ -286,6 +289,35 @@ def all_reviews(project_dir: str | Path) -> dict[str, Path]:
     return found
 
 
+def is_empty(r: Review) -> bool:
+    """Nothing written in it: no summary and no notes."""
+    return not r.summary.strip() and not r.notes
+
+
+def reviewed_commits(project_dir: str | Path) -> set[str]:
+    """Commits with a review that has something in it (the commit list's
+    mark); an emptied review doesn't count."""
+    out = set()
+    for commit, p in all_reviews(project_dir).items():
+        try:
+            if not is_empty(load(p)):
+                out.add(commit)
+        except (OSError, ValueError, UnicodeDecodeError):
+            out.add(commit)  # there, even if unreadable
+    return out
+
+
+def remove(project_dir: str | Path, r: Review, path: Path | None) -> None:
+    """Deletes a review's file (and any it took in), then rebuilds the index:
+    for a review emptied of everything."""
+    for p in [path, *r.absorbed]:
+        if p is not None:
+            p.unlink(missing_ok=True)
+    r.absorbed = []
+    if folder(project_dir).is_dir():
+        write_index(project_dir)
+
+
 def load(path: Path) -> Review:
     return loads(path.read_text(encoding="utf-8"))
 
@@ -434,6 +466,29 @@ def save_image(project_dir: str | Path, data: bytes, mime: str) -> str:
     if not (d / name).exists():
         (d / name).write_bytes(data)
     return f"{ASSETS}/{name}"
+
+
+def save_file(project_dir: str | Path, data: bytes, filename: str, mime: str = "") -> str:
+    """Stores an added file (a datasheet, a picture, a log...) in
+    reviews/assets/, named by its content. Returns its path relative to the
+    review files. Images keep their type's extension even when pasted
+    without a name."""
+    ext = IMAGE_TYPES.get(mime) or re.sub(r"[^a-z0-9]", "", Path(filename).suffix.lower())[:8] or "bin"
+    name = f"{hashlib.sha256(data).hexdigest()[:16]}.{ext}"
+    d = folder(project_dir) / ASSETS
+    d.mkdir(parents=True, exist_ok=True)
+    if not (d / name).exists():
+        (d / name).write_bytes(data)
+    return f"{ASSETS}/{name}"
+
+
+def attachment_markdown(filename: str, path: str, mime: str = "") -> str:
+    """The Markdown for an added file: a picture for images, else a link
+    named after the file."""
+    label = re.sub(r"[\[\]\n]", "", filename or "").strip()
+    if mime in IMAGE_TYPES or path.rsplit(".", 1)[-1] in ("png", "jpg", "gif", "webp"):
+        return f"![{label}]({path})"
+    return f"[{label or path.rsplit('/', 1)[-1]}]({path})"
 
 
 # ---------------------------------------------------------------- links

@@ -38,6 +38,7 @@ from nicegui import app, background_tasks, ui
 from . import buildtime, kigit, logs, notices, review, rewritten, sessions, shortcuts, threads
 from .discussions import Discussions
 from .folder_picker import FolderPicker
+from .md_editor import Editors
 from .panels import Panels
 from .resize import Resizer
 from . import board3d, review_doc  # noqa: F401  (register the /board3d and /reviews-doc pages)
@@ -268,6 +269,7 @@ def build(start_folder: str):
     state: dict = {"board": None, "history": None, "strays": []}
     resizer = Resizer()
     panels = Panels()
+    editors = Editors()  # Markdown editors: reviews and discussions
 
     # ---------------------------------------------------------------- header
     with ui.header().classes("items-center gap-3 py-2 px-4 bg-[#161a20] border-b border-[#29303a] no-wrap"):
@@ -640,10 +642,10 @@ body.kigit-dragging iframe { pointer-events: none; }  /* else the frames swallow
             a = review.Anchor.from_dict(e.args.get("anchor"))
             notify(f"{a.label if a else 'That'} isn't in this comparison", type="warning")
 
-    def on_review_saved(commit: str) -> None:
+    def on_review_saved(commit: str, reviewed: bool = True) -> None:
         for r in table.rows:
             if r["hash"] == commit:
-                r["reviewed"] = True
+                r["reviewed"] = reviewed
         table.update()
 
     # ---------------------------------------------------------- discussions
@@ -687,12 +689,12 @@ body.kigit-dragging iframe { pointer-events: none; }  /* else the frames swallow
             if (f) f.addEventListener("load", () => setTimeout(() => f.contentWindow.postMessage({msg}, "*"), 300),
                                       {{ once: true }});""")
 
-    disc = Discussions(focus=focus, changed=lambda: threads_changed(), compare=compare_and_show)
+    disc = Discussions(focus=focus, changed=lambda: threads_changed(), compare=compare_and_show, editors=editors)
     ui.timer(4.0, watch_threads)
 
     panel = ReviewPanel(focus=focus, on_saved=on_review_saved, resizer=resizer,
                         strays=lambda: state["strays"], on_moved=lambda: background_tasks.create(check_strays()),
-                        discussions=disc, panels=panels, open_in_tab=lambda rid: ui.navigate.to(
+                        discussions=disc, panels=panels, editors=editors, open_in_tab=lambda rid: ui.navigate.to(
                             f"/reviews-doc/{project_key(Path(state['board']).parent)}#r-{rid}", new_tab=True))
     panels.finish()
 
@@ -1119,7 +1121,7 @@ body.kigit-dragging iframe { pointer-events: none; }  /* else the frames swallow
             return
         rows = []
         local = h.local
-        reviewed = set(review.all_reviews(Path(state["board"]).parent))
+        reviewed = review.reviewed_commits(Path(state["board"]).parent)
         # Each commit's discussions (opened on it): the one most in need shows.
         rank = {"open": 0, "done": 1, "accepted": 2}
         thread_of: dict[str, str] = {}

@@ -149,6 +149,24 @@ def test_save_image(tmp_path: Path) -> None:
         review.save_image(tmp_path, b"<svg/>", "image/svg+xml")
 
 
+def test_save_any_file(tmp_path: Path) -> None:
+    """Any file can be added: named by content, with its own extension
+    (images by type, even pasted without a name), and the Markdown for it."""
+    pdf = review.save_file(tmp_path, b"%PDF-1.7 fake", "TPS62130 datasheet.PDF", "application/pdf")
+    assert pdf.startswith("assets/") and pdf.endswith(".pdf") and review.ASSET_NAME.match(pdf.split("/")[1])
+    assert (tmp_path / "reviews" / pdf).read_bytes() == b"%PDF-1.7 fake"
+    assert review.save_file(tmp_path, b"%PDF-1.7 fake", "copy.pdf") == pdf  # same bytes, same file
+    assert review.save_file(tmp_path, b"\x89PNG", "", "image/png").endswith(".png")  # pasted picture
+    assert review.save_file(tmp_path, b"data", "no extension").endswith(".bin")
+    assert review.save_file(tmp_path, b"x", "weird.t a r!").endswith(".tar")  # only letters and digits
+    assert review.attachment_markdown("TPS62130 datasheet.PDF", pdf, "application/pdf") == \
+        f"[TPS62130 datasheet.PDF]({pdf})"
+    assert review.attachment_markdown("scope [1].png", "assets/0123456789abcdef.png", "image/png") == \
+        "![scope 1.png](assets/0123456789abcdef.png)"
+    assert review.attachment_markdown("", "assets/0123456789abcdef.bin") == \
+        "[0123456789abcdef.bin](assets/0123456789abcdef.bin)"
+
+
 def test_anchor_seen() -> None:
     """Where an anchor was pinned; files without it still load."""
     gone = Anchor("pcb", "footprint", "U3", Seen(PARENT, COMMIT, "old"))

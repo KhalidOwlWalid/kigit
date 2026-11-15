@@ -27,11 +27,14 @@ GROUPS: list[tuple[str, str, list[Shortcut]]] = [
         Shortcut(("Double-click a panel's edge",), "Back to its normal size",
                  ("gui/kigit_gui/app.py", 'removeProperty("--kigit-dock-w")')),
     ]),
-    ("Review editor", "rate_review", [
+    ("Review and discussion editor", "rate_review", [
         Shortcut(("Ctrl+S", "⌘S"), "Write the review", ("gui/kigit_gui/review_panel.py", 'e.key.toLowerCase() === "s"')),
+        Shortcut(("Ctrl+B", "⌘B"), "Bold", ("gui/kigit_gui/md_editor.py", 'k === "b"')),
+        Shortcut(("Ctrl+I", "⌘I"), "Italic", ("gui/kigit_gui/md_editor.py", 'format(ta, k === "b" ? "bold" : "italic")')),
         Shortcut(("Ctrl+K", "⌘K"), "Add a link (around the selected text)",
-                 ("gui/kigit_gui/review_panel.py", 'e.key.toLowerCase() === "k"')),
-        Shortcut(("Paste", "Drop"), "An image into a note", ("gui/kigit_gui/review_panel.py", '"paste"')),
+                 ("gui/kigit_gui/md_editor.py", 'k === "k"')),
+        Shortcut(("Paste", "Drop"), "Add files (pictures show inline; other files become links)",
+                 ("gui/kigit_gui/md_editor.py", '"paste"')),
     ]),
     ("Comparison: PCB", "developer_board", [
         Shortcut(("/",), "Filter the nets", ("resources/pcb.js", 'e.key === "/"')),

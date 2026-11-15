@@ -16,6 +16,7 @@ from __future__ import annotations
 import json
 import re
 import secrets
+import urllib.parse
 from pathlib import Path
 from typing import Callable
 
@@ -24,6 +25,7 @@ from fastapi.responses import FileResponse, JSONResponse, Response
 from nicegui import app, ui
 
 from . import logs, review
+from .md_editor import Editors, rewrite_assets
 from .review import Anchor, Note, Review
 
 
@@ -53,22 +55,25 @@ def project_key(project_dir: Path) -> str:
     return key
 
 
-@app.post("/review-image/{key}")
-async def _upload_image(key: str, request: Request) -> Response:
+@app.post("/review-upload/{key}")
+async def _upload(key: str, request: Request) -> Response:
+    """A file added to a Markdown editor (md_editor.py): stored in
+    reviews/assets/; answers its path and the Markdown to insert."""
     project = _projects.get(key)
     if project is None:
         return JSONResponse({"error": "unknown project"}, status_code=404)
     mime = request.headers.get("content-type", "").split(";")[0].strip()
+    name = urllib.parse.unquote(request.headers.get("x-filename", ""))
     data = await request.body()
     if not data or len(data) > MAX_IMAGE:
         return JSONResponse({"error": "empty or too large (50 MB at most)"}, status_code=400)
     try:
-        path = review.save_image(project, data, mime)
-    except (ValueError, OSError) as e:
-        logs.log.warning("couldn't store a pasted image: %s", e)
+        path = review.save_file(project, data, name, mime)
+    except OSError as e:
+        logs.log.warning("couldn't store an added file: %s", e)
         return JSONResponse({"error": str(e)}, status_code=400)
-    logs.log.info("stored image %s/%s", review.folder(project), path)
-    return JSONResponse({"path": path})
+    logs.log.info("stored %s as %s/%s", name or mime, review.folder(project), path)
+    return JSONResponse({"path": path, "markdown": review.attachment_markdown(name, path, mime)})
 
 
 @app.get("/review-files/{key}/{name}")
@@ -77,62 +82,24 @@ async def _image(key: str, name: str) -> Response:
     if project is None or not review.ASSET_NAME.match(name):
         return Response(status_code=404)
     path = review.folder(project) / review.ASSETS / name
-    return FileResponse(path) if path.is_file() else Response(status_code=404)
+    if not path.is_file():
+        return Response(status_code=404)
+    shown = review.SHOWN_TYPES.get(name.rsplit(".", 1)[-1])
+    if shown:
+        return FileResponse(path, media_type=shown)
+    return FileResponse(path, media_type="application/octet-stream", filename=name)  # a download, never a page
 
 
-# Page script: paste or drop an image into a note's text box to upload it and
-# insert a link to it where the cursor is; links in rendered notes open
-# outside the app.
+# Page script: links in rendered notes open outside the app; Ctrl+S writes;
+# a warning before leaving with unwritten edits. (The editors' own script is
+# in md_editor.py.)
 _PAGE_JS = """
 <script>
 (() => {
-  const box = (e) => e.target.closest && e.target.closest(".kigit-md textarea");
-  const image = (files) => [...(files || [])].find((f) => f.type.startsWith("image/"));
-  async function upload(ta, file) {
-    const key = ta.closest(".kigit-md").dataset.key;
-    const r = await fetch(`/review-image/${key}`, { method: "POST", headers: { "Content-Type": file.type }, body: file });
-    const j = await r.json();
-    if (!r.ok) { emitEvent("kigit_image_failed", j.error || r.statusText); return; }
-    ta.focus();
-    const text = `![](${j.path})`;
-    if (!document.execCommand("insertText", false, text)) {
-      ta.setRangeText(text, ta.selectionStart, ta.selectionEnd, "end");
-      ta.dispatchEvent(new Event("input", { bubbles: true }));
-    }
-  }
-  document.addEventListener("paste", (e) => {
-    const ta = box(e), f = ta && image(e.clipboardData && e.clipboardData.files);
-    if (f) { e.preventDefault(); upload(ta, f); }
-  }, true);
-  document.addEventListener("dragover", (e) => { if (box(e)) e.preventDefault(); }, true);
-  document.addEventListener("drop", (e) => {
-    const ta = box(e), f = ta && image(e.dataTransfer && e.dataTransfer.files);
-    if (f) { e.preventDefault(); upload(ta, f); }
-  }, true);
   document.addEventListener("click", (e) => {
     const a = e.target.closest && e.target.closest(".kigit-md-view a[href]");
     if (a) { e.preventDefault(); window.open(a.href, "_blank", "noopener"); }
   }, true);
-  // Ctrl+K / Cmd+K in a note's text box: add a link (the GUI asks for it).
-  document.addEventListener("keydown", (e) => {
-    const ta = box(e);
-    if (ta && (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
-      e.preventDefault();
-      emitEvent("kigit_link", +ta.closest(".kigit-md").dataset.box);
-    }
-  });
-  // A text box by NiceGUI element id (the id is on the <textarea> itself).
-  const textarea = (id) => { const el = getHtmlElement(id); return el?.tagName === "TEXTAREA" ? el : el?.querySelector("textarea"); };
-  // The selection in a text box: [start, end].
-  window.kigitSelection = (id) => {
-    const t = textarea(id);
-    return t ? [t.selectionStart, t.selectionEnd] : null;
-  };
-  // Puts the cursor at `pos` in a text box.
-  window.kigitCursor = (id, pos) => {
-    const t = textarea(id);
-    if (t) { t.focus(); t.setSelectionRange(pos, pos); }
-  };
   // Ctrl+S / Cmd+S writes the open review.
   document.addEventListener("keydown", (e) => {
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s" && document.querySelector(".kigit-write")) {
@@ -157,21 +124,21 @@ _PAGE_JS = """
 """
 
 
-def rewrite_images(text: str, key: str) -> str:
-    """Markdown with assets/ links pointing at the GUI's image route, for preview."""
-    return re.sub(r"\]\(\s*assets/", f"](/review-files/{key}/", text)
+rewrite_images = rewrite_assets  # (the old name)
 
 
 class ReviewPanel:
     """The right-hand drawer. `focus(anchor)` asks the viewer to show an
-    anchor; `on_saved(commit)` is called when a review file is first written.
+    anchor; `on_saved(commit, reviewed)` is called when a review file is first written
+    (True) or removed for being empty (False).
     `strays()` gives the reviews of rewritten commits (rewritten.py) that can
     be brought into this one; `on_moved()` is called after writing a review
     that took some in."""
 
-    def __init__(self, focus: Callable[[Anchor], None], on_saved: Callable[[str], None], resizer=None,
+    def __init__(self, focus: Callable[[Anchor], None], on_saved: Callable[[str, bool], None], resizer=None,
                  strays: Callable[[], list] | None = None, on_moved: Callable[[], None] | None = None,
-                 discussions=None, panels=None, open_in_tab: Callable[[str], None] | None = None) -> None:
+                 discussions=None, panels=None, open_in_tab: Callable[[str], None] | None = None,
+                 editors: Editors | None = None) -> None:
         self.focus_cb, self.on_saved = focus, on_saved
         self.panels = panels  # panels.Panels: hiding the drawer to a rail
         self.open_in_tab_cb = open_in_tab  # open_in_tab(review id): the Reviews page at this review
@@ -192,10 +159,8 @@ class ReviewPanel:
         self.editing: set[str] = set()  # notes (by id) shown as text boxes; "summary" for the summary
 
         ui.add_body_html(_PAGE_JS)
-        ui.on("kigit_image_failed", lambda e: self._warn(f"Couldn't add the image: {e.args}"))
         ui.on("kigit_write", lambda: self.write() if self.review else None)
-        self.boxes: dict[int, ui.textarea] = {}  # text boxes by element id, for Ctrl+K
-        ui.on("kigit_link", lambda e: self.add_link(self.boxes.get(e.args) if isinstance(e.args, int) else None))
+        self.editors = editors or Editors()  # the Markdown editors (one set per page)
         # Present (with class kigit-unsaved) while anything is unwritten; the
         # page asks before closing then.
         self.unsaved_marker = ui.element("div").classes("hidden")
@@ -286,6 +251,26 @@ class ReviewPanel:
             return
         first = self.path is None
         took_in = bool(self.review.absorbed)
+        if review.is_empty(self.review):
+            # Emptied of everything: no file, so the commit isn't marked reviewed.
+            had = self.path
+            try:
+                review.remove(self.project, self.review, self.path)
+            except OSError as e:
+                self._warn(f"Couldn't remove the empty review: {e}")
+                return
+            self.dirty = False
+            self.path = None
+            if had:
+                logs.log.info("removed empty review %s", had)
+                ui.notify(f"Nothing left in the review: removed {review.FOLDER}/{had.name}")
+            self.path_label.text = self._path_text()
+            self._sync_status()
+            self.on_saved(self.review.commit, False)
+            if took_in:
+                self.bring_in_view.refresh()
+                self.on_moved()
+            return
         try:
             self.path = review.save(self.project, self.review, self.path)
         except OSError as e:
@@ -301,7 +286,7 @@ class ReviewPanel:
                 self.note_times[n.id].text = note_times(n)
         self._sync_status()
         if first:
-            self.on_saved(self.review.commit)
+            self.on_saved(self.review.commit, True)
         if took_in:
             self.bring_in_view.refresh()
             self.on_moved()
@@ -367,7 +352,6 @@ class ReviewPanel:
     def render(self) -> None:
         r = self.review
         self.body.clear()
-        self.boxes = {}
         with self.body:
             with ui.row().classes("w-full items-center gap-2 no-wrap"):
                 ui.icon("rate_review").classes("text-amber-500")
@@ -466,65 +450,9 @@ class ReviewPanel:
         open_folder_in_os(d if d.is_dir() else self.project)
 
     def _markdown_box(self, value: str, on_change: Callable[[str], None], placeholder: str, mark: str):
-        """A Markdown text box that takes pasted or dropped images, with a
-        button (and Ctrl+K) to add a link."""
-        with ui.element("div").classes("kigit-md w-full").props(f'data-key="{self.key}"') as wrap:
-            box = ui.textarea(value=value, placeholder=placeholder,
-                              on_change=lambda e: (on_change(e.value or ""), self.changed())).props(
-                "dark outlined autogrow dense").classes("w-full text-sm").mark(mark)
-            with box.add_slot("append"):
-                ui.button(icon="link", on_click=lambda: self.add_link(box)).props(
-                    "flat dense round size=sm tabindex=-1").tooltip("Add a link (Ctrl+K)").mark(f"{mark}-link")
-        wrap.props(f'data-box="{box.id}"')
-        self.boxes[box.id] = box
-        return box
-
-    async def add_link(self, box: ui.textarea | None) -> None:
-        """Asks for an address and its text, and puts a Markdown link where
-        the cursor is (around the selected text, which becomes its text)."""
-        if box is None:
-            return
-        value = box.value or ""
-        start = end = len(value)
-        try:
-            sel = await ui.run_javascript(f"window.kigitSelection({box.id})", timeout=2)
-            if isinstance(sel, list) and len(sel) == 2 and all(isinstance(x, int) for x in sel):
-                start, end = sorted(min(max(x, 0), len(value)) for x in sel)
-        except TimeoutError:
-            pass
-        result = await self._link_dialog(value[start:end])
-        if not result:
-            return
-        md = review.link_markdown(*result)
-        box.value = value[:start] + md + value[end:]
-        ui.run_javascript(f"window.kigitCursor({box.id}, {start + len(md)})")
-
-    async def _link_dialog(self, selected: str) -> tuple[str, str] | None:
-        """(text, address), or None if cancelled."""
-        with self.drawer, ui.dialog() as dialog, ui.card().classes("w-[32rem] max-w-full bg-[#161a20] gap-2"):
-            ui.label("Add a link").classes("text-base font-semibold")
-            url = ui.input("Address", placeholder="https://..., or a file in reviews/ like decisions/buck.md").props(
-                "dark dense outlined autofocus").classes("w-full").mark("link-url")
-            text = ui.input("Text", value=selected, placeholder="What the link says (default: the address)").props(
-                "dark dense outlined").classes("w-full").mark("link-text")
-            ui.label("Tip: [[note name]] links to a note in reviews/, [[review ID]] to a review.").classes(
-                "text-xs text-gray-500")
-
-            def done() -> None:
-                if (url.value or "").strip():
-                    dialog.submit(((text.value or "").strip(), url.value.strip()))
-
-            with ui.row().classes("w-full justify-end gap-2"):
-                ui.button("Cancel", on_click=lambda: dialog.submit(None)).props("flat")
-                add = ui.button("Add link", icon="link", on_click=done).props("unelevated color=amber-8").mark(
-                    "link-add")
-            add.bind_enabled_from(url, "value", backward=lambda v: bool((v or "").strip()))
-            url.on("keydown.enter", done)
-            text.on("keydown.enter", done)
-        dialog.open()
-        result = await dialog
-        dialog.delete()
-        return result
+        """A Markdown editor (md_editor.py): Write/Preview, a toolbar, files
+        by paste, drop or click."""
+        return self.editors.editor(value, lambda v: (on_change(v), self.changed()), placeholder, mark, self.key)
 
     def _markdown_view(self, text: str) -> None:
         # Same rendering as the reviews page: bare links, $math$, Markdown.
