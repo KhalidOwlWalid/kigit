@@ -22,6 +22,8 @@ struct Options {
     bool log_kicad_only = false;
     bool projects_mode = false;          // --projects
     int projects_depth = 2;
+    bool rewritten_mode = false;         // --rewritten
+    std::vector<std::string> rewritten;  // its commit hashes
     std::string netlist_file;            // --check-netlist
 
     Options() { log_query.max_count = 2000; }

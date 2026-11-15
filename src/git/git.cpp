@@ -9,7 +9,9 @@
 #include <cstdlib>
 #include <ctime>
 #include <fstream>
+#include <map>
 #include <optional>
+#include <set>
 #include <sstream>
 #include <stdexcept>
 #include <vector>
@@ -225,6 +227,75 @@ std::vector<std::string> changed_files(const std::string& root, const std::strin
         if (x == 'R' || x == 'C') i = out.find('\0', i) + 1;
     }
     return files;
+}
+
+namespace {
+
+// Splits on \x1f into exactly n fields (the last takes the rest).
+std::vector<std::string> fields(const std::string& s, size_t n) {
+    std::vector<std::string> out;
+    size_t start = 0;
+    while (out.size() + 1 < n) {
+        size_t sep = s.find('\x1f', start);
+        if (sep == std::string::npos) break;
+        out.push_back(s.substr(start, sep - start));
+        start = sep + 1;
+    }
+    out.push_back(s.substr(start));
+    out.resize(n);
+    return out;
+}
+
+} // namespace
+
+std::vector<Rewritten> rewritten(const std::string& root, const std::vector<std::string>& hashes) {
+    // Every commit on a branch, tag or HEAD, keyed by author email + author time.
+    // One record per commit, ended by \x1e (the body may hold newlines).
+    bool ok;
+    std::string out = git(root, {"log", "--all", "--format=%H%x1f%h%x1f%P%x1f%ae%x1f%at%x1f%ci%x1f%an%x1f%s%x1f%b%x1e"},
+                          ok);
+    std::set<std::string> live;
+    std::multimap<std::string, Commit> by_author;
+    size_t pos = 0;
+    while (ok && pos < out.size()) {
+        size_t end = out.find('\x1e', pos);
+        if (end == std::string::npos) end = out.size();
+        std::string rec = out.substr(pos, end - pos);
+        pos = end + 1;
+        while (!rec.empty() && (rec.front() == '\n' || rec.front() == '\r')) rec.erase(0, 1);
+        if (rec.empty()) continue;
+        auto f = fields(rec, 9);
+        Commit c;
+        c.hash = f[0], c.short_hash = f[1], c.parent = f[2].substr(0, f[2].find(' '));
+        c.date = f[5], c.author = f[6], c.subject = f[7], c.body = f[8];
+        while (!c.body.empty() && (c.body.back() == '\n' || c.body.back() == ' ')) c.body.pop_back();
+        live.insert(c.hash);
+        by_author.emplace(f[3] + "\x1f" + f[4], std::move(c));
+    }
+
+    std::vector<Rewritten> result;
+    for (const auto& h : hashes) {
+        Rewritten r;
+        r.hash = h;
+        r.live = live.count(h) > 0;
+        bool found;
+        std::string who = git(root, {"log", "-1", "--format=%H%x1f%ae%x1f%at%x1f%s", h + "^{commit}", "--"}, found);
+        r.exists = found && !who.empty();
+        if (r.exists && !r.live) {
+            auto f = fields(who.substr(0, who.find('\n')), 4);
+            auto [lo, hi] = by_author.equal_range(f[1] + "\x1f" + f[2]);
+            for (auto it = lo; it != hi; ++it)
+                if (it->second.hash != f[0]) r.matches.push_back(it->second);
+            // Author times are in seconds, so quick commits can share one; a
+            // rebase keeps the subject, so those with the same one win.
+            std::vector<Commit> same;
+            for (const auto& c : r.matches)
+                if (c.subject == f[3]) same.push_back(c);
+            if (!same.empty()) r.matches = std::move(same);
+        }
+        result.push_back(std::move(r));
+    }
+    return result;
 }
 
 bool is_ancestor(const std::string& dir, const Revision& ancestor, const Revision& descendant) {

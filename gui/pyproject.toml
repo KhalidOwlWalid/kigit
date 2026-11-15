@@ -5,6 +5,8 @@ description = "Desktop GUI for kigit: pick two commits, see the PCB and schemati
 requires-python = ">=3.10"
 dependencies = [
     "nicegui>=2.10,<3",
+    "markdown2>=2.4",  # the reviews page (NiceGUI uses it too)
+    "latex2mathml>=3.77",  # $math$ in reviews, as MathML (no JavaScript, works offline)
     # The GUI's own window (Windows, via Edge WebView2). Elsewhere it opens in
     # the browser; `kigit gui --native` falls back to that when pywebview or a
     # window system is missing.

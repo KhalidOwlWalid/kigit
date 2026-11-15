@@ -85,6 +85,24 @@ TEST_CASE("--log: all commits, tags, filters and the renamed folder") {
     CHECK(dirty["local"]["pcb"] == true);
 }
 
+TEST_CASE("--rewritten: where an amended commit went") {
+    TempDir tmp;
+    make_fixture_repo(tmp.path());
+    std::string dir = quote(tmp.path().string());
+    std::string before = run("git -C " + dir + " rev-parse HEAD").out.substr(0, 40);
+    REQUIRE(run("git -C " + dir + " commit -q --amend -m reworded").code == 0);
+    std::string after = run("git -C " + dir + " rev-parse HEAD").out.substr(0, 40);
+
+    json r = parse(run_kigit("--rewritten " + before + " " + after + " -C " + dir));
+    REQUIRE(r["commits"].size() == 2);
+    CHECK(r["commits"][0]["live"] == false);
+    REQUIRE(r["commits"][0]["matches"].size() == 1);
+    CHECK(r["commits"][0]["matches"][0]["hash"] == after);
+    CHECK(r["commits"][0]["matches"][0]["subject"] == "reworded");
+    CHECK(r["commits"][1]["live"] == true);
+    CHECK(run_kigit("--rewritten HEAD -C " + dir).code == 2); // hashes only
+}
+
 TEST_CASE("diff across the folder rename, as JSON on stdout") {
     TempDir tmp;
     make_fixture_repo(tmp.path());

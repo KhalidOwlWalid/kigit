@@ -68,6 +68,19 @@ std::vector<std::string> past_paths(const std::string& root, const std::string& 
 // Uncommitted changed/untracked paths under `pathspec`.
 std::vector<std::string> changed_files(const std::string& root, const std::string& pathspec);
 
+// A commit that may have been rewritten (rebase, amend, squash). `live` if
+// it's still on a branch, tag or HEAD; `exists` if git still has it at all.
+// `matches`: live commits with the same author and author date, which rebase,
+// amend and cherry-pick keep, so likely the rewritten one.
+struct Rewritten {
+    std::string hash;
+    bool live = false, exists = false;
+    std::vector<Commit> matches; // hash, short_hash, parent, date, author, subject, body
+};
+
+// For each hash given, whether it's still live and where it may have gone.
+std::vector<Rewritten> rewritten(const std::string& root, const std::vector<std::string>& hashes);
+
 // True if commit `ancestor` is an ancestor of `descendant`.
 bool is_ancestor(const std::string& dir, const Revision& ancestor, const Revision& descendant);
 

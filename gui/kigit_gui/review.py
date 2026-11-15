@@ -1,8 +1,8 @@
 """Commit reviews: why a commit changed what it changed.
 
-Everything lives in `<project>/.reviews/`:
+Everything lives in `<project>/reviews/`:
 
-    .reviews/
+    reviews/
       index.md        every review: ID, commit, date, author, subject (written by kigit)
       3f9a1c0e.md     one review per commit; its ID is its file name
       assets/         pasted images, named by content hash
@@ -42,6 +42,7 @@ unknown or never.
 from __future__ import annotations
 
 import hashlib
+import html
 import json
 import re
 import secrets
@@ -49,7 +50,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
-FOLDER = ".reviews"
+FOLDER = "reviews"
 INDEX = "index.md"
 ASSETS = "assets"
 TAGS = ["reason", "todo", "question", "risk"]
@@ -144,6 +145,8 @@ class Review:
     updated: str = ""
     summary: str = ""
     notes: list[Note] = field(default_factory=list)
+    # Review files merged into this one (see absorb), deleted when it's written.
+    absorbed: list[Path] = field(default_factory=list, compare=False, repr=False)
 
 
 def now() -> str:
@@ -230,6 +233,24 @@ def loads(text: str) -> Review:
     return r
 
 
+def clean_tag(t: str) -> str:
+    """A tag as stored: no #, lower case, no spaces (one word, as Obsidian
+    wants), so "Needs Review" becomes "needs-review". "" if nothing is left."""
+    t = re.sub(r"\s+", "-", t.strip().lstrip("#").lower())
+    return re.sub(r"[^\w/-]", "", t).strip("-/")
+
+
+def known_tags(project_dir: str | Path) -> list[str]:
+    """The built-in tags, then every other tag the project's reviews use."""
+    used: set[str] = set()
+    for p in all_reviews(project_dir).values():
+        try:
+            used |= {t for n in load(p).notes for t in n.tags}
+        except (OSError, ValueError, UnicodeDecodeError):
+            continue
+    return TAGS + sorted(used - set(TAGS))
+
+
 def folder(project_dir: str | Path) -> Path:
     return Path(project_dir) / FOLDER
 
@@ -293,8 +314,65 @@ def save(project_dir: str | Path, r: Review, path: Path | None = None) -> Path:
             pass
     stamp(r, before, when)
     _write(path, dumps(r))
+    for p in r.absorbed:
+        if p != path:
+            p.unlink(missing_ok=True)
+    r.absorbed = []
     write_index(project_dir)
     return path
+
+
+# ------------------------------------------------- rewritten commits
+# Rebase, amend and squash make new commits, so a review's commit can end up
+# on no branch. These move a review to the commit it became.
+
+def retarget(r: Review, commit: str, parent: str, subject: str, date: str, author: str,
+             moved: dict[str, str] | None = None) -> None:
+    """Points the review at another commit. Anchors pinned in the commit's
+    own comparison follow it; other pinned commits follow `moved` (old hash
+    -> new) where they were rewritten too."""
+    moved = moved or {}
+    for n in r.notes:
+        s = n.anchor.seen if n.anchor else None
+        if not s:
+            continue
+        if (s.old, s.new) == (r.parent, r.commit):
+            s.old, s.new = parent, commit
+        else:
+            s.old, s.new = moved.get(s.old, s.old), moved.get(s.new, s.new)
+    r.commit, r.parent, r.subject, r.date, r.author = commit, parent, subject, date, author
+
+
+def absorb(target: Review, other: Review, path: Path | None = None) -> None:
+    """Adds another review's summary and notes to `target` (several commits
+    squashed into one). `path`, the other's file, is deleted when `target`
+    is written."""
+    if other.summary.strip():
+        head = f"From {other.commit[:7]}" + (f" ({one_line(other.subject)})" if other.subject else "")
+        target.summary = "\n\n".join(
+            x for x in (target.summary.strip(), f"*{head}:*\n\n{other.summary.strip()}") if x)
+    ids = {n.id for n in target.notes}
+    for n in other.notes:
+        while n.id in ids:
+            n.id = secrets.token_hex(4)
+        ids.add(n.id)
+        target.notes.append(n)
+    if path is not None:
+        target.absorbed.append(path)
+
+
+def move(project_dir: str | Path, path: Path, commit: str, parent: str, subject: str, date: str, author: str,
+         moved: dict[str, str] | None = None) -> Path:
+    """Moves the review in `path` to another commit and writes it. If that
+    commit has a review already, the two are merged into it. Returns the file."""
+    r = load(path)
+    retarget(r, commit, parent, subject, date, author, moved)
+    there = all_reviews(project_dir).get(commit)
+    if there and there != path:
+        target = load(there)
+        absorb(target, r, path)
+        return save(project_dir, target, there)
+    return save(project_dir, r, path)
 
 
 def stamp(r: Review, before: Review | None, when: str) -> None:
@@ -332,7 +410,7 @@ def index_text(reviews: list[tuple[Review, Path]]) -> str:
 
 
 def write_index(project_dir: str | Path) -> Path:
-    """Rewrites .reviews/index.md from the review files."""
+    """Rewrites reviews/index.md from the review files."""
     reviews = []
     for p in all_reviews(project_dir).values():
         try:
@@ -345,7 +423,7 @@ def write_index(project_dir: str | Path) -> Path:
 
 
 def save_image(project_dir: str | Path, data: bytes, mime: str) -> str:
-    """Stores a pasted image in .reviews/assets/. Returns its path relative to
+    """Stores a pasted image in reviews/assets/. Returns its path relative to
     the review files (what the Markdown links to)."""
     ext = IMAGE_TYPES.get(mime)
     if not ext:
@@ -356,3 +434,86 @@ def save_image(project_dir: str | Path, data: bytes, mime: str) -> str:
     if not (d / name).exists():
         (d / name).write_bytes(data)
     return f"{ASSETS}/{name}"
+
+
+# ---------------------------------------------------------------- links
+# Code, existing links/images, <autolinks> and HTML tags: left alone.
+_KEEP = re.compile(r"^(```|~~~).*?^\1|`[^`\n]+`|!?\[[^\]\n]*\]\([^)\n]*\)|<[^>\n]+>", re.MULTILINE | re.DOTALL)
+_BARE_URL = re.compile(r"(?<![\w/.@-])(?:https?://|www\.)[^\s<>()\[\]]*[^\s<>()\[\].,;:!?'\"*_~]")
+
+
+def autolink(text: str) -> str:
+    """Bare web addresses (https://..., www....) as Markdown links."""
+    def link(m: re.Match) -> str:
+        url = m.group(0)
+        return f"<{url}>" if url.startswith("http") else f"[{url}](https://{url})"
+
+    out, last = [], 0
+    for m in _KEEP.finditer(text):
+        out.append(_BARE_URL.sub(link, text[last:m.start()]))
+        out.append(m.group(0))
+        last = m.end()
+    out.append(_BARE_URL.sub(link, text[last:]))
+    return "".join(out)
+
+
+def link_markdown(text: str, url: str) -> str:
+    """A Markdown link to `url` showing `text` (the address if empty). A bare
+    domain like example.com/x gets https://; spaces and brackets are escaped."""
+    url = url.strip()
+    if not re.match(r"^[a-z][a-z0-9+.-]*:|^[/#.]", url, re.IGNORECASE) and \
+            re.match(r"^(www\.)?[\w-]+(\.[\w-]+)+(:\d+)?(/|\?|#|$)", url) and not url.lower().endswith(".md"):
+        url = "https://" + url
+    url = url.replace(" ", "%20").replace("(", "%28").replace(")", "%29").replace("<", "%3C").replace(">", "%3E")
+    text = one_line(text) or url
+    text = text.replace("\\", "\\\\").replace("[", "\\[").replace("]", "\\]")
+    return f"[{text}]({url})"
+
+
+# ---------------------------------------------------------------- math
+# $inline$ and $$block$$ LaTeX, as MathML (browsers draw it; no JavaScript).
+# Like Pandoc and Obsidian: no space just inside $...$, no digit right after
+# the closing $ (so "$5 and $10" stays text), \$ is a dollar sign, and code
+# is left alone.
+_MATH_CODE = re.compile(r"^(```|~~~).*?^\1|`[^`\n]+`", re.MULTILINE | re.DOTALL)
+_MATH_BLOCK = re.compile(r"(?<!\\)\$\$(.+?)(?<!\\)\$\$", re.DOTALL)
+_MATH_INLINE = re.compile(r"(?<![\\$])\$(?=[^\s$])([^$\n]*?[^\s\\$])\$(?![\d$])"
+                          r"|(?<![\\$])\$([^\s$\\])\$(?![\d$])")
+
+
+def _mathml(tex: str, block: bool) -> str:
+    import latex2mathml.converter
+
+    try:
+        return latex2mathml.converter.convert(tex.strip(), display="block" if block else "inline")
+    except Exception as e:  # noqa: BLE001  (any bad formula: show it as written)
+        shown = f"$${tex}$$" if block else f"${tex}$"
+        why = str(e) or type(e).__name__
+        return (f'<code class="math-error" title="Not valid LaTeX: {html.escape(why, quote=True)}">'
+                f"{html.escape(shown)}</code>")
+
+
+def to_html(text: str) -> str:
+    """Markdown (with bare links and $math$) to HTML."""
+    import markdown2
+
+    math: list[str] = []
+
+    def token(converted: str) -> str:
+        math.append(converted)
+        return f"KIGITMATH{len(math) - 1}X"  # Markdown leaves this alone; swapped back after
+
+    def swap(part: str) -> str:
+        part = _MATH_BLOCK.sub(lambda m: "\n\n" + token(_mathml(m.group(1), True)) + "\n\n", part)
+        part = _MATH_INLINE.sub(lambda m: token(_mathml(m.group(1) or m.group(2), False)), part)
+        return part.replace("\\$", "&#36;")  # \$: a plain dollar sign
+
+    out, last = [], 0
+    for m in _MATH_CODE.finditer(text):
+        out += [swap(text[last:m.start()]), m.group(0)]
+        last = m.end()
+    out.append(swap(text[last:]))
+    rendered = markdown2.markdown(autolink("".join(out)),
+                                  extras=["fenced-code-blocks", "tables", "strike", "task_list"])
+    rendered = re.sub(r"<p>\s*KIGITMATH(\d+)X\s*</p>", lambda m: math[int(m.group(1))], rendered)
+    return re.sub(r"KIGITMATH(\d+)X", lambda m: math[int(m.group(1))], rendered)

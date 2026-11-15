@@ -3,10 +3,10 @@
 Opens on the right when a single commit is reviewed (diffed against its
 parent). Each note can point at what's pinned in the viewer (a net,
 footprint, part or bus); clicking the note's anchor shows it again. Text is
-Markdown; pasting or dropping an image stores it in .reviews/assets/.
+Markdown; pasting or dropping an image stores it in reviews/assets/.
 
-Press Write (or Ctrl+S) to save it to `<project>/.reviews/<id>.md` and update
-`.reviews/index.md` (see review.py). Until then edits are only in the GUI: switching to another commit
+Press Write (or Ctrl+S) to save it to `<project>/reviews/<id>.md` and update
+`reviews/index.md` (see review.py). Until then edits are only in the GUI: switching to another commit
 or closing the panel keeps them as a draft for this session, and the browser
 asks before the page is closed with anything unwritten.
 """
@@ -113,6 +113,26 @@ _PAGE_JS = """
     const a = e.target.closest && e.target.closest(".kigit-md-view a[href]");
     if (a) { e.preventDefault(); window.open(a.href, "_blank", "noopener"); }
   }, true);
+  // Ctrl+K / Cmd+K in a note's text box: add a link (the GUI asks for it).
+  document.addEventListener("keydown", (e) => {
+    const ta = box(e);
+    if (ta && (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
+      e.preventDefault();
+      emitEvent("kigit_link", +ta.closest(".kigit-md").dataset.box);
+    }
+  });
+  // A text box by NiceGUI element id (the id is on the <textarea> itself).
+  const textarea = (id) => { const el = getHtmlElement(id); return el?.tagName === "TEXTAREA" ? el : el?.querySelector("textarea"); };
+  // The selection in a text box: [start, end].
+  window.kigitSelection = (id) => {
+    const t = textarea(id);
+    return t ? [t.selectionStart, t.selectionEnd] : null;
+  };
+  // Puts the cursor at `pos` in a text box.
+  window.kigitCursor = (id, pos) => {
+    const t = textarea(id);
+    if (t) { t.focus(); t.setSelectionRange(pos, pos); }
+  };
   // Ctrl+S / Cmd+S writes the open review.
   document.addEventListener("keydown", (e) => {
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s" && document.querySelector(".kigit-write")) {
@@ -130,6 +150,9 @@ _PAGE_JS = """
 .kigit-md-view img { max-width: 100%; border-radius: 4px; }
 .kigit-md-view p { margin: 0.3em 0; }
 .kigit-md-view a { color: #7fb3ff; }
+.kigit-md-view math { font-size: 1.1em; }
+.kigit-md-view math[display=block] { margin: .6em 0; overflow-x: auto; overflow-y: hidden; }
+.kigit-md-view .math-error { color: #f07178; border-bottom: 1px dotted #f07178; cursor: help; }
 </style>
 """
 
@@ -141,10 +164,17 @@ def rewrite_images(text: str, key: str) -> str:
 
 class ReviewPanel:
     """The right-hand drawer. `focus(anchor)` asks the viewer to show an
-    anchor; `on_saved(commit)` is called when a review file is first written."""
+    anchor; `on_saved(commit)` is called when a review file is first written.
+    `strays()` gives the reviews of rewritten commits (rewritten.py) that can
+    be brought into this one; `on_moved()` is called after writing a review
+    that took some in."""
 
-    def __init__(self, focus: Callable[[Anchor], None], on_saved: Callable[[str], None], resizer=None) -> None:
+    def __init__(self, focus: Callable[[Anchor], None], on_saved: Callable[[str], None], resizer=None,
+                 strays: Callable[[], list] | None = None, on_moved: Callable[[], None] | None = None) -> None:
         self.focus_cb, self.on_saved = focus, on_saved
+        self.strays_cb, self.on_moved = strays or (lambda: []), on_moved or (lambda: None)
+        self.message = ""  # the open commit's whole message
+        self.known_tags: list[str] = list(review.TAGS)  # offered in the tags dropdown
         self.project: Path | None = None
         self.key = ""
         self.review: Review | None = None
@@ -160,6 +190,8 @@ class ReviewPanel:
         ui.add_body_html(_PAGE_JS)
         ui.on("kigit_image_failed", lambda e: self._warn(f"Couldn't add the image: {e.args}"))
         ui.on("kigit_write", lambda: self.write() if self.review else None)
+        self.boxes: dict[int, ui.textarea] = {}  # text boxes by element id, for Ctrl+K
+        ui.on("kigit_link", lambda e: self.add_link(self.boxes.get(e.args) if isinstance(e.args, int) else None))
         # Present (with class kigit-unsaved) while anything is unwritten; the
         # page asks before closing then.
         self.unsaved_marker = ui.element("div").classes("hidden")
@@ -174,8 +206,9 @@ class ReviewPanel:
 
     # ------------------------------------------------------------- open/close
     def open(self, project_dir: str | Path, commit: str, parent: str, subject: str, date: str = "",
-             author: str = "") -> None:
+             author: str = "", body: str = "") -> None:
         self._stash()
+        self.message = subject + ("\n\n" + body if body else "")
         self.project = Path(project_dir)
         self.key = project_key(self.project)
         self.review = None
@@ -196,6 +229,7 @@ class ReviewPanel:
         if self.review is None:
             self.review = Review(commit=commit, parent=parent, subject=subject, date=date, author=author)
         self.editing = set() if self.review.summary or self.review.notes else {"summary"}
+        self.known_tags = review.known_tags(self.project)
         logs.log.info("review %s (%s%s)", commit[:7], self.path or "new", ", unwritten draft" if self.dirty else "")
         self.render()
         self.drawer.show()
@@ -233,6 +267,7 @@ class ReviewPanel:
         if not (self.review and self.project):
             return
         first = self.path is None
+        took_in = bool(self.review.absorbed)
         try:
             self.path = review.save(self.project, self.review, self.path)
         except OSError as e:
@@ -249,6 +284,9 @@ class ReviewPanel:
         self._sync_status()
         if first:
             self.on_saved(self.review.commit)
+        if took_in:
+            self.bring_in_view.refresh()
+            self.on_moved()
 
     def _sync_status(self) -> None:
         """The Write button, the "unsaved" line, and the page's leave warning."""
@@ -311,6 +349,7 @@ class ReviewPanel:
     def render(self) -> None:
         r = self.review
         self.body.clear()
+        self.boxes = {}
         with self.body:
             with ui.row().classes("w-full items-center gap-2 no-wrap"):
                 ui.icon("rate_review").classes("text-amber-500")
@@ -318,10 +357,11 @@ class ReviewPanel:
                 ui.label(r.commit[:7]).classes("text-mono text-xs text-gray-400")
                 self.id_label = ui.label(f"ID {r.id}" if r.id else "").classes(
                     "text-mono text-xs text-amber-400").mark("review-id")
-                self.id_label.tooltip("This review's ID: its file name, and its row in .reviews/index.md")
+                self.id_label.tooltip("This review's ID: its file name, and its row in reviews/index.md")
                 ui.space()
                 ui.button(icon="close", on_click=self.close).props("flat dense round").tooltip("Close the review")
             ui.label(r.subject).classes("text-sm text-gray-300")
+            self.bring_in_view()
             with ui.row().classes("w-full items-center gap-2 no-wrap"):
                 self.status_label = ui.label("").classes("text-xs flex-grow").mark("review-status")
                 self.write_button = ui.button("Write", icon="save", on_click=self.write).props(
@@ -330,12 +370,68 @@ class ReviewPanel:
             with ui.row().classes("w-full items-center gap-1 no-wrap"):
                 self.path_label = ui.label(self._path_text()).classes("text-xs text-gray-500 truncate flex-grow")
                 ui.button(icon="folder", on_click=self._open_folder).props("flat dense round size=sm").tooltip(
-                    "Open the .reviews folder")
+                    "Open the reviews folder")
             self.summary_view()
             ui.separator().classes("my-1")
             self.pinned_view()
             self.notes_view()
         self._sync_status()
+
+    # ------------------------------------------------------ rewritten commits
+    def available_strays(self) -> list:
+        """Reviews of rewritten commits not yet taken into this review or a draft."""
+        taken = {p for _, r, _ in self.drafts.values() for p in r.absorbed}
+        if self.review:
+            taken |= set(self.review.absorbed)
+        return [s for s in self.strays_cb() if s.path not in taken and self.review and s.path != self.path]
+
+    @ui.refreshable_method
+    def bring_in_view(self) -> None:
+        strays = self.available_strays()
+        if not strays:
+            return
+        n = len(strays)
+        ui.button(f"Bring in reviews ({n})", icon="call_merge", on_click=self.bring_in).props(
+            "flat dense no-caps size=sm color=amber-5").tooltip(
+            f"{n} review{'s are' if n > 1 else ' is'} of commits that are on no branch any more (squashed, "
+            "rebased or dropped). Add their notes to this review, e.g. when they were squashed into this "
+            "commit.").mark("review-bring-in")
+
+    async def bring_in(self) -> None:
+        from .rewritten import squashed_into
+        strays = self.available_strays()
+        with self.drawer, ui.dialog() as dialog, ui.card().classes("w-[36rem] max-w-full bg-[#161a20] gap-2"):
+            ui.label("Bring in reviews").classes("text-base font-semibold")
+            ui.label("These reviews are of commits that are on no branch any more. Tick the ones that went into "
+                     f"{self.review.commit[:7]} (ticked: named in its message, as a squash does). Their summary "
+                     "and notes are added to this review; their files are removed when you Write.").classes(
+                "text-xs text-gray-400")
+            boxes = []
+            for st in strays:
+                r = st.review
+                text = f"{r.commit[:7]}  {r.subject or '(no message)'} · {len(r.notes)} note" + (
+                    "s" if len(r.notes) != 1 else "")
+                boxes.append((st, ui.checkbox(text, value=squashed_into(st, self.message)).props(
+                    "dense dark").classes("text-sm").mark("bring-in-pick")))
+            with ui.row().classes("w-full justify-end gap-2"):
+                ui.button("Cancel", on_click=lambda: dialog.submit(None)).props("flat")
+                ui.button("Bring in", icon="call_merge", on_click=lambda: dialog.submit(
+                    [st for st, box in boxes if box.value])).props("unelevated color=amber-8").mark("bring-in-ok")
+        dialog.open()
+        picked = await dialog
+        dialog.delete()
+        if not picked:
+            return
+        for st in picked:
+            try:
+                other = review.load(st.path)  # as it is now, not as listed
+            except (OSError, ValueError, UnicodeDecodeError) as e:
+                self._warn(f"Couldn't read {st.path.name}: {e}")
+                continue
+            review.absorb(self.review, other, st.path)
+            logs.log.info("brought review %s (%s) into %s", st.path.name, other.commit[:7], self.review.commit[:7])
+        self.changed()
+        self.render()
 
     def _open_folder(self) -> None:
         from .app import open_folder_in_os
@@ -343,15 +439,99 @@ class ReviewPanel:
         open_folder_in_os(d if d.is_dir() else self.project)
 
     def _markdown_box(self, value: str, on_change: Callable[[str], None], placeholder: str, mark: str):
-        """A Markdown text box that takes pasted or dropped images."""
-        with ui.element("div").classes("kigit-md w-full").props(f'data-key="{self.key}"'):
+        """A Markdown text box that takes pasted or dropped images, with a
+        button (and Ctrl+K) to add a link."""
+        with ui.element("div").classes("kigit-md w-full").props(f'data-key="{self.key}"') as wrap:
             box = ui.textarea(value=value, placeholder=placeholder,
                               on_change=lambda e: (on_change(e.value or ""), self.changed())).props(
                 "dark outlined autogrow dense").classes("w-full text-sm").mark(mark)
+            with box.add_slot("append"):
+                ui.button(icon="link", on_click=lambda: self.add_link(box)).props(
+                    "flat dense round size=sm tabindex=-1").tooltip("Add a link (Ctrl+K)").mark(f"{mark}-link")
+        wrap.props(f'data-box="{box.id}"')
+        self.boxes[box.id] = box
         return box
 
+    async def add_link(self, box: ui.textarea | None) -> None:
+        """Asks for an address and its text, and puts a Markdown link where
+        the cursor is (around the selected text, which becomes its text)."""
+        if box is None:
+            return
+        value = box.value or ""
+        start = end = len(value)
+        try:
+            sel = await ui.run_javascript(f"window.kigitSelection({box.id})", timeout=2)
+            if isinstance(sel, list) and len(sel) == 2 and all(isinstance(x, int) for x in sel):
+                start, end = sorted(min(max(x, 0), len(value)) for x in sel)
+        except TimeoutError:
+            pass
+        result = await self._link_dialog(value[start:end])
+        if not result:
+            return
+        md = review.link_markdown(*result)
+        box.value = value[:start] + md + value[end:]
+        ui.run_javascript(f"window.kigitCursor({box.id}, {start + len(md)})")
+
+    async def _link_dialog(self, selected: str) -> tuple[str, str] | None:
+        """(text, address), or None if cancelled."""
+        with self.drawer, ui.dialog() as dialog, ui.card().classes("w-[32rem] max-w-full bg-[#161a20] gap-2"):
+            ui.label("Add a link").classes("text-base font-semibold")
+            url = ui.input("Address", placeholder="https://..., or a file in reviews/ like decisions/buck.md").props(
+                "dark dense outlined autofocus").classes("w-full").mark("link-url")
+            text = ui.input("Text", value=selected, placeholder="What the link says (default: the address)").props(
+                "dark dense outlined").classes("w-full").mark("link-text")
+            ui.label("Tip: [[note name]] links to a note in reviews/, [[review ID]] to a review.").classes(
+                "text-xs text-gray-500")
+
+            def done() -> None:
+                if (url.value or "").strip():
+                    dialog.submit(((text.value or "").strip(), url.value.strip()))
+
+            with ui.row().classes("w-full justify-end gap-2"):
+                ui.button("Cancel", on_click=lambda: dialog.submit(None)).props("flat")
+                add = ui.button("Add link", icon="link", on_click=done).props("unelevated color=amber-8").mark(
+                    "link-add")
+            add.bind_enabled_from(url, "value", backward=lambda v: bool((v or "").strip()))
+            url.on("keydown.enter", done)
+            text.on("keydown.enter", done)
+        dialog.open()
+        result = await dialog
+        dialog.delete()
+        return result
+
     def _markdown_view(self, text: str) -> None:
-        ui.markdown(rewrite_images(text, self.key)).classes("kigit-md-view w-full text-sm text-gray-200")
+        # Same rendering as the reviews page: bare links, $math$, Markdown.
+        ui.html(review.to_html(rewrite_images(text, self.key))).classes(
+            "kigit-md-view nicegui-markdown w-full text-sm text-gray-200")
+
+    def _tags_select(self, note: Note) -> ui.select:
+        """The note's tags: tick them in a dropdown of the built-in tags and
+        the project's own, or type to filter and Enter to add a new one."""
+        options = list(dict.fromkeys(self.known_tags + [t for n in self.review.notes for t in n.tags]))
+
+        def changed(e) -> None:
+            tags = list(dict.fromkeys(t for t in (review.clean_tag(x) for x in e.value or []) if t))
+            if tags != list(e.value or []):  # a typed tag, tidied: "Needs Review" -> "needs-review"
+                opts = [o for o in sel.options if o in self.known_tags or o in tags or
+                        any(o in n.tags for n in self.review.notes)]
+                opts += [t for t in tags if t not in opts]
+                sel.set_options(opts, value=tags)
+                return  # set_options fires this again with the tidy value
+            for t in tags:
+                if t not in self.known_tags:
+                    self.known_tags.append(t)  # offered in the other notes too
+            if tags != note.tags:
+                note.tags = tags
+                self.changed()
+
+        sel = ui.select(options, multiple=True, value=list(note.tags), new_value_mode="add-unique", label="Tags",
+                        on_change=changed)
+        sel.props('dark dense outlined use-chips options-dense input-debounce=0 '
+                  'hint="Pick tags, or type a new one and press Enter" popup-content-class=kigit-tag-menu')
+        sel.classes("w-full text-xs").mark("review-note-tags")
+        sel.add_slot("option", _TAG_OPTION)
+        sel.add_slot("selected-item", _TAG_CHIP)
+        return sel
 
     @ui.refreshable_method
     def summary_view(self) -> None:
@@ -419,10 +599,7 @@ class ReviewPanel:
                 ui.input(value=note.title, placeholder="Title",
                          on_change=lambda e, n=note: (setattr(n, "title", e.value or ""), self.changed())).props(
                     "dark dense borderless").classes("w-full font-semibold").mark("review-note-title")
-                tags = ui.select(review.TAGS, multiple=True, value=list(note.tags), new_value_mode="add-unique",
-                                 label="Tags",
-                                 on_change=lambda e, n=note: (setattr(n, "tags", list(e.value or [])), self.changed()))
-                tags.props("dark dense outlined use-chips options-dense").classes("w-full text-xs")
+                self._tags_select(note)
                 self._markdown_box(note.body, lambda v, n=note: setattr(n, "body", v),
                                    "What changed and why. Markdown; paste or drop images.", "review-note-body")
             else:
@@ -430,11 +607,35 @@ class ReviewPanel:
                 if note.tags:
                     with ui.row().classes("gap-1"):
                         for t in note.tags:
-                            ui.badge(t, color="blue-grey-7").props("outline")
+                            ui.badge(t, color=TAG_COLORS.get(t, "blue-grey-4")).props("outline")
                 if note.body.strip():
                     self._markdown_view(note.body)
             self.note_times[note.id] = ui.label(note_times(note)).classes("text-[11px] text-gray-500").mark(
                 "review-note-times")
+
+
+# Tag colours, the same as on the reviews page; other tags are grey.
+TAG_COLORS = {"reason": "blue-4", "todo": "amber-6", "question": "purple-4", "risk": "red-4"}
+# Single quotes only: it goes inside a double-quoted attribute.
+_TAG_COLOR_JS = ("({" + ", ".join(f"'{k}': '{v}'" for k, v in TAG_COLORS.items())
+                 + "})[props.opt.label] || 'blue-grey-4'")
+
+# The dropdown's rows: a tick box, a colour dot and the tag.
+_TAG_OPTION = f"""
+<q-item v-bind="props.itemProps" dense>
+  <q-item-section side style="padding-right:8px">
+    <q-checkbox :model-value="props.selected" dense size="xs" style="pointer-events:none" color="amber-7" />
+  </q-item-section>
+  <q-item-section>
+    <q-item-label><q-icon name="circle" size="9px" :color="{_TAG_COLOR_JS}" class="q-mr-sm" />{{{{ props.opt.label }}}}</q-item-label>
+  </q-item-section>
+</q-item>
+"""
+# A chosen tag: a coloured chip with a cross.
+_TAG_CHIP = f"""
+<q-chip dense removable outline :color="{_TAG_COLOR_JS}" :tabindex="props.tabindex" class="q-my-none q-ml-none q-mr-xs"
+  @remove="props.removeAtIndex(props.index)">{{{{ props.opt.label }}}}</q-chip>
+"""
 
 
 def focus_script(frame_id: int, anchor: Anchor) -> str:

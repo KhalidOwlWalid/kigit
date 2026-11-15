@@ -24,6 +24,7 @@ int run(int argc, char** argv) {
     try {
         fs::path project = cmd::project_dir(o);
         if (o.projects_mode) return cmd::run_projects(project, o.projects_depth);
+        if (o.rewritten_mode) return cmd::run_rewritten(o, project);
         if (o.log_mode && !o.files_mode) return cmd::run_history(o, project);
         return cmd::run_diff(o, project);
     } catch (const std::exception& e) {

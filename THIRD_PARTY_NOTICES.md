@@ -3,7 +3,7 @@
 kigit is MIT licensed (see `LICENSE`). The release downloads also contain the following
 software, each under its own license, reproduced here as those licenses require.
 
-The GUI's Python packages (NiceGUI, pywebview and their dependencies) aren't part of the
+The GUI's Python packages (NiceGUI, pywebview, markdown2, latex2mathml and their dependencies) aren't part of the
 downloads: uv installs them on your computer the first time you run `kigit gui`.
 
 ## nlohmann/json

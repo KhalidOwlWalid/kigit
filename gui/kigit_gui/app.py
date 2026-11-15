@@ -12,7 +12,7 @@ Flow:
      opens on the schematic.
   4. Or pick one commit and press Review: it's diffed against its parent and
      the review panel opens on the right, for notes on why it changed
-     (review_panel.py, saved in <project>/.reviews/).
+     (review_panel.py, saved in <project>/reviews/).
 """
 
 from __future__ import annotations
@@ -21,6 +21,7 @@ import argparse
 import hashlib
 import logging
 import os
+import socket
 import subprocess
 import sys
 import tempfile
@@ -28,12 +29,13 @@ import threading
 import time
 from pathlib import Path
 
-from nicegui import app, ui
+from nicegui import app, background_tasks, ui
 
-from . import kigit, logs, review
+from . import kigit, logs, review, rewritten
 from .folder_picker import FolderPicker
 from .resize import Resizer
-from .review_panel import BRIDGE_JS, ReviewPanel, focus_script
+from . import review_doc  # noqa: F401  (registers the /reviews-doc page)
+from .review_panel import BRIDGE_JS, ReviewPanel, focus_script, project_key
 
 LOCAL = "LOCAL"
 SEARCH_DEPTH = 2
@@ -43,20 +45,23 @@ SEARCH_DEPTH = 2
 CACHE = Path(tempfile.mkdtemp(prefix="kigit-gui-"))
 app.add_static_files("/diffs", str(CACHE))
 
-# Message column: one line, the whole message on hover. It takes what the
-# commit list's width leaves (the drawer is a size container, see resize.py).
+# Message column: one line (or wrapped, with "Wrap messages"), the whole
+# message on hover. It takes what the commit list's width leaves (the drawer
+# is a size container, see resize.py).
 MESSAGE_CELL = r"""
-<q-td :props="props">
-  <div class="ellipsis" style="max-width: max(6rem, calc(100cqw - 19rem))">{{ props.row.subject }}</div>
+<q-td :props="props" class="kigit-msg-td">
+  <div class="kigit-msg ellipsis" style="max-width: max(6rem, calc(100cqw - 19rem))">{{ props.row.subject }}</div>
   <q-tooltip anchor="center right" self="center left" max-width="34rem"
              class="bg-grey-10 text-body2" style="white-space: pre-wrap">{{ props.row.tip }}</q-tooltip>
 </q-td>
 """
 
-# Commit column: the working tree row stands out.
+# Commit column: the working tree row stands out. With "Wrap messages" the
+# date column is hidden and the date shows here, under the hash.
 COMMIT_CELL = r"""
 <q-td :props="props">
   <span :class="props.row.hash === 'LOCAL' ? 'text-amber-5 text-weight-bold' : 'text-mono'">{{ props.row.short }}</span>
+  <div class="kigit-date text-grey-6" style="font-size: 11px">{{ props.row.date }}</div>
 </q-td>
 """
 
@@ -139,7 +144,7 @@ def build(start_folder: str):
     caller can open the starting folder once the page exists."""
     ui.dark_mode(True)
     ui.query(".nicegui-content").classes("p-0 gap-0")
-    state: dict = {"board": None, "history": None}
+    state: dict = {"board": None, "history": None, "strays": []}
     resizer = Resizer()
 
     # ---------------------------------------------------------------- header
@@ -151,6 +156,8 @@ def build(start_folder: str):
         ui.button("Browse", icon="folder_open", on_click=lambda: browse()).props("flat dense")
         ui.button("Open", on_click=lambda: open_folder(folder_input.value)).props("flat dense")
         status = ui.label("").classes("text-sm text-gray-400 ml-auto truncate")
+        ui.button("Reviews", icon="menu_book", on_click=lambda: open_reviews_doc()).props("flat dense").tooltip(
+            "All of this project's written reviews as one page, in a new tab").mark("reviews-doc")
         ui.button("Compare folders", icon="difference", on_click=lambda: compare_folders()).props(
             "flat dense").tooltip("Compare two copies of a KiCad project, without git").mark("compare-folders")
         ui.button(icon="receipt_long", on_click=show_log).props("flat dense round").tooltip("Session log").mark("log-button")
@@ -210,7 +217,19 @@ def build(start_folder: str):
                         ui.space()
                         ui.button("Find", icon="search", on_click=lambda: find()).props(
                             "unelevated dense color=blue-grey-8")
-            count = ui.label("").classes("text-xs text-gray-400")
+            with ui.row().classes("w-full items-center gap-2 no-wrap"):
+                count = ui.label("").classes("text-xs text-gray-400 flex-grow")
+                wrap = ui.switch("Wrap messages", on_change=lambda e: set_wrap(e.value)).props(
+                    "dense dark size=xs").classes("text-xs text-gray-400").tooltip(
+                    "Show long commit messages on several lines instead of cutting them off").mark("wrap-messages")
+            # Reviews of commits a rebase, amend or squash replaced (rewritten.py).
+            with ui.row().classes("w-full items-center gap-2 no-wrap bg-[#2a2416] rounded px-2 py-1") as stray_bar:
+                ui.icon("warning", size="xs").classes("text-amber-500")
+                stray_label = ui.label("").classes("text-xs text-amber-200 flex-grow").mark("stray-reviews")
+                ui.button("Fix", icon="build", on_click=lambda: fix_strays()).props(
+                    "flat dense no-caps size=sm color=amber-5").mark("fix-strays")
+            stray_bar.mark("stray-bar")
+            stray_bar.set_visibility(False)
             columns = [
                 {"name": "short", "label": "Commit", "field": "short", "align": "left"},
                 {"name": "tags", "label": "", "field": "tags", "align": "left"},
@@ -224,6 +243,38 @@ def build(start_folder: str):
             table.add_slot("body-cell-subject", MESSAGE_CELL)
             table.add_slot("body-cell-short", COMMIT_CELL)
             table.add_slot("body-cell-tags", TAGS_CELL)
+
+    # Wrapped messages: a class on the table (CSS below), remembered in the browser.
+    ui.add_head_html("""<style>
+.kigit-date { display: none; }
+.kigit-wrap .kigit-date { display: block; }
+/* The message column takes what the others leave, and wraps within it. */
+.kigit-wrap td.kigit-msg-td { width: 100%; white-space: normal; }
+.kigit-wrap .kigit-msg { white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere;
+  max-width: none !important; }
+.kigit-wrap tbody td { vertical-align: top; }
+</style>""")
+    ui.add_body_html("""<script>
+(() => {
+  let tries = 0;
+  const restore = setInterval(() => {
+    if (typeof mounted_app !== "undefined" && mounted_app) {
+      clearInterval(restore);
+      let on = false;
+      try { on = localStorage.getItem("kigit.wrapMessages") === "1"; } catch { /* private mode */ }
+      if (on) emitEvent("kigit_wrap", true);
+    } else if (++tries > 100) clearInterval(restore);
+  }, 100);
+})();
+</script>""")
+    ui.on("kigit_wrap", lambda e: setattr(wrap, "value", bool(e.args)))
+
+    def set_wrap(on: bool) -> None:
+        table.classes(add="kigit-wrap") if on else table.classes(remove="kigit-wrap")
+        # The date moves under the hash, leaving the message more room.
+        table.columns = [c for c in columns if not (on and c["name"] == "date")]
+        table.update()
+        ui.run_javascript(f'try {{ localStorage.setItem("kigit.wrapMessages", "{1 if on else 0}") }} catch {{}}')
     resizer.add(commits_drawer, "left", "commits", 480)
 
     # ---------------------------------------------------------------- viewer
@@ -257,7 +308,87 @@ def build(start_folder: str):
                 r["reviewed"] = True
         table.update()
 
-    panel = ReviewPanel(focus=focus, on_saved=on_review_saved, resizer=resizer)
+    panel = ReviewPanel(focus=focus, on_saved=on_review_saved, resizer=resizer,
+                        strays=lambda: state["strays"], on_moved=lambda: background_tasks.create(check_strays()))
+
+    # ------------------------------------------------- rewritten commits
+    async def check_strays() -> None:
+        """Looks for reviews of commits that are on no branch any more."""
+        h = state["history"]
+        if not (h and state["board"]):
+            return
+        state["strays"] = await rewritten.find(Path(state["board"]).parent, {c.hash for c in h.commits})
+        n = len(state["strays"])
+        stray_bar.set_visibility(n > 0)
+        stray_label.text = (f"{n} review{'s are' if n > 1 else ' is'} of commits on no branch any more "
+                            "(rebased, amended or squashed)")
+        if panel.review:
+            panel.bring_in_view.refresh()
+
+    async def fix_strays() -> None:
+        """Moves reviews of rewritten commits to the commits they became."""
+        strays = state["strays"]
+        project = Path(state["board"]).parent
+        busy = {c for c in panel.drafts} | ({panel.commit} if panel.dirty else set())
+        with dialog_host, ui.dialog() as dialog, ui.card().classes("w-[44rem] max-w-full bg-[#161a20] gap-2"):
+            ui.label("Reviews of rewritten commits").classes("text-base font-semibold")
+            ui.label("These reviews are of commits no branch has any more. A rebase or amend keeps a commit's "
+                     "author and date, so the commit it became is found by those. Moving a review points it "
+                     "at that commit (and merges it into that commit's review if it has one).").classes(
+                "text-xs text-gray-400")
+            picks = []
+            for st in strays:
+                r = st.review
+                with ui.column().classes("w-full gap-1 bg-[#1c2128] rounded p-2"):
+                    ui.label(f"{r.commit[:7]}  {r.subject or '(no message)'}").classes("text-sm font-mono")
+                    if any(st.review.commit == c or any(m.hash == c for m in st.matches) for c in busy):
+                        ui.label("Has unwritten edits: Write or leave them first.").classes("text-xs text-amber-300")
+                    elif st.matches:
+                        options = {i: f"{m.short}  {m.subject} · {m.date[:16]}" for i, m in enumerate(st.matches)}
+                        with ui.row().classes("w-full items-center gap-2 no-wrap"):
+                            box = ui.checkbox("Move to", value=len(st.matches) == 1).props("dense dark").classes(
+                                "text-xs").mark("stray-move")
+                            sel = ui.select(options, value=0 if len(st.matches) == 1 else None).props(
+                                "dense dark outlined options-dense").classes("flex-grow text-xs").mark("stray-target")
+                            sel.on_value_change(lambda e, b=box: b.set_value(True) if e.value is not None else None)
+                        picks.append((st, box, sel))
+                    else:
+                        ui.label("No commit with the same author and date: probably squashed. Pick the commit "
+                                 "it went into, press Review, then Bring in reviews.").classes(
+                            "text-xs text-gray-400")
+
+            def chosen() -> list:
+                return [(st, st.matches[sel.value]) for st, box, sel in picks if box.value and sel.value is not None]
+
+            with ui.row().classes("w-full justify-end gap-2"):
+                ui.button("Close", on_click=lambda: dialog.submit(None)).props("flat")
+                ok = ui.button("Move", icon="drive_file_move", on_click=lambda: dialog.submit(chosen())).props(
+                    "unelevated color=amber-8").mark("stray-ok")
+                ok.set_enabled(bool(picks))
+        dialog.open()
+        moves = await dialog
+        dialog.delete()
+        if not moves:
+            return
+        if panel.commit and any(panel.commit in (st.review.commit, m.hash) for st, m in moves):
+            panel.close()  # it shows a review that's about to change on disk
+        try:
+            rewritten.move_all(project, moves)
+        except (OSError, ValueError, UnicodeDecodeError) as e:
+            notify(f"Couldn't move the reviews: {e}", type="warning", multi_line=True, close_button=True)
+        else:
+            notify(f"Moved {len(moves)} review{'s' if len(moves) > 1 else ''}", type="positive")
+        fill()
+        await check_strays()
+
+    def open_reviews_doc() -> None:
+        if not state["board"]:
+            notify("Open a project first", type="warning")
+            return
+        if panel.dirty or panel.drafts:
+            notify("Unwritten review edits aren't in the page: press Write first", type="warning")
+        logs.log.info("open reviews page for %s", Path(state["board"]).parent)
+        ui.navigate.to(f"/reviews-doc/{project_key(Path(state['board']).parent)}", new_tab=True)
     ui.add_body_html(BRIDGE_JS)
     ui.on("kigit_pinned", lambda e: panel.set_pinned(review.Anchor.from_dict(e.args)))
     ui.on("kigit_focused", on_focused)
@@ -399,6 +530,7 @@ def build(start_folder: str):
         status.text = h.repo
         show_count(h)
         fill()
+        await check_strays()
         show_message("compare_arrows", "Pick two commits on the left, then press Compare.",
                      "The newest entry is your working tree: HEAD plus any uncommitted changes.")
 
@@ -414,6 +546,7 @@ def build(start_folder: str):
         state["history"] = h
         show_count(h)
         fill()
+        await check_strays()
 
     # ------------------------------------------------------------ commit rows
     def fill() -> None:
@@ -442,7 +575,7 @@ def build(start_folder: str):
             message = c.subject + (f"\n\n{c.body}" if c.body else "")
             tip = f"{message}\n\n{c.author} · {c.date}\n{c.hash}"
             rows.append({"hash": c.hash, "short": c.short, "pcb": c.pcb, "sch": c.sch, "date": c.date[:16],
-                         "subject": c.subject, "tip": tip, "parent": c.parent, "author": c.author,
+                         "subject": c.subject, "tip": tip, "parent": c.parent, "author": c.author, "body": c.body,
                          "reviewed": c.hash in reviewed})
         table.rows = rows
         keep = {r["hash"] for r in rows}
@@ -528,7 +661,7 @@ def build(start_folder: str):
         show_page(name)
         if review_of:
             panel.open(Path(board).parent, review_of["hash"], review_of.get("parent", ""), review_of["subject"],
-                       review_of.get("date", ""), review_of.get("author", ""))
+                       review_of.get("date", ""), review_of.get("author", ""), review_of.get("body", ""))
         else:
             panel.close()
 
@@ -716,6 +849,42 @@ def choose_window(mode: str, platform: str = sys.platform, problem=native_proble
     return (why is None), why
 
 
+DEFAULT_PORT = 8765
+PORT_TRIES = 50  # how far past the default to look for a free port
+
+
+def port_free(port: int) -> bool:
+    """True if nothing is listening on 127.0.0.1:port."""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        # Elsewhere SO_REUSEADDR only skips ports left in TIME_WAIT (the
+        # server sets it too); on Windows it would take over a port in use.
+        if sys.platform != "win32":
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        try:
+            s.bind(("127.0.0.1", port))
+            return True
+        except OSError:
+            return False
+
+
+def pick_port(wanted: int | None, free=port_free) -> int:
+    """The port to serve on: `wanted` (--port) if it's free, else an error;
+    without --port, the default or the next free one after it, so several
+    kigit GUIs can run at once."""
+    if wanted is not None:
+        if not 1 <= wanted <= 65535:
+            raise SystemExit(f"kigit gui: --port must be between 1 and 65535, not {wanted}")
+        if not free(wanted):
+            raise SystemExit(f"kigit gui: port {wanted} is in use (another kigit gui?). "
+                             f"Pick another with --port, or leave --port out to use a free one.")
+        return wanted
+    for port in range(DEFAULT_PORT, DEFAULT_PORT + PORT_TRIES):
+        if free(port):
+            return port
+    raise SystemExit(f"kigit gui: ports {DEFAULT_PORT}-{DEFAULT_PORT + PORT_TRIES - 1} are all in use; "
+                     f"pick one with --port")
+
+
 def main() -> None:
     import multiprocessing
 
@@ -725,7 +894,8 @@ def main() -> None:
         return
     parser = argparse.ArgumentParser(prog="kigit gui", description="kigit desktop GUI")
     parser.add_argument("project", nargs="?", default=".", help="KiCad project folder (default: current folder)")
-    parser.add_argument("--port", type=int, default=8765, help="local port (default 8765)")
+    parser.add_argument("--port", type=int, default=None,
+                        help=f"local port (default {DEFAULT_PORT}, or the next free one if another kigit gui has it)")
     window = parser.add_mutually_exclusive_group()
     window.add_argument("--native", dest="window", action="store_const", const="native",
                         help="open in its own window (default on Windows); falls back to the browser if it can't")
@@ -738,9 +908,14 @@ def main() -> None:
     parser.add_argument("--no-log", action="store_true", help="don't write a session log file")
     parser.add_argument("-V", "--verbose", action="store_true", help="include debug lines in the log")
     args = parser.parse_args()
+    port = pick_port(args.port)
     os.environ["KIGIT_PROJECT"] = str(Path(args.project).expanduser().resolve())
     log_file = logs.start(args.log_dir, enabled=not args.no_log, debug=args.verbose)
     logs.log.info("session start: kigit gui | project %s | log %s", os.environ["KIGIT_PROJECT"], log_file or "(none)")
+    # Say where it is, especially when the default port was taken.
+    taken = f" ({DEFAULT_PORT} is in use)" if args.port is None and port != DEFAULT_PORT else ""
+    print(f"kigit gui: http://127.0.0.1:{port}{taken}", file=sys.stderr, flush=True)
+    logs.log.info("port %d%s", port, taken)
     # Ctrl+C must actually stop the GUI. The web server normally waits for
     # open connections to close first, and the browser tab keeps one open, so
     # it would wait forever (on Windows especially). Give it 2 seconds, and
@@ -763,14 +938,14 @@ def main() -> None:
         if why:
             logs.log.warning("can't open kigit in its own window (%s); using the browser instead", why)
     logs.log.info("opening in %s", "its own window" if native else
-                  f"the browser at http://127.0.0.1:{args.port}" if not args.no_browser else
-                  f"nothing (serving at http://127.0.0.1:{args.port})")
+                  f"the browser at http://127.0.0.1:{port}" if not args.no_browser else
+                  f"nothing (serving at http://127.0.0.1:{port})")
     # Native: closing the window quits kigit.
     window_args = {"native": True, "window_size": (1400, 900)} if native else {"show": not args.no_browser}
     try:
         # 127.0.0.1: reachable from this computer only (the GUI can browse
         # folders and run kigit; it must not be open to the network).
-        ui.run(title="kigit", host="127.0.0.1", port=args.port, reload=False, dark=True,
+        ui.run(title="kigit", host="127.0.0.1", port=port, reload=False, dark=True,
                timeout_graceful_shutdown=2,
                favicon="🦉", show_welcome_message=False, **window_args)
     except KeyboardInterrupt:

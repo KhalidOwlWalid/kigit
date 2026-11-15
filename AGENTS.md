@@ -74,6 +74,7 @@ Other folders:
 - `gui/kigit_gui/`: `app.py` (the UI), `kigit.py` (runs the CLI with
   `asyncio.to_thread(subprocess.run)`), `logs.py`, `folder_picker.py`,
   `review.py` (review file format), `review_panel.py` (the review drawer),
+  `rewritten.py` (reviews of rebased/amended/squashed commits),
   `resize.py` (drag handles for the drawers).
 - `submodules/`: the libraries (json, spdlog, doctest) as pinned git submodules.
 - `tests/`: `cpp/` (doctest), `fixtures/` (demo v1/v2, hier, bus projects),
@@ -126,14 +127,23 @@ Useful real projects for manual checks (on the user's machine):
 ```
 kigit [OPTIONS] [OLD..NEW | OLD NEW | REV] [BOARD.kicad_pcb]
 kigit --files OLD.kicad_pcb NEW.kicad_pcb     # no git
-kigit gui [PROJECT_DIR]
+kigit gui [PROJECT_DIR] [--port N]
 ```
+
+`kigit gui` passes its arguments on to the Python app. Port (`pick_port` in
+`app.py`): `--port N` if free, else exit with a message; without it 8765 or
+the next free one (up to 50 more), printed on stderr, so several GUIs can run
+at once. localStorage settings are per origin, so per port.
 
 - No revisions means HEAD vs `LOCAL` (the working tree). If OLD is newer than
   NEW they're swapped (`--no-swap` to keep the order).
 - `-C/--kicad-repo DIR`, `-o FILE` (`-` = stdout), `-n` no browser, `-s` all
   stats, `--json`, `--silkscreen`, `--source`, `-q`, `-V/--verbose` (not `-v`, which is
   `--version`).
+- `--rewritten HASH...` (GUI): JSON per hash: `live` (reachable from a
+  branch, tag or HEAD: `git log --all`), `exists`, and `matches`: live
+  commits with the same author email and author time (`git::rewritten`);
+  times are in seconds, so if several match, those with the old subject win.
 - Used by the GUI: `--log` (history JSON; `--max`, `--since`, `--until`
   where a bare date means the whole day, `--kicad-only`; each commit has its
   first `parent`, the real one even when filtered), `--projects`
@@ -241,6 +251,10 @@ kigit gui [PROJECT_DIR]
   and a manual revision entry. "Compare folders" works without git.
   There's a log viewer and "Include silkscreen" / "Include source" checkboxes.
 - Dialogs are created inside `dialog_host`.
+- "Wrap messages" adds `kigit-wrap` to the commit table (CSS in `build()`):
+  the message cell wraps and takes the remaining width, and the date column
+  is dropped (`.kigit-date` shows it under the hash). Remembered in
+  localStorage (`kigit.wrapMessages`).
 - Panels resize by dragging their inner edge (double-click resets), and the
   width is remembered in localStorage. GUI drawers: `Resizer.add()` in
   `resize.py`; the drag sets the width in the page and sends it to the server
@@ -267,10 +281,10 @@ kigit gui [PROJECT_DIR]
   enabled, or the iframe `src` to change, instead of sleeping.
 - Reviews (GUI only): pick one commit and press Review; it's diffed against
   its `parent` and a right drawer opens. One Markdown file per commit in
-  `<board folder>/.reviews/`, named `<id>.md` (a random 8-hex ID given on
+  `<board folder>/reviews/`, named `<id>.md` (a random 8-hex ID given on
   the first Write, also in the `id:` header; found by the `commit:` header),
-  pasted/dropped images in `.reviews/assets/<sha256[:16]>.<ext>`.
-  `.reviews/index.md` (a table: ID, full hash, commit date, author, subject,
+  pasted/dropped images in `reviews/assets/<sha256[:16]>.<ext>`.
+  `reviews/index.md` (a table: ID, full hash, commit date, author, subject,
   note count, written) is rebuilt from the review files on every Write;
   never parsed back. Note times (`review.stamp`, on every save): `created`
   when a note is first written, `edited` when a later write changes its
@@ -290,6 +304,60 @@ kigit gui [PROJECT_DIR]
   (`ReviewPanel.drafts`), and the page warns before closing while anything
   is unwritten (an element with class `kigit-unsaved`). Comparing a commit with its parent opens its review
   too.
+- Rewritten commits (`rewritten.py`): after each history load the GUI asks
+  `kigit --rewritten` about reviews whose commit isn't listed; those on no
+  branch are "strays" (`state["strays"]`), shown in a bar above the list.
+  Fix moves a stray to its match (`review.move`: `retarget` sets the
+  commit, parent, subject, date and author, and moves anchors whose `seen`
+  was the commit's own comparison; it merges into an existing review of the
+  target with `absorb`). Rows with unwritten edits are skipped. Squashes
+  can't be matched: the review panel's Bring in reviews absorbs strays into
+  the open review (ticked when the commit message names their hash or
+  subject, `squashed_into`); their files are in `Review.absorbed` and
+  deleted by `review.save`, so nothing changes until Write.
+- Reviews page (`review_doc.py`): the header's Reviews button opens
+  `/reviews-doc/{key}` in a new tab: your own notes (any other `.md` in
+  `reviews/` or its folders, not `index.md`, `assets/` or hidden folders;
+  newest first, frontmatter shown as properties, `tags:` and #tags) then
+  every written review (newest commit first), with a list, search and tag
+  filters. Obsidian `[[name|text]]` links resolve to notes (title, file name
+  or path) and reviews (ID or file name) on the page; `![[pic.png|200]]`
+  finds the picture by name in `reviews/`. Relative pictures are read only
+  from inside `reviews/`. Links: bare `https://`/`www.` addresses are
+  linked (`review.autolink`, also in the panel's preview); relative
+  `[text](x.md)` to a note or review jumps on the page; links to other files
+  in `reviews/` (and `[[file.pdf]]`) go to `/reviews-doc/{key}/files/...`;
+  links leaving the page open in a new tab.
+  Page design: `_PAGE` is one template with `%%NAME%%` placeholders (plain
+  CSS/JS braces); a header with counts, reviews as a timeline (`.review`
+  grid: date column, rail, body), notes with a PCB/SCH badge on the anchor
+  and a left border by their first known tag (`_TAG_KINDS`). Colours are CSS
+  variables, dark by default, light under `prefers-color-scheme` or
+  `data-theme` (the Theme button, `kigit.docTheme` in localStorage). #tags
+  in your own notes show as `.itag` (not in code). `[[commit subject]]`
+  links to that review.
+- Markdown rendering for reviews: `review.to_html` (the panel's preview and
+  the page both use it): bare links, then `$inline$` / `$$block$$` LaTeX
+  converted to MathML by latex2mathml (browsers draw it; no JavaScript, works
+  offline), then markdown2. Math follows Pandoc/Obsidian: no space just
+  inside `$...$`, no digit after the closing `$` ("$5 and $10" is text),
+  `\$` is a dollar sign, code untouched. Math is swapped for `KIGITMATH<n>X`
+  tokens before Markdown and back after. A formula that fails shows as
+  `<code class="math-error">` with the error as its title.
+- Note tags (`ReviewPanel._tags_select`): a multiple `ui.select` with input,
+  options from `review.known_tags` (built-in `TAGS`, then tags used in the
+  project's reviews) plus this review's; typed tags go through
+  `review.clean_tag` (lower case, spaces to `-`, no `#`). Custom `option`
+  and `selected-item` slots draw tick boxes and coloured chips
+  (`TAG_COLORS`, the reviews page's colours). The slot templates sit inside
+  double-quoted Vue attributes: single quotes only.
+- Review editor links: each text box has a link button (and Ctrl+K) that
+  asks for an address and text (the selection, read with
+  `window.kigitSelection`) and puts `review.link_markdown(text, url)` in its
+  place, from Python (so it's testable without a browser). Built from the
+  files on each request (drafts aren't in it); markdown2 renders the
+  Markdown and assets/ images are inlined as data URLs, so a saved copy
+  stands alone. Light and dark follow the system.
 - Viewer bridge: inside the GUI, `pcb.js`/`sch.js` post
   `{kigit: "pinned", anchor}` to the parent on every pin change; the GUI
   posts `{kigit: "focus", anchor}` and `shell.js` switches tab, calls

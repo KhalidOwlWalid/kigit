@@ -59,7 +59,7 @@ def test_not_a_review() -> None:
 def test_save_find_and_reload(tmp_path: Path) -> None:
     r = sample()
     path = review.save(tmp_path, r)
-    d = tmp_path / ".reviews"
+    d = tmp_path / "reviews"
     assert r.id and path == d / f"{r.id}.md"  # given an ID, which is its file name
     assert not list(d.glob("*.tmp"))
     assert r.updated
@@ -105,7 +105,7 @@ def test_note_times(tmp_path: Path, monkeypatch) -> None:
 def test_notes_from_before_times_were_kept(tmp_path: Path) -> None:
     """Notes in older files have no times; they aren't made up."""
     r = review.loads(f"---\ncommit: {COMMIT}\n---\n\n## A\n<!-- kigit-note {{\"id\": \"aa\"}} -->\nbody\n")
-    d = tmp_path / ".reviews"
+    d = tmp_path / "reviews"
     d.mkdir()
     path = d / "x.md"
     path.write_text(review.dumps(r))
@@ -120,7 +120,7 @@ def test_index_lists_every_review(tmp_path: Path) -> None:
     new = sample()
     review.save(tmp_path, new)
     assert old.id != new.id
-    index = (tmp_path / ".reviews" / "index.md").read_text()
+    index = (tmp_path / "reviews" / "index.md").read_text()
     rows = [line for line in index.splitlines() if line.startswith("| [")]
     # Newest commit first; each row links its file, with the full hash.
     assert rows[0].startswith(f"| [{new.id}]({new.id}.md) | `{COMMIT}` | 2025-03-01 12:00 | Ada \\| L | ")
@@ -129,8 +129,8 @@ def test_index_lists_every_review(tmp_path: Path) -> None:
 
 
 def test_new_ids_are_unique(tmp_path: Path, monkeypatch) -> None:
-    (tmp_path / ".reviews").mkdir()
-    (tmp_path / ".reviews" / "aaaaaaaa.md").write_text("x")
+    (tmp_path / "reviews").mkdir()
+    (tmp_path / "reviews" / "aaaaaaaa.md").write_text("x")
     ids = iter(["aaaaaaaa", "bbbbbbbb"])
     monkeypatch.setattr(review.secrets, "token_hex", lambda n: next(ids))
     assert review.new_id(tmp_path) == "bbbbbbbb"
@@ -143,7 +143,7 @@ def test_no_reviews_folder(tmp_path: Path) -> None:
 def test_save_image(tmp_path: Path) -> None:
     rel = review.save_image(tmp_path, b"\x89PNG fake", "image/png")
     assert review.ASSET_NAME.match(rel.split("/")[1]) and rel.startswith("assets/")
-    assert (tmp_path / ".reviews" / rel).read_bytes() == b"\x89PNG fake"
+    assert (tmp_path / "reviews" / rel).read_bytes() == b"\x89PNG fake"
     assert review.save_image(tmp_path, b"\x89PNG fake", "image/png") == rel  # same image, same file
     with pytest.raises(ValueError):
         review.save_image(tmp_path, b"<svg/>", "image/svg+xml")
@@ -174,3 +174,108 @@ def test_anchor_labels() -> None:
 def test_preview_image_links() -> None:
     md = "a ![](assets/0123456789abcdef.png) b [x](https://e.com/assets/y)"
     assert rewrite_images(md, "k") == "a ![](/review-files/k/0123456789abcdef.png) b [x](https://e.com/assets/y)"
+
+
+def test_autolink() -> None:
+    text = ("see https://a.com/x. and www.b.org, [x](https://c.com) <https://d.com> `https://e.com`\n"
+            "```\nhttps://f.com\n```\nmail me@www.g.com ![](https://h.com/p.png)")
+    assert review.autolink(text) == (
+        "see <https://a.com/x>. and [www.b.org](https://www.b.org), [x](https://c.com) <https://d.com> "
+        "`https://e.com`\n```\nhttps://f.com\n```\nmail me@www.g.com ![](https://h.com/p.png)")
+
+
+def test_link_markdown() -> None:
+    assert review.link_markdown("", "example.com/ds.pdf") == "[https://example.com/ds.pdf](https://example.com/ds.pdf)"
+    assert review.link_markdown("Data [v2]", "https://x.com/a (1).pdf") == r"[Data \[v2\]](https://x.com/a%20%281%29.pdf)"
+    assert review.link_markdown("Buck", "decisions/buck.md") == "[Buck](decisions/buck.md)"
+    assert review.link_markdown("Bench", "Bench test.md") == "[Bench](Bench%20test.md)"
+    assert review.link_markdown("me", "mailto:a@b.c") == "[me](mailto:a@b.c)"
+    assert review.link_markdown("top", "#r-abc") == "[top](#r-abc)"
+
+
+def test_math() -> None:
+    """$inline$ and $$block$$ LaTeX become MathML; prices, code and \\$ don't."""
+    inline = review.to_html(r"Gain $G = \frac{R_f}{R_g}$ and $x$.")
+    assert inline.count('<math xmlns="http://www.w3.org/1998/Math/MathML" display="inline">') == 2
+    assert "<mfrac>" in inline and "$" not in inline
+
+    block = review.to_html("Divider:\n\n$$\nV_{out} = V_{in} \\frac{R_2}{R_1 + R_2}\n$$\n\nafter")
+    assert '<math xmlns="http://www.w3.org/1998/Math/MathML" display="block">' in block
+    assert "<p><math" not in block  # a block on its own, not inside a paragraph
+
+    assert review.to_html("Costs $5 and $10.") == "<p>Costs $5 and $10.</p>\n"
+    assert review.to_html("a $ b $ c") == "<p>a $ b $ c</p>\n"  # spaces inside: not math
+    assert "<code>$x$</code>" in review.to_html("`$x$`")
+    assert "<math" not in review.to_html("```\n$$x$$\n```")
+    assert review.to_html(r"\$x$") == "<p>&#36;x$</p>\n"
+    # Underscores and stars inside math aren't Markdown.
+    assert "<em>" not in review.to_html("$a_1 * b_2 * c_3$")
+
+
+def test_bad_math_is_shown_as_written() -> None:
+    out = review.to_html(r"bad $\frac{$ end")
+    assert '<code class="math-error" title="Not valid LaTeX: ' in out and r"$\frac{$</code>" in out
+
+
+NEW = "1111111111111111111111111111111111111111"
+NEW_PARENT = "2222222222222222222222222222222222222222"
+
+
+def test_retarget_moves_anchors_pinned_in_the_commit() -> None:
+    """A rebased commit's review: anchors pinned in its own comparison follow
+    it, others follow the commits that were rewritten too."""
+    other = "3333333333333333333333333333333333333333"
+    r = Review(commit=COMMIT, parent=PARENT, notes=[
+        Note(anchor=Anchor("pcb", "net", "GND", Seen(PARENT, COMMIT, "new"))),
+        Note(anchor=Anchor("sch", "part", "R1", Seen(other, COMMIT, "old"))),
+        Note(anchor=Anchor("sch", "part", "R2"))])
+    review.retarget(r, NEW, NEW_PARENT, "reworded", "2025-03-02 12:00", "Ada", {COMMIT: NEW})
+    assert (r.commit, r.parent, r.subject, r.date, r.author) == (NEW, NEW_PARENT, "reworded", "2025-03-02 12:00", "Ada")
+    assert r.notes[0].anchor.seen == Seen(NEW_PARENT, NEW, "new")
+    assert r.notes[1].anchor.seen == Seen(other, NEW, "old")
+    assert r.notes[2].anchor.seen is None
+
+
+def test_absorb_adds_summary_and_notes() -> None:
+    target = Review(commit=NEW, summary="Squashed.", notes=[Note(title="A", id="aaaa0000")])
+    other = Review(commit=COMMIT, subject="v2: add C1", summary="Decoupling.",
+                   notes=[Note(title="B", id="aaaa0000", created="2026-11-01 10:00")])
+    review.absorb(target, other, Path("x.md"))
+    assert target.summary == "Squashed.\n\n*From 0123456 (v2: add C1):*\n\nDecoupling."
+    assert [n.title for n in target.notes] == ["A", "B"]
+    assert target.notes[1].id != "aaaa0000" and target.notes[1].created == "2026-11-01 10:00"
+    assert target.absorbed == [Path("x.md")]
+
+
+def test_move_and_merge(tmp_path: Path) -> None:
+    """move() rewrites the review for its new commit, or merges it into that
+    commit's review and removes its file (on that write)."""
+    a = review.save(tmp_path, Review(commit=COMMIT, parent=PARENT, summary="First.", notes=[Note(title="One")]))
+    moved = review.move(tmp_path, a, NEW, NEW_PARENT, "new subject", "2025-03-02 12:00", "Ada")
+    assert moved == a
+    r = review.load(a)
+    assert (r.commit, r.parent, r.subject) == (NEW, NEW_PARENT, "new subject")
+    assert set(review.all_reviews(tmp_path)) == {NEW}
+
+    b = review.save(tmp_path, Review(commit=COMMIT, summary="Second.", notes=[Note(title="Two")]))
+    into = review.move(tmp_path, b, NEW, NEW_PARENT, "new subject", "2025-03-02 12:00", "Ada")
+    assert into == a and not b.exists()
+    merged = review.load(a)
+    assert [n.title for n in merged.notes] == ["One", "Two"]
+    assert "First." in merged.summary and "Second." in merged.summary
+    assert b.name not in (tmp_path / "reviews" / "index.md").read_text()
+
+
+def test_clean_tag() -> None:
+    assert review.clean_tag("Needs Review") == "needs-review"
+    assert review.clean_tag("#Power/3V3") == "power/3v3"
+    assert review.clean_tag("  risk ") == "risk"
+    assert review.clean_tag("a, b!") == "a-b"
+    assert review.clean_tag("#") == ""
+
+
+def test_known_tags(tmp_path: Path) -> None:
+    """Built-in tags first, then the ones the project's reviews use."""
+    assert review.known_tags(tmp_path) == review.TAGS
+    review.save(tmp_path, Review(commit=COMMIT, notes=[Note(tags=["thermal", "risk"]), Note(tags=["emc"])]))
+    assert review.known_tags(tmp_path) == review.TAGS + ["emc", "thermal"]

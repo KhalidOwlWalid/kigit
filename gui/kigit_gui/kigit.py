@@ -136,6 +136,36 @@ async def history(project: str, max_count: int = 200, since: str = "", until: st
     )
 
 
+@dataclass
+class Moved:
+    """A live commit a rewritten one may have become."""
+    hash: str
+    short: str
+    parent: str
+    date: str
+    author: str
+    subject: str
+    body: str
+
+
+@dataclass
+class Rewritten:
+    hash: str
+    live: bool    # still on a branch, tag or HEAD
+    exists: bool  # git still has it
+    matches: list[Moved]  # same author and author date (rebase / amend keep those)
+
+
+async def rewritten(project_dir: str, hashes: list[str]) -> list[Rewritten]:
+    """For each commit: still live, and if not, where it may have gone."""
+    found: list[Rewritten] = []
+    for i in range(0, len(hashes), 200):  # keeps the command line short (Windows)
+        out, _ = await _run("-C", project_dir, "--rewritten", *hashes[i:i + 200])
+        for c in json.loads(out)["commits"]:
+            found.append(Rewritten(c["hash"], c["live"], c["exists"], [Moved(**m) for m in c["matches"]]))
+    return found
+
+
 def _view_options(silkscreen: bool, source: bool) -> list[str]:
     return (["--silkscreen"] if silkscreen else []) + (["--source"] if source else [])
 

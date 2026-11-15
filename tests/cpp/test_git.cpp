@@ -2,6 +2,7 @@
 #include "git/git.hpp"
 #include "helpers.hpp"
 #include "git/locate.hpp"
+#include "utils/platform.hpp"
 
 #include <doctest/doctest.h>
 
@@ -105,6 +106,42 @@ TEST_CASE("uncommitted changes are listed") {
     write_text(tmp / "board/notes.txt", "x");
     std::vector<std::string> changed = git::changed_files(root, "board");
     CHECK(changed == std::vector<std::string>{"board/notes.txt"});
+}
+
+TEST_CASE("rewritten: an amended commit is found by its author date") {
+    TempDir tmp;
+    make_fixture_repo(tmp.path());
+    std::string root = tmp.path().string();
+    std::string before = git::resolve(root, "HEAD").hash;
+    std::string v1 = git::resolve(root, "HEAD~3").hash;
+    // Amend keeps the author and author date, like a rebase does.
+    REQUIRE(platform::run({"git", "-C", root, "commit", "-q", "--amend", "-m", "move the project folder"}).ok);
+    git::Revision after = git::resolve(root, "HEAD");
+    REQUIRE(after.hash != before);
+
+    auto r = git::rewritten(root, {before, v1, std::string(40, '0')});
+    REQUIRE(r.size() == 3);
+    CHECK(!r[0].live);
+    CHECK(r[0].exists);
+    REQUIRE(r[0].matches.size() == 1);
+    CHECK(r[0].matches[0].hash == after.hash);
+    CHECK(r[0].matches[0].subject == "move the project folder");
+    CHECK(r[0].matches[0].parent == git::resolve(root, "HEAD~1").hash);
+    CHECK(r[1].live); // untouched: still on main
+    CHECK(r[1].matches.empty());
+    CHECK(!r[2].exists);
+
+    // Two live commits with the same author time (made in the same second):
+    // the one with the old commit's subject wins. A new committer date, so
+    // the amend makes a new commit.
+    platform::set_env("GIT_COMMITTER_DATE", "2025-05-01T12:00:00");
+    REQUIRE(platform::run({"git", "-C", root, "commit", "-q", "--amend", "--allow-empty", "-m", "move the project folder"}).ok);
+    std::string amended = git::resolve(root, "HEAD").hash;
+    platform::set_env("GIT_AUTHOR_DATE", "2025-04-01T12:00:00"); // the same as HEAD's
+    REQUIRE(platform::run({"git", "-C", root, "commit", "-q", "--allow-empty", "-m", "other"}).ok);
+    auto tie = git::rewritten(root, {after.hash});
+    REQUIRE(tie[0].matches.size() == 1);
+    CHECK(tie[0].matches[0].hash == amended);
 }
 
 }

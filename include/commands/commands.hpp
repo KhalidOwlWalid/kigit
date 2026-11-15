@@ -11,6 +11,8 @@ namespace kigit::cmd {
 int run_diff(const Options& o, const std::filesystem::path& project);
 // `kigit --log`: the project's history as JSON.
 int run_history(const Options& o, const std::filesystem::path& project);
+// `kigit --rewritten HASH...`: where rewritten commits went, as JSON.
+int run_rewritten(const Options& o, const std::filesystem::path& project);
 // `kigit --projects`: KiCad projects in a folder as JSON.
 int run_projects(const std::filesystem::path& dir, int depth);
 // `kigit gui [args]`: the desktop app.

@@ -14,7 +14,7 @@ void usage() {
 
 USAGE
     kigit [OPTIONS] [OLD..NEW | OLD NEW | REV] [BOARD.kicad_pcb]
-    kigit gui [PROJECT_DIR]                                  (desktop app)
+    kigit gui [PROJECT_DIR] [--port N]                       (desktop app; kigit gui --help)
     kigit [OPTIONS] --files OLD.kicad_pcb NEW.kicad_pcb      (no git needed)
 
 EXAMPLE
@@ -89,6 +89,11 @@ LOGGING
         --projects      Print the KiCad projects in the folder (and below,
                         see --depth) as JSON. Used by the GUI.
         --depth N       With --projects: search N levels down (default 2)
+        --rewritten HASH...
+                        Print, as JSON, whether each commit is still on a
+                        branch or tag, and if not, the commits with the same
+                        author and author date (where a rebase or amend put
+                        it). Used by the GUI to move reviews.
         --json          Write the data (PCB diff + both schematics' nets) as
                         JSON instead of the HTML viewer
         --check-netlist FILE
@@ -145,6 +150,17 @@ std::optional<int> parse_options(int argc, char** argv, Options& o) {
             o.source = true;
         } else if (a == "--projects") {
             o.projects_mode = true;
+        } else if (a == "--rewritten") {
+            o.rewritten_mode = true;
+            for (; i + 1 < argc && argv[i + 1][0] != '-'; ++i) {
+                std::string h = argv[i + 1];
+                if (h.empty() || h.size() > 64 ||
+                    !std::all_of(h.begin(), h.end(), [](char c) { return std::isxdigit(static_cast<unsigned char>(c)); })) {
+                    std::cerr << "kigit: --rewritten takes commit hashes, not '" << h << "'\n";
+                    return 2;
+                }
+                o.rewritten.push_back(h);
+            }
         } else if (a == "--depth") {
             if (++i >= argc) {
                 std::cerr << "kigit: --depth needs a number\n";

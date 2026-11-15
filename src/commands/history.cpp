@@ -91,4 +91,18 @@ int run_history(const Options& o, const fs::path& project) {
     return 0;
 }
 
+int run_rewritten(const Options& o, const fs::path& project) {
+    std::string root = git::toplevel(project.string());
+    nlohmann::json commits = nlohmann::json::array();
+    for (const auto& r : git::rewritten(root, o.rewritten)) {
+        nlohmann::json matches = nlohmann::json::array();
+        for (const auto& c : r.matches)
+            matches.push_back({{"hash", c.hash}, {"short", c.short_hash}, {"parent", c.parent}, {"date", c.date},
+                               {"author", c.author}, {"subject", c.subject}, {"body", c.body}});
+        commits.push_back({{"hash", r.hash}, {"live", r.live}, {"exists", r.exists}, {"matches", matches}});
+    }
+    std::printf("%s\n", nlohmann::json{{"commits", commits}}.dump().c_str());
+    return 0;
+}
+
 } // namespace kigit::cmd
