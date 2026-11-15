@@ -321,7 +321,11 @@ at once. localStorage settings are per origin, so per port.
   merged meshes with a see-through dark material are the mask, see-through
   light ones the silkscreen (`layers`, `setLayer`; M, K, P). A layer change
   is posted as `{kigit3d: "layer"}` and the grid relays it as `setLayer`
-  while linked. It draws on
+  while linked. Silkscreen: KiCad exports it see-through (0.9) almost in
+  the mask's plane, so the draw order of the two flipped with the angle
+  and the mask covered it at low angles. It's made solid, a little
+  emissive (0.35 of its colour), with polygon offset in front of the mask
+  (silk -2/-4, mask -1/-2; KiCad uses -4 and -2). It draws on
   demand (`redraw()`: on controls `change`, while damping still moves, on
   resize and view changes), not every frame, and the static model's
   matrices are computed once; no hover raycasting (it lagged on big boards).

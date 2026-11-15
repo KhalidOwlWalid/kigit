@@ -46,6 +46,9 @@ def test_side_by_side_page() -> None:
     # other boards follow.
     assert 'id="mask" class="on"' in one and 'id="silk" class="on"' in one
     assert 'kigit3d: "layer", name, on' in one and 'm.kigit3d === "setLayer"' in one
+    # Silkscreen: solid and in front of the mask, so it shows from low angles.
+    assert "m.transparent = false; m.opacity = 1; m.depthWrite = true;" in one
+    assert "m.polygonOffsetUnits = -4" in one and "m.polygonOffsetUnits = -2" in one
 
 
 def test_side_by_side_route() -> None:

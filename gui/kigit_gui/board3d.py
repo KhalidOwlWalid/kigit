@@ -340,7 +340,22 @@ new GLTFLoader().load(%%GLB%%, (gltf) => {
     if (Math.min(c.r, c.g, c.b) < 0.5) {
       layers.mask.push(mesh);
       if (m.opacity > MASK_OPACITY) m.opacity = MASK_OPACITY;
-    } else layers.silk.push(mesh);
+      // Pulled towards the camera over the copper, as KiCad does (polygon offset -2).
+      m.polygonOffset = true; m.polygonOffsetFactor = -1; m.polygonOffsetUnits = -2;
+    } else {
+      layers.silk.push(mesh);
+      // The silkscreen sits on the mask, nearly in the same plane. Both
+      // see-through, which is drawn first flips as the board turns, and at
+      // a low angle the mask ends up over the silkscreen and hides it. So,
+      // like KiCad (offset -4, in front of the mask's -2): solid, always in
+      // front of the mask, and a little self-lit so it stays white when the
+      // light only grazes it.
+      m.transparent = false; m.opacity = 1; m.depthWrite = true;
+      m.polygonOffset = true; m.polygonOffsetFactor = -2; m.polygonOffsetUnits = -4;
+      m.roughness = 0.7;
+      m.emissive?.copy(m.color).multiplyScalar(0.35);
+      m.needsUpdate = true;
+    }
   }
   const partsGroup = mergeByMaterial(partNodes, "parts");
   model.add(partsGroup);
