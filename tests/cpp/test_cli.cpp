@@ -127,6 +127,19 @@ TEST_CASE("--3d: one revision, made by kicad-cli") {
     CHECK(made.out.find("out.glb") != std::string::npos);
     CHECK(read_text(glb).substr(0, 4) == "glTF");
 
+    // A part whose model file doesn't exist: listed on stderr for the GUI.
+    std::string pcb = read_text(tmp / "board/demo.kicad_pcb");
+    size_t fp = pcb.find("(footprint \"Demo:R\"");
+    REQUIRE(fp != std::string::npos);
+    pcb.insert(pcb.find('\n', fp) + 1, "\t\t(model \"${KIPRJMOD}/no-such-model.step\")\n");
+    write_text(tmp / "board/demo.kicad_pcb", pcb);
+    RunResult lacking = run_kigit("--3d -o " + quote((tmp / "local.glb").string()) + " -C " + dir);
+    INFO("stderr: " << lacking.err);
+    CHECK(lacking.code == 0);
+    CHECK(lacking.err.find("1 part has no 3D model") != std::string::npos);
+    CHECK(lacking.err.find("missing 3D model: R1\t") != std::string::npos);
+    CHECK(lacking.err.find("no-such-model.step") != std::string::npos);
+
 #ifndef _WIN32
     // Two at once into one folder (the GUI's side-by-side view): kicad-cli's
     // scratch file next to its output mustn't be shared.

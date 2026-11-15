@@ -128,15 +128,27 @@ int run_board3d(const Options& o, const fs::path& project) {
     fs::path made = tmp / "board.glb";
     args[args.size() - 2] = made.string();
     platform::RunResult r = platform::run(args, true);
-    int no_model = 0; // parts whose 3D model file KiCad couldn't find
+    // Parts whose 3D model KiCad couldn't find: "Could not add 3D model for
+    // U405." then "File not found: <path>". Listed on stderr, one per line
+    // ("missing 3D model: REF<tab>PATH"), for the GUI's notifications.
+    std::vector<std::pair<std::string, std::string>> missing;
     for (const auto& text : {r.out, r.err}) {
         std::istringstream in(text);
         for (std::string l; std::getline(in, l);) {
+            while (!l.empty() && (l.back() == '\r' || l.back() == ' ')) l.pop_back();
             if (l.empty()) continue;
             spdlog::info("kicad-cli: {}", l);
-            if (l.rfind("Could not add 3D model", 0) == 0) ++no_model;
+            static const std::string part = "Could not add 3D model for ", file = "File not found: ";
+            if (l.rfind(part, 0) == 0) {
+                std::string ref = l.substr(part.size());
+                if (!ref.empty() && ref.back() == '.') ref.pop_back();
+                missing.emplace_back(ref, "");
+            } else if (l.rfind(file, 0) == 0 && !missing.empty() && missing.back().second.empty()) {
+                missing.back().second = l.substr(file.size());
+            }
         }
     }
+    int no_model = static_cast<int>(missing.size());
     if (r.ok && fs::exists(made)) {
         fs::rename(made, out, ec);
         if (ec) { // another drive: copy instead
@@ -147,9 +159,11 @@ int run_board3d(const Options& o, const fs::path& project) {
     fs::remove_all(tmp, ec);
     if (!r.ok || !fs::exists(out))
         throw std::runtime_error("kicad-cli couldn't make the 3D board" + tail(r.err + "\n" + r.out));
-    if (no_model)
+    if (no_model) {
         warn(std::to_string(no_model) + (no_model == 1 ? " part has" : " parts have") +
              " no 3D model: KiCad couldn't find the file (the log lists them)");
+        for (const auto& [ref, path] : missing) std::fprintf(stderr, "missing 3D model: %s\t%s\n", ref.c_str(), path.c_str());
+    }
     if (!o.quiet) std::fprintf(stderr, "3D board of %s written\n", rev.short_hash.c_str());
     std::printf("%s\n", out.string().c_str());
     return 0;

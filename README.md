@@ -12,6 +12,7 @@
 ![Windows and Linux](https://img.shields.io/badge/platform-Windows%20%7C%20Linux-58a6ff)
 ![KiCad 6+](https://img.shields.io/badge/KiCad-6%2B-314CB0?logo=kicad&logoColor=white)
 [![MIT license](https://img.shields.io/badge/license-MIT-3fb950)](LICENSE)
+[![Built with Claude](https://img.shields.io/badge/built%20with-Claude-D97757?logo=claude&logoColor=white)](https://claude.com/claude-code)
 
 </div>
 

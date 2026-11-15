@@ -166,11 +166,24 @@ async def rewritten(project_dir: str, hashes: list[str]) -> list[Rewritten]:
     return found
 
 
-async def board3d(project: str, rev: str, out_file: Path) -> list[str]:
+@dataclass
+class Made3d:
+    """What kigit --3d said besides making the model."""
+    warnings: list[str]
+    missing: list[tuple[str, str]]  # parts without a 3D model: (reference, the file KiCad couldn't find)
+
+
+MISSING_MODEL = "missing 3D model: "
+
+
+async def board3d(project: str, rev: str, out_file: Path) -> Made3d:
     """Writes the board at rev (a hash, or LOCAL) as a 3D model (.glb) to
-    out_file; KiCad's kicad-cli makes it. Returns kigit's warnings."""
+    out_file; KiCad's kicad-cli makes it."""
     _, err = await _run("-C", project, "-q", "--3d", rev, "-o", str(out_file))
-    return [line.removeprefix("warning: ") for line in err.splitlines() if line.startswith("warning:")]
+    lines = err.splitlines()
+    missing = [tuple(line.removeprefix(MISSING_MODEL).split("\t", 1) + [""])[:2]
+               for line in lines if line.startswith(MISSING_MODEL)]
+    return Made3d([line.removeprefix("warning: ") for line in lines if line.startswith("warning:")], missing)
 
 
 def _view_options(silkscreen: bool, source: bool) -> list[str]:

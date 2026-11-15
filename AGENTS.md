@@ -75,6 +75,7 @@ Other folders:
   `asyncio.to_thread(subprocess.run)`), `logs.py`, `folder_picker.py`,
   `review.py` (review file format), `review_panel.py` (the review drawer),
   `rewritten.py` (reviews of rebased/amended/squashed commits),
+  `buildtime.py` (3D build time estimates for the progress bar),
   `board3d.py` (the 3D view page),
   `resize.py` (drag handles for the drawers).
 - `submodules/`: the libraries (json, spdlog, doctest) as pinned git submodules.
@@ -350,6 +351,12 @@ at once. localStorage settings are per origin, so per port.
   (`set_popped`, class `popped` on the split): only the dock's header bar
   stays, under the comparison; the dock iframe is blanked and `dock_load`
   sends `state["dock_src"]` to the tab (`location.href`) instead.
+  Progress: kicad-cli prints nothing while it exports (checked with a pty
+  too), so `build_models` shows time against the board's last build
+  (`buildtime`: `<app data>/kigit/3d-build-times.json`, per board path,
+  averaged with the previous build, scaled by 1 + 0.25 per extra build at
+  once; builds under 2 s aren't kept). First build: indeterminate bar.
+  Shown under the main placeholder (`build-progress`) or in the dock.
   Several rows: their models are made at once (`asyncio.gather`) and the
   iframe shows `/board3d-grid?b=..&t=..&s=..` (oldest first): one
   `/board3d` iframe per board. Each board posts `{kigit3d: "camera"}` to its
@@ -376,6 +383,18 @@ at once. localStorage settings are per origin, so per port.
   has the counts. Per-part objects are gone, so anything per part (picking,
   highlighting) would need a part id per vertex. Headless
   Chrome renders big models in software and slowly.
+- Notifications (`notices.py`): `notices.add(level, title, detail,
+  headers, rows)` keeps up to 200 per GUI process (newest first); `notify()`
+  adds warnings and errors it shows (`notice=False` when the caller adds a
+  fuller one). The header bell polls `notices.version` each second and
+  shows a red "!" badge while `unread_problems()`; opening it marks all
+  read. Notices with rows are also written to the log. Pages for their own
+  tab: `/notices` (polls `/notices.json`) and `/log` (polls `/log.txt`,
+  the session log's tail; Follow and a filter), both every 2 s. `kigit
+  --3d` lists parts without a model on stderr as `missing 3D model:
+  REF<tab>PATH` (parsed from kicad-cli's "Could not add 3D model for X." +
+  "File not found: P" pairs); `kigit.board3d` returns `Made3d(warnings,
+  missing)` and `build_models` makes one notice with the table.
 - Reviews (GUI only): pick one commit and press Review; it's diffed against
   its `parent` and a right drawer opens. One Markdown file per commit in
   `<board folder>/reviews/`, named `<id>.md` (a random 8-hex ID given on

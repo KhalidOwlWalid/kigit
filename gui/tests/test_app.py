@@ -639,6 +639,73 @@ async def test_3d_dock_beside_a_comparison(user: User, monkeypatch) -> None:
     assert not dock_button.visible and not marked(user, "dock-grip").visible
 
 
+async def test_3d_build_shows_progress(user: User, monkeypatch, tmp_path: Path) -> None:
+    """kicad-cli reports no progress: the GUI shows time against the board's
+    last build, and remembers this one."""
+    from kigit_gui import buildtime, kigit
+
+    monkeypatch.setattr(buildtime, "FILE", tmp_path / "times.json")
+    monkeypatch.setattr(buildtime, "MIN_SECONDS", 0.5)
+    release = asyncio.Event()
+
+    async def slow_board3d(project: str, rev: str, out: Path) -> list[str]:
+        await release.wait()
+        out.write_bytes(b"glTF")
+        return []
+
+    monkeypatch.setattr(kigit, "board3d", slow_board3d)
+    await open_at(user, monkeypatch, PROJECT)
+    await user.should_see("Pick two commits on the left", retries=50)
+    await select(user, [commit_table(user).rows[1]])
+    user.find(marker="view3d-button").click()
+    await user.should_see("so far · the first build of this board", retries=30)
+    assert "indeterminate" in marked(user, "build-progress").props  # no estimate yet
+    await asyncio.sleep(0.6)
+    release.set()
+    for _ in range(50):
+        if not marked(user, "build-progress").visible:
+            break
+        await asyncio.sleep(0.1)
+    assert not marked(user, "build-progress").visible
+    assert (tmp_path / "times.json").exists()  # remembered for next time
+
+
+async def test_missing_parts_in_notifications(user: User, monkeypatch) -> None:
+    """Parts without a 3D model: a red "!" on the bell, and the list in the
+    notification centre."""
+    from kigit_gui import kigit, notices
+
+    notices.clear()
+
+    async def fake_board3d(project: str, rev: str, out: Path) -> kigit.Made3d:
+        out.write_bytes(b"glTF")
+        return kigit.Made3d(["2 parts have no 3D model: KiCad couldn't find the file (the log lists them)"],
+                            [("U405", "/Users/pico/x.step"), ("J1", "${KIPRJMOD}/3d/usb.wrl")])
+
+    monkeypatch.setattr(kigit, "board3d", fake_board3d)
+    await open_at(user, monkeypatch, PROJECT)
+    await user.should_see("Pick two commits on the left", retries=50)
+    badge = marked(user, "notices-badge")
+    assert not badge.visible
+    await select(user, [commit_table(user).rows[1]])
+    user.find(marker="view3d-button").click()
+    for _ in range(50):
+        if badge.visible:
+            break
+        await asyncio.sleep(0.1)
+    assert badge.visible  # the red "!"
+    assert notices.items[0].rows == [("U405", "/Users/pico/x.step"), ("J1", "${KIPRJMOD}/3d/usb.wrl")]
+    user.find(marker="notices-button").click()
+    await user.should_see("2 parts without a 3D model")
+    table = user.find(marker="notice-table").elements.pop()
+    assert "U405" in table.content and "/Users/pico/x.step" in table.content
+    for _ in range(30):
+        if not badge.visible:
+            break
+        await asyncio.sleep(0.1)
+    assert not badge.visible  # read
+
+
 async def test_3d_view_without_kicad(user: User, monkeypatch) -> None:
     from kigit_gui import kigit
 

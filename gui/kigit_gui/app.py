@@ -34,7 +34,7 @@ from pathlib import Path
 
 from nicegui import app, background_tasks, ui
 
-from . import kigit, logs, review, rewritten
+from . import buildtime, kigit, logs, notices, review, rewritten
 from .folder_picker import FolderPicker
 from .resize import Resizer
 from . import board3d, review_doc  # noqa: F401  (register the /board3d and /reviews-doc pages)
@@ -120,12 +120,15 @@ def short_rev(rev: str) -> str:
     return rev[:7] if len(rev) == 40 else rev
 
 
-def notify(message: str, type: str = "info", **kwargs) -> None:
+def notify(message: str, type: str = "info", notice: bool = True, **kwargs) -> None:
     """Shows a message to the user and writes it to the session log.
     Problems are logged as warnings (they're the user's situation, e.g. no
-    git history, not faults in the GUI)."""
+    git history, not faults in the GUI), and kept in the notification
+    centre (unless notice=False: the caller adds a fuller one)."""
     level = logging.WARNING if type in ("negative", "warning") else logging.INFO
     logs.log.log(level, "shown to user: %s", message)
+    if notice and type in ("negative", "warning"):
+        notices.add("error" if type == "negative" else "warning", message)
     ui.notify(message, type=type, **kwargs)
 
 
@@ -159,7 +162,47 @@ def show_log() -> None:
             refresh()
         with ui.row().classes("w-full justify-end gap-2"):
             if logs.session_file:
+                ui.button("Open in new tab", icon="open_in_new",
+                          on_click=lambda: ui.navigate.to("/log", new_tab=True)).props("flat").mark("log-new-tab")
                 ui.button("Refresh", icon="refresh", on_click=refresh).props("flat")
+            ui.button("Close", on_click=dialog.close).props("flat")
+    dialog.open()
+
+
+_LEVEL_LOOK = {"error": ("error", "red-4"), "warning": ("warning", "amber-5"), "info": ("info", "blue-4")}
+
+
+def show_notices() -> None:
+    """The notification centre: this session's warnings and errors, newest first."""
+    notices.mark_read()
+    with ui.dialog() as dialog, ui.card().classes("w-[52rem] max-w-full bg-[#161a20] gap-2"):
+        with ui.row().classes("w-full items-center gap-2"):
+            ui.label("Notifications").classes("text-base font-semibold")
+            ui.space()
+            ui.label("Also in the session log").classes("text-xs text-gray-500")
+        with ui.scroll_area().classes("w-full h-[30rem]"):
+            if not notices.items:
+                ui.label("Nothing to report.").classes("text-sm text-gray-500 italic").mark("notices-empty")
+            for n in notices.items:
+                icon, color = _LEVEL_LOOK[n.level]
+                with ui.row().classes("w-full items-start gap-2 no-wrap py-1 border-b border-[#29303a]"):
+                    ui.icon(icon, color=color).classes("mt-0.5")
+                    with ui.column().classes("gap-0 flex-grow min-w-0"):
+                        with ui.row().classes("w-full items-baseline gap-2 no-wrap"):
+                            ui.label(n.title).classes("text-sm").mark("notice-title")
+                            ui.space()
+                            ui.label(n.when).classes("text-xs text-gray-500")
+                        if n.detail:
+                            ui.label(n.detail).classes("text-xs text-gray-400 whitespace-pre-wrap")
+                        if n.rows:
+                            with ui.expansion(f"Show the {len(n.rows)} {n.headers[0].lower() + 's' if n.headers else 'rows'}",
+                                              value=len(n.rows) <= 15).props("dense header-class=text-xs").classes(
+                                    "w-full"):
+                                ui.html(notices.html_table(n)).classes("w-full").mark("notice-table")
+        with ui.row().classes("w-full justify-end gap-2"):
+            ui.button("Open in new tab", icon="open_in_new",
+                      on_click=lambda: ui.navigate.to("/notices", new_tab=True)).props("flat").mark("notices-new-tab")
+            ui.button("Clear", icon="delete_sweep", on_click=lambda: (notices.clear(), dialog.close())).props("flat")
             ui.button("Close", on_click=dialog.close).props("flat")
     dialog.open()
 
@@ -188,6 +231,11 @@ def build(start_folder: str):
             "All of this project's written reviews as one page, in a new tab").mark("reviews-doc")
         ui.button("Compare folders", icon="difference", on_click=lambda: compare_folders()).props(
             "flat dense").tooltip("Compare two copies of a KiCad project, without git").mark("compare-folders")
+        with ui.button(icon="notifications", on_click=lambda: (show_notices(), bell_refresh())).props(
+                "flat dense round").mark("notices-button") as bell:
+            bell_badge = ui.badge("!", color="red").props("floating rounded").mark("notices-badge")
+            bell_tip = ui.tooltip("Notifications")
+        bell_badge.set_visibility(False)
         ui.button(icon="receipt_long", on_click=show_log).props("flat dense round").tooltip("Session log").mark("log-button")
 
     # ----------------------------------------------------------- commit list
@@ -308,6 +356,26 @@ def build(start_folder: str):
         ui.run_javascript(f'try {{ localStorage.setItem("kigit.wrapMessages", "{1 if on else 0}") }} catch {{}}')
     resizer.add(commits_drawer, "left", "commits", 480)
 
+    # The bell: a red "!" while warnings or errors are unread.
+    seen_version = {"v": -1}
+
+    def bell_refresh() -> None:
+        if seen_version["v"] == notices.version:
+            return
+        seen_version["v"] = notices.version
+        n = notices.unread_problems()
+        bell_badge.set_visibility(n > 0)
+        bell_tip.text = f"Notifications: {n} new warning{'s' if n != 1 else ''} or error{'s' if n != 1 else ''}" \
+            if n else "Notifications"
+    ui.timer(1.0, bell_refresh)
+    ui.add_head_html("""<style>
+.kigit-notice-table { border-collapse: collapse; font-size: 12px; margin: 4px 0 8px; }
+.kigit-notice-table td:first-child { white-space: nowrap; }
+.kigit-notice-table th { text-align: left; color: #9aa4b2; font-weight: 500; padding: 2px 14px 2px 0; }
+.kigit-notice-table td { padding: 2px 14px 2px 0; border-top: 1px solid #29303a; font-family: ui-monospace, Menlo, Consolas, monospace;
+  overflow-wrap: anywhere; }
+</style>""")
+
     # ---------------------------------------------------------------- viewer
     # The comparison, and the 3D dock beside it (its width: --kigit-dock-w,
     # dragged by the grip, remembered in the browser).
@@ -319,6 +387,12 @@ def build(start_folder: str):
                 placeholder_icon = ui.icon("folder_open").classes("text-5xl text-gray-600")
                 placeholder_text = ui.label("Open a KiCad project folder to start.").classes("text-gray-400")
                 placeholder_more = ui.label("").classes("text-xs text-gray-500 text-center max-w-[36rem]")
+                # A 3D build's progress: time against the board's last build.
+                build_bar = ui.linear_progress(value=0, show_value=False).props(
+                    "color=amber-7 track-color=grey-9 rounded size=6px").classes("w-80").mark("build-progress")
+                build_time = ui.label("").classes("text-xs text-gray-400").mark("build-time")
+                build_bar.set_visibility(False)
+                build_time.set_visibility(False)
                 # Shown when a project has no git history: compare two copies instead.
                 no_git_button = ui.button("Compare two copies of this project", icon="difference").props(
                     "unelevated dense color=amber-8").mark("no-git-compare")
@@ -354,6 +428,11 @@ def build(start_folder: str):
                 with ui.column().classes("absolute inset-0 items-center justify-center gap-3 p-6") as dock_wait:
                     dock_spinner = ui.spinner(size="lg", color="amber-7")
                     dock_msg = ui.label("").classes("text-xs text-gray-400 text-center").mark("dock-message")
+                    dock_bar = ui.linear_progress(value=0, show_value=False).props(
+                        "color=amber-7 track-color=grey-9 rounded size=6px").classes("w-64").mark("dock-progress")
+                    dock_time = ui.label("").classes("text-xs text-gray-500").mark("dock-time")
+                    dock_bar.set_visibility(False)
+                    dock_time.set_visibility(False)
         dock.set_visibility(False)
         dock_grip.set_visibility(False)
     ui.add_head_html("""<style>
@@ -547,6 +626,8 @@ body.kigit-dragging iframe { pointer-events: none; }  /* else the frames swallow
     def show_message(icon: str, text: str, more: str = "", tone: str = "text-gray-400") -> None:
         panel.close()
         no_comparison()
+        build_bar.set_visibility(False)
+        build_time.set_visibility(False)
         no_git_button.set_visibility(False)
         frame.set_visibility(False)
         placeholder.set_visibility(True)
@@ -777,24 +858,69 @@ body.kigit-dragging iframe { pointer-events: none; }  /* else the frames swallow
         await run_diff(row["parent"], row["hash"], review_btn, review_of=row)
 
     # ------------------------------------------------------------------- 3D
-    async def build_models(names: dict[str, str]) -> list[tuple[str, BaseException]]:
+    def show_progress(bar: ui.linear_progress, label: ui.label, elapsed: float, expected: float | None) -> None:
+        value, text = buildtime.progress(elapsed, expected)
+        if value is None:
+            bar.props("indeterminate")
+        else:
+            bar.props(remove="indeterminate")
+            bar.value = value
+        label.text = text
+
+    async def build_models(names: dict[str, str], bar: ui.linear_progress | None = None,
+                           label: ui.label | None = None) -> list[tuple[str, BaseException]]:
         """Makes the missing 3D models (rev -> file name in CACHE) with kigit
-        --3d, all at once. Returns the ones that failed."""
+        --3d, all at once. Returns the ones that failed. bar/label: where to
+        show progress (kicad-cli reports none: it's time against the board's
+        last build)."""
         board = state["board"]
         todo = [r for r, n in names.items() if not (CACHE / n).exists()]
         if not todo:
             return []
         started = time.monotonic()
-        logs.log.info("3d %s", " ".join(todo))
-        results = await asyncio.gather(*(kigit.board3d(board, r, CACHE / names[r]) for r in todo),
-                                       return_exceptions=True)
+        expected = buildtime.estimate(board, len(todo))
+        logs.log.info("3d %s (expected %s)", " ".join(todo), f"{expected:.0f} s" if expected else "unknown")
+
+        async def tick() -> None:
+            while True:
+                show_progress(bar, label, time.monotonic() - started, expected)
+                await asyncio.sleep(0.5)
+
+        ticker = None
+        if bar is not None and label is not None:
+            bar.set_visibility(True)
+            label.set_visibility(True)
+            ticker = asyncio.create_task(tick())
+        try:
+            results = await asyncio.gather(*(kigit.board3d(board, r, CACHE / names[r]) for r in todo),
+                                           return_exceptions=True)
+        finally:
+            if ticker:
+                ticker.cancel()
+                bar.set_visibility(False)
+                label.set_visibility(False)
+        if not any(isinstance(r, BaseException) for r in results):
+            buildtime.record(board, time.monotonic() - started, len(todo))
         failed = []
         for r, result in zip(todo, results):
             if isinstance(result, BaseException):
                 failed.append((r, result))
+                notices.add("error", f"Couldn't make the 3D board of {short_rev(r)}", str(result))
                 continue
-            for w in result:
+            warnings, missing = (result.warnings, result.missing) if isinstance(result, kigit.Made3d) else (
+                list(result), [])
+            for w in warnings:
+                if missing and "no 3D model" in w:
+                    continue  # said below, with the list
                 notify(w, type="warning", multi_line=True, close_button=True)
+            if missing:
+                parts = f"{len(missing)} part{'s' if len(missing) != 1 else ''}"
+                notices.add("warning", f"{short_rev(r)}: {parts} without a 3D model",
+                            "KiCad couldn't find these model files, so the parts are left out of the 3D view "
+                            "(their footprints and pads are still there).",
+                            ("Part", "Model file"), missing)
+                notify(f"{short_rev(r)}: {parts} without a 3D model. The list is under notifications (the bell).",
+                       type="warning", notice=False, close_button=True)
         logs.log.info("3d done in %.1f s", time.monotonic() - started)
         return failed
 
@@ -829,12 +955,11 @@ body.kigit-dragging iframe { pointer-events: none; }  /* else the frames swallow
             view3d_btn.props("loading")
             which = ", ".join(r["short"] for r in todo)
             show_message("view_in_ar", f"Building the 3D board{'s' if len(todo) > 1 else ''} of {which} with KiCad...",
-                         "kicad-cli exports the board with its parts' 3D models. A big board takes a while "
-                         "(half a minute or so; several are made at the same time); after that a commit opens "
-                         "straight away.")
+                         "kicad-cli exports the board with its parts' 3D models (several at the same time); "
+                         "after that a commit opens straight away.")
             status.text = "Building 3D board..."
             started = time.monotonic()
-            failed = await build_models(names)
+            failed = await build_models(names, build_bar, build_time)
             state["busy3d"] = False
             view3d_btn.props(remove="loading")
             on_select()
@@ -948,10 +1073,10 @@ body.kigit-dragging iframe { pointer-events: none; }  /* else the frames swallow
         if any(not (CACHE / n).exists() for n in names.values()):
             dock_frame.set_visibility(False)
             dock_wait.set_visibility(True)
-            dock_spinner.set_visibility(True)
+            dock_spinner.set_visibility(False)  # the progress bar shows it
             dock_msg.text = (f"Building the 3D board of {' and '.join(short_rev(r) for r in revs)} with KiCad... "
-                             "A big board takes about half a minute; the comparison stays usable.")
-            failed = await build_models(names)
+                             "The comparison stays usable meanwhile.")
+            failed = await build_models(names, dock_bar, dock_time)
             if token != state.get("dock_token"):
                 return  # closed, or another side picked meanwhile
             if failed:
