@@ -15,10 +15,10 @@
         <link rel="canonical" href="https://khalidowlwalid.github.io/kigit/architecture/">
       
       
-        <link rel="prev" href="../installation/">
+        <link rel="prev" href="../app-folder/">
       
       
-        <link rel="next" href="../how-to-use/gui/">
+        <link rel="next" href="../how-to-use/overview/">
       
       
       <link rel="icon" href="../assets/images/favicon.png">
@@ -262,7 +262,7 @@
     
     
       <li class="md-tabs__item">
-        <a href="../how-to-use/overview.md" class="md-tabs__link">
+        <a href="../how-to-use/overview/" class="md-tabs__link">
           
   
   How to Use
@@ -434,6 +434,48 @@
   
   <span class="md-ellipsis">
     Installation
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../example/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Try the Example
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../app-folder/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    App Folder
   </span>
   
 
@@ -716,7 +758,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../how-to-use/overview.md" class="md-nav__link">
+      <a href="../how-to-use/overview/" class="md-nav__link">
         
   
   <span class="md-ellipsis">
@@ -742,6 +784,48 @@
   
   <span class="md-ellipsis">
     GUI
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../how-to-use/reviews/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Reviews
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../how-to-use/3d-view/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    3D View
   </span>
   
 
@@ -1559,7 +1643,11 @@
 </tr>
 <tr>
 <td><code>history</code></td>
-<td><code>--log</code>: the commit list for the GUI</td>
+<td><code>--log</code>: the commit list for the GUI; <code>--rewritten</code>: where rebased commits went</td>
+</tr>
+<tr>
+<td><code>board3d</code></td>
+<td><code>--3d</code>: the board at one revision as a 3D model, made by kicad-cli</td>
 </tr>
 <tr>
 <td><code>projects</code></td>
@@ -1609,7 +1697,7 @@
 </table>
 <p>At build time, CMake puts the four scripts into <code>viewer.html</code> and compiles the result into the binary as a byte array. At run time, <code>render_html</code> replaces the <code>/*KIGIT_DATA*/</code> slot with the JSON. That's why the output is a single file with no dependencies.</p>
 <h3 id="gui"><code>gui/</code><a class="headerlink" href="#gui" title="Permanent link">&para;</a></h3>
-<p>A NiceGUI app (<code>gui/kigit_gui/</code>). It doesn't link to the core: it runs the <code>kigit</code> command line (<code>kigit.py</code>) and uses its JSON output (<code>--projects</code>, <code>--log</code>, <code>--json</code>) or its page (<code>-o -</code>).</p>
+<p>A NiceGUI app (<code>gui/kigit_gui/</code>). It doesn't link to the core: it runs the <code>kigit</code> command line (<code>kigit.py</code>) and uses its JSON output (<code>--projects</code>, <code>--log</code>, <code>--rewritten</code>, <code>--3d</code>, <code>--json</code>) or its page (<code>-o -</code>).</p>
 <ul>
 <li><code>app.py</code>: the screens (open a project, pick commits, compare).</li>
 <li><code>kigit.py</code>: calling the <code>kigit</code> binary.</li>

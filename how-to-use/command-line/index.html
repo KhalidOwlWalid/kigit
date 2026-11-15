@@ -15,7 +15,7 @@
         <link rel="canonical" href="https://khalidowlwalid.github.io/kigit/how-to-use/command-line/">
       
       
-        <link rel="prev" href="../gui/">
+        <link rel="prev" href="../3d-view/">
       
       
         <link rel="next" href="../pcb-viewer/">
@@ -262,7 +262,7 @@
     
     
       <li class="md-tabs__item md-tabs__item--active">
-        <a href="../overview.md" class="md-tabs__link">
+        <a href="../overview/" class="md-tabs__link">
           
   
   How to Use
@@ -447,6 +447,48 @@
   
   
     <li class="md-nav__item">
+      <a href="../../example/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Try the Example
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../app-folder/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    App Folder
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../architecture/" class="md-nav__link">
         
   
@@ -520,7 +562,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../overview.md" class="md-nav__link">
+      <a href="../overview/" class="md-nav__link">
         
   
   <span class="md-ellipsis">
@@ -546,6 +588,48 @@
   
   <span class="md-ellipsis">
     GUI
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reviews/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Reviews
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../3d-view/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    3D View
   </span>
   
 
@@ -629,6 +713,24 @@
   <a href="#common-options" class="md-nav__link">
     <span class="md-ellipsis">
       Common options
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-example-project" class="md-nav__link">
+    <span class="md-ellipsis">
+      The example project
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-gui" class="md-nav__link">
+    <span class="md-ellipsis">
+      The GUI
     </span>
   </a>
   
@@ -897,6 +999,24 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#the-example-project" class="md-nav__link">
+    <span class="md-ellipsis">
+      The example project
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-gui" class="md-nav__link">
+    <span class="md-ellipsis">
+      The GUI
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#scripting" class="md-nav__link">
     <span class="md-ellipsis">
       Scripting
@@ -983,6 +1103,14 @@
 <td>Compare two files, no git needed</td>
 </tr>
 <tr>
+<td><code>--3d [REV] -o FILE.glb</code></td>
+<td>The board at REV (default: working tree) as a 3D model, made by KiCad (<a href="../3d-view/#from-the-command-line">3D View</a>)</td>
+</tr>
+<tr>
+<td><code>--render -o FILE.png</code></td>
+<td>A picture of the board on disk, made by KiCad</td>
+</tr>
+<tr>
 <td><code>-V</code></td>
 <td>Print the log to the console, with debug lines</td>
 </tr>
@@ -993,16 +1121,29 @@
 </tbody>
 </table>
 <p>Run <code>kigit --help</code> for the full list.</p>
+<h2 id="the-example-project">The example project<a class="headerlink" href="#the-example-project" title="Permanent link">&para;</a></h2>
+<div class="language-sh highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>kigit<span class="w"> </span>example<span class="w"> </span><span class="o">[</span>DIR<span class="o">]</span>
+</span></code></pre></div>
+<p>Makes the <a href="../../example/">example project</a> (a git repository) in DIR (default: <code>./kigit-example</code>) and prints its project folder. It won't write over an existing folder.</p>
+<h2 id="the-gui">The GUI<a class="headerlink" href="#the-gui" title="Permanent link">&para;</a></h2>
+<div class="language-sh highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>kigit<span class="w"> </span>gui<span class="w"> </span><span class="o">[</span>FOLDER<span class="o">]</span><span class="w"> </span><span class="o">[</span>--port<span class="w"> </span>N<span class="o">]</span><span class="w"> </span><span class="o">[</span>--native<span class="w"> </span><span class="p">|</span><span class="w"> </span>--browser<span class="o">]</span>
+</span></code></pre></div>
+<p>Starts the <a href="../gui/">GUI</a> in FOLDER (default: here). Started outside a KiCad project, it opens on your recent projects. <code>--port N</code> picks the port (default: 8765 or the next free one); <code>--native</code> / <code>--browser</code> choose a window of its own or your browser.</p>
 <h2 id="scripting">Scripting<a class="headerlink" href="#scripting" title="Permanent link">&para;</a></h2>
 <p>What the GUI uses, if you want to build on it:</p>
-<div class="language-sh highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>kigit<span class="w"> </span>--projects<span class="w"> </span><span class="o">[</span>--depth<span class="w"> </span>N<span class="o">]</span><span class="w">    </span><span class="c1"># KiCad projects in the folder and below, as JSON</span>
-</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>kigit<span class="w"> </span>--log<span class="w"> </span><span class="o">[</span>--max<span class="w"> </span>N<span class="o">]</span><span class="w"> </span><span class="o">[</span>--since<span class="w"> </span>DATE<span class="o">]</span><span class="w"> </span><span class="o">[</span>--until<span class="w"> </span>DATE<span class="o">]</span><span class="w"> </span><span class="o">[</span>--kicad-only<span class="o">]</span>
-</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="w">                                </span><span class="c1"># commits (+ uncommitted changes), as JSON</span>
-</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>kigit<span class="w"> </span>-n<span class="w"> </span>-o<span class="w"> </span>-<span class="w"> </span>A..B<span class="w">              </span><span class="c1"># the viewer page on stdout</span>
-</span><span id="__span-2-5"><a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>kigit<span class="w"> </span>-n<span class="w"> </span>--json<span class="w"> </span>-o<span class="w"> </span>-<span class="w"> </span>A..B<span class="w">       </span><span class="c1"># the data on stdout</span>
+<div class="language-sh highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>kigit<span class="w"> </span>--projects<span class="w"> </span><span class="o">[</span>--depth<span class="w"> </span>N<span class="o">]</span><span class="w">    </span><span class="c1"># KiCad projects in the folder and below, as JSON</span>
+</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>kigit<span class="w"> </span>--log<span class="w"> </span><span class="o">[</span>--max<span class="w"> </span>N<span class="o">]</span><span class="w"> </span><span class="o">[</span>--since<span class="w"> </span>DATE<span class="o">]</span><span class="w"> </span><span class="o">[</span>--until<span class="w"> </span>DATE<span class="o">]</span><span class="w"> </span><span class="o">[</span>--kicad-only<span class="o">]</span>
+</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="w">                                </span><span class="c1"># commits (+ uncommitted changes), as JSON</span>
+</span><span id="__span-4-4"><a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>kigit<span class="w"> </span>--3d<span class="w"> </span><span class="o">[</span>REV<span class="o">]</span><span class="w"> </span>-o<span class="w"> </span>board.glb<span class="w">  </span><span class="c1"># the board at REV (default: working tree) in 3D,</span>
+</span><span id="__span-4-5"><a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="w">                                </span><span class="c1"># made by kicad-cli (KiCad 8+); prints the path</span>
+</span><span id="__span-4-6"><a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>kigit<span class="w"> </span>--render<span class="w"> </span>-o<span class="w"> </span>board.png<span class="w">    </span><span class="c1"># a picture of the board on disk (top view), by kicad-cli</span>
+</span><span id="__span-4-7"><a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a>kigit<span class="w"> </span>--rewritten<span class="w"> </span>HASH...<span class="w">       </span><span class="c1"># still on a branch? if not, commits with the same</span>
+</span><span id="__span-4-8"><a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a><span class="w">                                </span><span class="c1"># author and date (where a rebase put it), as JSON</span>
+</span><span id="__span-4-9"><a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a>kigit<span class="w"> </span>-n<span class="w"> </span>-o<span class="w"> </span>-<span class="w"> </span>A..B<span class="w">              </span><span class="c1"># the viewer page on stdout</span>
+</span><span id="__span-4-10"><a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a>kigit<span class="w"> </span>-n<span class="w"> </span>--json<span class="w"> </span>-o<span class="w"> </span>-<span class="w"> </span>A..B<span class="w">       </span><span class="c1"># the data on stdout</span>
 </span></code></pre></div>
 <h2 id="logs">Logs<a class="headerlink" href="#logs" title="Permanent link">&para;</a></h2>
-<p>Every run keeps a log named after when it started:</p>
+<p>Every run keeps a log named after when it started, in the <code>log/</code> folder of kigit's <a href="../../app-folder/">app folder</a>:</p>
 <table>
 <thead>
 <tr>
@@ -1021,6 +1162,7 @@
 </tr>
 </tbody>
 </table>
+<p><code>--log-dir DIR</code> (or the <code>KIGIT_LOG_DIR</code> environment variable) puts them elsewhere; <code>--no-log</code> writes none; <code>-V</code> also prints the log to the console.</p>
 
 
 
