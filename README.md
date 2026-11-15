@@ -14,6 +14,8 @@
 [![MIT license](https://img.shields.io/badge/license-MIT-3fb950)](LICENSE)
 [![Built with Claude](https://img.shields.io/badge/built%20with-Claude-D97757?logo=claude&logoColor=white)](https://claude.com/claude-code)
 
+<img src="docs/blobs/landing-page.png" alt="kigit's landing page: recent projects with a picture of each board, Open and Resume" width="900">
+
 </div>
 
 **kigit** utilizes the use of git logs in order to allow user to perform diffs between their pcb and schematic files. It provides a proper visual feedback which helps in identifying changes made per commit basis. Hence where its name came from, combination of Ki from KiCAD and git itself (kigit!). 
