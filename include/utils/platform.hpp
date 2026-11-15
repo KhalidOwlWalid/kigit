@@ -49,6 +49,11 @@ std::filesystem::path executable_path(const char* argv0);
 // Full path of a program on PATH (on Windows, trying PATHEXT: .exe, .cmd, ...).
 std::optional<std::filesystem::path> find_program(const std::string& name);
 
+// KiCad's command line tool: $KIGIT_KICAD_CLI, else kicad-cli on PATH, else
+// where the KiCad installer puts it (C:\Program Files\KiCad\<version>\bin,
+// /Applications/KiCad, /usr/bin).
+std::optional<std::filesystem::path> find_kicad_cli();
+
 // Runs a program with arguments, sharing this process's console, and returns
 // its exit code. On Linux/macOS it replaces this process (and only returns
 // if starting it failed).

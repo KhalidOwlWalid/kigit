@@ -229,6 +229,7 @@ The command line, one file per command, in namespace `kigit::cmd`. Only the `kig
 | `diff` | The main job: steps 1 to 6 above, plus `--check-netlist` |
 | `summary` | The tables printed to the terminal |
 | `history` | `--log`: the commit list for the GUI; `--rewritten`: where rebased commits went |
+| `board3d` | `--3d`: the board at one revision as a 3D model, made by kicad-cli |
 | `projects` | `--projects`: KiCad projects in a folder, for the GUI |
 | `gui` | `kigit gui`: finds uv and starts the Python app |
 | `common` | Helpers they share, like finding the project folder |
@@ -249,7 +250,7 @@ At build time, CMake puts the four scripts into `viewer.html` and compiles the r
 
 ### `gui/`
 
-A NiceGUI app (`gui/kigit_gui/`). It doesn't link to the core: it runs the `kigit` command line (`kigit.py`) and uses its JSON output (`--projects`, `--log`, `--rewritten`, `--json`) or its page (`-o -`).
+A NiceGUI app (`gui/kigit_gui/`). It doesn't link to the core: it runs the `kigit` command line (`kigit.py`) and uses its JSON output (`--projects`, `--log`, `--rewritten`, `--3d`, `--json`) or its page (`-o -`).
 
 - `app.py`: the screens (open a project, pick commits, compare).
 - `kigit.py`: calling the `kigit` binary.

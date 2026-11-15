@@ -166,6 +166,13 @@ async def rewritten(project_dir: str, hashes: list[str]) -> list[Rewritten]:
     return found
 
 
+async def board3d(project: str, rev: str, out_file: Path) -> list[str]:
+    """Writes the board at rev (a hash, or LOCAL) as a 3D model (.glb) to
+    out_file; KiCad's kicad-cli makes it. Returns kigit's warnings."""
+    _, err = await _run("-C", project, "-q", "--3d", rev, "-o", str(out_file))
+    return [line.removeprefix("warning: ") for line in err.splitlines() if line.startswith("warning:")]
+
+
 def _view_options(silkscreen: bool, source: bool) -> list[str]:
     return (["--silkscreen"] if silkscreen else []) + (["--source"] if source else [])
 

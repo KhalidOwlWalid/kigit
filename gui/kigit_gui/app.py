@@ -27,6 +27,7 @@ import sys
 import tempfile
 import threading
 import time
+import urllib.parse
 from pathlib import Path
 
 from nicegui import app, background_tasks, ui
@@ -34,7 +35,7 @@ from nicegui import app, background_tasks, ui
 from . import kigit, logs, review, rewritten
 from .folder_picker import FolderPicker
 from .resize import Resizer
-from . import review_doc  # noqa: F401  (registers the /reviews-doc page)
+from . import board3d, review_doc  # noqa: F401  (register the /board3d and /reviews-doc pages)
 from .review_panel import BRIDGE_JS, ReviewPanel, focus_script, project_key
 
 LOCAL = "LOCAL"
@@ -89,6 +90,18 @@ def date_input(label: str) -> ui.input:
 def page_name(project: str, old: str, new: str) -> str:
     key = hashlib.sha1(f"{project}|{old}|{new}".encode()).hexdigest()[:12]
     return f"{key}.html"
+
+
+def board3d_name(board: str, rev: str) -> str:
+    """The cached 3D model's file name. A commit never changes; the working
+    tree is named by the board file's time and size, so an edit makes a new one."""
+    if rev == LOCAL:
+        try:
+            st = Path(board).stat()
+            rev = f"{LOCAL}|{st.st_mtime_ns}|{st.st_size}"
+        except OSError:
+            rev = f"{LOCAL}|{time.time()}"
+    return hashlib.sha1(f"{board}|{rev}".encode()).hexdigest()[:12] + ".glb"
 
 
 def short_rev(rev: str) -> str:
@@ -173,6 +186,9 @@ def build(start_folder: str):
                 review_btn = ui.button("Review", icon="rate_review", on_click=lambda: review_commit()).props(
                     "unelevated dense color=blue-grey-8").tooltip(
                     "Compare this commit with the one before it and write down why it changed").mark("review-button")
+                view3d_btn = ui.button("3D", icon="view_in_ar", on_click=lambda: view_3d()).props(
+                    "unelevated dense color=blue-grey-8").tooltip(
+                    "See this commit's board in 3D, as KiCad draws it (made by kicad-cli)").mark("view3d-button")
                 picked = ui.label("").classes("text-xs text-gray-300 truncate")
             # Off by default: silkscreen makes comparisons slower and pages bigger.
             silk = ui.checkbox("Include silkscreen", value=False).props("dense dark").classes("text-xs").tooltip(
@@ -591,6 +607,7 @@ def build(start_folder: str):
         n = len(table.selected)
         compare_btn.set_enabled(n == 2)
         review_btn.set_enabled(n == 1 and table.selected[0]["hash"] != LOCAL)
+        view3d_btn.set_enabled(n == 1 and not state.get("busy3d"))
         names = [r["short"] for r in table.selected]
         picked.text = (" ↔ ".join(names) if n == 2 else f"{names[0]}: review it, or pick one more" if n == 1
                        else "Nothing picked")
@@ -621,6 +638,46 @@ def build(start_folder: str):
             notify("This is the first commit: there's nothing before it to compare with", type="warning")
             return
         await run_diff(row["parent"], row["hash"], review_btn, review_of=row)
+
+    async def view_3d() -> None:
+        """Shows the picked commit's board in 3D. KiCad makes the model (it can
+        take a while on a big board); each commit's is kept for the session."""
+        if len(table.selected) != 1 or not state["board"]:
+            return
+        row, board = table.selected[0], state["board"]
+        name = board3d_name(board, row["hash"])
+        out = CACHE / name
+        title = f"{state.get('name') or Path(board).stem} · {row['short']}"
+        if not out.exists():
+            state["busy3d"] = True
+            on_select()
+            view3d_btn.props("loading")
+            show_message("view_in_ar", f"Building the 3D board of {row['short']} with KiCad...",
+                         "kicad-cli exports the board with its parts' 3D models. A big board takes a while "
+                         "(half a minute or so); after that this commit opens straight away.")
+            status.text = "Building 3D board..."
+            started = time.monotonic()
+            logs.log.info("3d %s", row["hash"])
+            try:
+                for w in await kigit.board3d(board, row["hash"], out):
+                    notify(w, type="warning", multi_line=True, close_button=True)
+            except kigit.KigitError as e:
+                status.text = ""
+                show_message("error_outline", "Couldn't make the 3D board.", str(e), tone="text-red-400")
+                return
+            finally:
+                state["busy3d"] = False
+                view3d_btn.props(remove="loading")
+                on_select()
+            logs.log.info("3d %s done in %.1f s", row["short"], time.monotonic() - started)
+            status.text = f"3D {row['short']} · {time.monotonic() - started:.1f} s"
+        query = urllib.parse.urlencode({"title": title, "subtitle": row.get("subject", "")})
+        panel.close()
+        panel.set_pinned(None)
+        frame.props(f'src="/board3d/{name}?{query}"')
+        placeholder.set_visibility(False)
+        no_git_button.set_visibility(False)
+        frame.set_visibility(True)
 
     async def compare_manually() -> None:
         a, b = (old_rev.value or "").strip(), (new_rev.value or "").strip()

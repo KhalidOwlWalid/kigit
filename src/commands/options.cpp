@@ -16,6 +16,7 @@ USAGE
     kigit [OPTIONS] [OLD..NEW | OLD NEW | REV] [BOARD.kicad_pcb]
     kigit gui [PROJECT_DIR] [--port N]                       (desktop app; kigit gui --help)
     kigit [OPTIONS] --files OLD.kicad_pcb NEW.kicad_pcb      (no git needed)
+    kigit --3d [REV] [-o BOARD.glb]                          (3D board, via kicad-cli)
 
 EXAMPLE
     Given that you wish to compare 2 different commits, in the repository where .kicad_pcb
@@ -94,6 +95,12 @@ LOGGING
                         branch or tag, and if not, the commits with the same
                         author and author date (where a rebase or amend put
                         it). Used by the GUI to move reviews.
+        --3d [REV]      Write the board at REV (default: the working tree) as a
+                        3D model (.glb, binary glTF), made by KiCad's kicad-cli
+                        (KiCad 8 or newer; found on PATH, in the usual install
+                        folder, or at $KIGIT_KICAD_CLI). With the board's 3D
+                        models, tracks, pads, zones, silkscreen and solder mask.
+                        Prints the file's path. Used by the GUI's 3D view.
         --json          Write the data (PCB diff + both schematics' nets) as
                         JSON instead of the HTML viewer
         --check-netlist FILE
@@ -150,6 +157,8 @@ std::optional<int> parse_options(int argc, char** argv, Options& o) {
             o.source = true;
         } else if (a == "--projects") {
             o.projects_mode = true;
+        } else if (a == "--3d") {
+            o.board3d_mode = true;
         } else if (a == "--rewritten") {
             o.rewritten_mode = true;
             for (; i + 1 < argc && argv[i + 1][0] != '-'; ++i) {
@@ -213,6 +222,14 @@ std::optional<int> parse_options(int argc, char** argv, Options& o) {
         } else {
             o.revs.push_back(a);
         }
+    }
+    if (o.board3d_mode) {
+        if (o.files_mode || o.revs.size() > 1) {
+            std::cerr << "kigit: --3d shows one revision of the project's board (see --help)\n";
+            return 2;
+        }
+        if (o.revs.empty()) o.revs.push_back("LOCAL");
+        return std::nullopt;
     }
     if (o.revs.size() > 2) {
         std::cerr << "kigit: too many revisions (see --help)\n";

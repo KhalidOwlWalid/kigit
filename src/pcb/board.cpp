@@ -2,6 +2,9 @@
 
 #include "utils/sexpr.hpp"
 
+#include <filesystem>
+#include <cctype>
+#include <regex>
 #include <algorithm>
 #include <charconv>
 #include <cmath>
@@ -584,5 +587,29 @@ Board load_board(std::string_view text, bool silkscreen) {
 
 std::string svg_arc_path(Point a, Point m, Point b) { return arc_path(a, m, b); }
 std::string svg_num(double v) { return fnum(v); }
+
+std::string modernize_model_paths(const std::string& board, int major, int* changed) {
+    if (major <= 0) return board;
+    static const std::regex model(R"re(\$\{KICAD(\d+)_3DMODEL_DIR\}([^"\s)]*))re");
+    std::string out;
+    int n = 0;
+    auto last = board.cbegin();
+    for (std::sregex_iterator it(board.begin(), board.end(), model), end; it != end; ++it) {
+        const std::smatch& m = *it;
+        std::string path = m[2].str();
+        std::string ext = std::filesystem::path(path).extension().string();
+        std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) { return std::tolower(c); });
+        if (major >= 10 && (ext == ".wrl" || ext == ".wrz"))
+            path = path.substr(0, path.size() - ext.size()) + ".step";
+        std::string now = "${KICAD" + std::to_string(major) + "_3DMODEL_DIR}" + path;
+        out.append(last, m[0].first);
+        out += now;
+        if (now != m[0].str()) ++n;
+        last = m[0].second;
+    }
+    out.append(last, board.cend());
+    if (changed) *changed = n;
+    return out;
+}
 
 } // namespace kigit

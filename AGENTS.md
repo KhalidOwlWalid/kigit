@@ -59,7 +59,7 @@ Pieces:
 | `pcb/` | `board` (load `.kicad_pcb`: items, footprints, zones, silkscreen), `diff` (PCB diff) |
 | `sch/` | `schematic` (load `.kicad_sch` hierarchy, compute nets and buses), `sch_diff` (schematic diff), `netcheck` (compare with a KiCad netlist) |
 | `report/` | `html` (JSON for the viewer and `--json`; embeds the viewer), `viewer_template.hpp.in` |
-| `commands/` | the CLI: `options` (parsing, `--help`), `common` (shared helpers: board paths, warnings, output paths, `git_board`), `summary` (terminal summary), `diff` (compare, also `--check-netlist`), `history` (`--log`), `projects` (`--projects`), `gui` (`kigit gui`) |
+| `commands/` | the CLI: `options` (parsing, `--help`), `common` (shared helpers: board paths, warnings, output paths, `git_board`), `summary` (terminal summary), `diff` (compare, also `--check-netlist`), `history` (`--log`, `--rewritten`), `board3d` (`--3d`), `projects` (`--projects`), `gui` (`kigit gui`) |
 | `src/main.cpp` | starts the session log, then runs the command |
 
 Everything except `commands/` and `main.cpp` builds into the `kigit_core`
@@ -75,6 +75,7 @@ Other folders:
   `asyncio.to_thread(subprocess.run)`), `logs.py`, `folder_picker.py`,
   `review.py` (review file format), `review_panel.py` (the review drawer),
   `rewritten.py` (reviews of rebased/amended/squashed commits),
+  `board3d.py` (the 3D view page),
   `resize.py` (drag handles for the drawers).
 - `submodules/`: the libraries (json, spdlog, doctest) as pinned git submodules.
 - `tests/`: `cpp/` (doctest), `fixtures/` (demo v1/v2, hier, bus projects),
@@ -144,6 +145,20 @@ at once. localStorage settings are per origin, so per port.
   branch, tag or HEAD: `git log --all`), `exists`, and `matches`: live
   commits with the same author email and author time (`git::rewritten`);
   times are in seconds, so if several match, those with the old subject win.
+- `--3d [REV] [-o FILE.glb]` (GUI's 3D view): one revision (default
+  LOCAL) as binary glTF, made by `kicad-cli pcb export glb` with tracks,
+  pads, zones, silkscreen and mask. For a commit, the board (found by
+  `find_similar_board` if it moved), its `.kicad_pro` and every 3D model file
+  in the repo (`.step`, `.wrl`, ...) are written to a temp folder in the repo's
+  layout, so `${KIPRJMOD}` paths resolve; LOCAL uses the file on disk.
+  `platform::find_kicad_cli()`: `$KIGIT_KICAD_CLI`, PATH, then the install
+  folders. Prints the output path on stdout. The working tree is copied
+  too (read from disk). `modernize_model_paths` (in `pcb/board`) points
+  `${KICADn_3DMODEL_DIR}` library models at the running KiCad's version
+  (`kicad-cli version`), and `.wrl`/`.wrz` at `.step` from KiCad 10 on:
+  kicad-cli doesn't define older versions' variables, KiCad 10's library has
+  only STEP, and `--subst-models` doesn't help when the .wrl is missing.
+  "Could not add 3D model" lines are counted into one warning.
 - Used by the GUI: `--log` (history JSON; `--max`, `--since`, `--until`
   where a bare date means the whole day, `--kicad-only`; each commit has its
   first `parent`, the real one even when filtered), `--projects`
@@ -279,6 +294,33 @@ at once. localStorage settings are per origin, so per port.
 - Tests: NiceGUI's harness fails a test on any error-level log, so
   user-facing failures are logged as warnings. Wait for a button to be
   enabled, or the iframe `src` to change, instead of sleeping.
+- 3D view (`board3d.py`): the 3D button (one row, the working tree too)
+  runs `kigit --3d` into `CACHE` (`board3d_name`: a commit's file is reused
+  for the session; LOCAL is keyed by the board's mtime and size) and points
+  the viewer iframe at `/board3d/{name}`: a standalone three.js page using
+  NiceGUI's bundled three (r168), served from `/kigit-three/` (only the
+  files in `THREE_FILES`), with GLTFLoader and OrbitControls via an
+  importmap. glTF is Y-up in metres with KiCad's Y along +Z, so Top looks
+  down -Y with -Z up. Parts are the model's top-level nodes named by
+  reference (the board's own meshes are named `=>[...]`). Lighting: a small
+  PMREM room as the environment plus a light above and below. KiCad writes
+  material colours as sRGB values in glTF's linear slots, so the page runs
+  `convertSRGBToLinear()` on each material once (else the mask is pale
+  mint); Neutral tone mapping. It draws on
+  demand (`redraw()`: on controls `change`, while damping still moves, on
+  resize and view changes), not every frame, and the static model's
+  matrices are computed once; no hover raycasting (it lagged on big boards).
+  `window.kigit3dReady` is set once loaded (for browser checks).
+  Render stats (`stats` in the page; `?stats=1` or S): only measured while
+  shown. Input → drawn (first unanswered pointerdown/drag/wheel to the end
+  of the next render), CPU per `renderer.render`, GPU via
+  `EXT_disjoint_timer_query_webgl2` when available (one query in flight,
+  polled every 500 ms), frame gaps while dragging or within 400 ms of
+  input (> 25 ms counts as dropped), long tasks, `renderer.info` calls and
+  triangles. `window.kigit3dStats()` returns the report. On CM5 KiCad's
+  export gives ~37k meshes and draw calls for ~500k triangles: draw calls,
+  not triangles, are the cost. Headless
+  Chrome renders big models in software and slowly.
 - Reviews (GUI only): pick one commit and press Review; it's diffed against
   its `parent` and a right drawer opens. One Markdown file per commit in
   `<board folder>/reviews/`, named `<id>.md` (a random 8-hex ID given on

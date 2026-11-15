@@ -4,7 +4,7 @@ kigit is MIT licensed (see `LICENSE`). The release downloads also contain the fo
 software, each under its own license, reproduced here as those licenses require.
 
 The GUI's Python packages (NiceGUI, pywebview, markdown2, latex2mathml and their dependencies) aren't part of the
-downloads: uv installs them on your computer the first time you run `kigit gui`.
+downloads: uv installs them on your computer the first time you run `kigit gui`. The 3D view uses the copy of three.js (MIT) that comes with NiceGUI, and KiCad's own `kicad-cli` if it's installed.
 
 ## nlohmann/json
 

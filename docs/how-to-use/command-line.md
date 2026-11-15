@@ -44,6 +44,8 @@ What the GUI uses, if you want to build on it:
 kigit --projects [--depth N]    # KiCad projects in the folder and below, as JSON
 kigit --log [--max N] [--since DATE] [--until DATE] [--kicad-only]
                                 # commits (+ uncommitted changes), as JSON
+kigit --3d [REV] -o board.glb  # the board at REV (default: working tree) in 3D,
+                                # made by kicad-cli (KiCad 8+); prints the path
 kigit --rewritten HASH...       # still on a branch? if not, commits with the same
                                 # author and date (where a rebase put it), as JSON
 kigit -n -o - A..B              # the viewer page on stdout

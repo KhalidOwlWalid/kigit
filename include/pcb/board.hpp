@@ -128,4 +128,9 @@ bool circle_center(Point a, Point m, Point b, Point& c);
 std::string svg_arc_path(Point a, Point m, Point b); // "M.. A.." through 3 points
 std::string svg_num(double v);                       // compact number, 4 decimals max
 
+// Board text with 3D model paths into an older KiCad's library
+// (${KICAD8_3DMODEL_DIR}/...wrl) pointed at KiCad `major`'s: its variable,
+// and .step from KiCad 10 on (its library has no .wrl). `changed`: how many.
+std::string modernize_model_paths(const std::string& board, int major, int* changed = nullptr);
+
 } // namespace kigit

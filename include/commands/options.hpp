@@ -23,6 +23,7 @@ struct Options {
     bool projects_mode = false;          // --projects
     int projects_depth = 2;
     bool rewritten_mode = false;         // --rewritten
+    bool board3d_mode = false;           // --3d
     std::vector<std::string> rewritten;  // its commit hashes
     std::string netlist_file;            // --check-netlist
 

@@ -478,6 +478,55 @@ async def test_note_tags_dropdown(user: User, monkeypatch, tmp_path: Path) -> No
     assert r.notes[0].tags == ["reason", "needs-review"]
 
 
+async def test_3d_view_of_a_commit(user: User, monkeypatch) -> None:
+    """3D on one commit: kigit --3d makes the model, the viewer shows it,
+    and the same commit again comes from the cache."""
+    from kigit_gui import kigit
+
+    calls = []
+
+    async def fake_board3d(project: str, rev: str, out: Path) -> list[str]:
+        calls.append(rev)
+        out.write_bytes(b"glTF")
+        return []
+
+    monkeypatch.setattr(kigit, "board3d", fake_board3d)
+    await open_at(user, monkeypatch, PROJECT)
+    await user.should_see("Pick two commits on the left", retries=50)
+    rows = commit_table(user).rows
+    button = user.find(marker="view3d-button").elements.pop()
+    assert not button.enabled
+    await select(user, [rows[1], rows[2]])
+    assert not button.enabled  # one commit at a time
+    await select(user, [rows[1]])
+    assert button.enabled
+    frame = next(e for e in user.client.elements.values() if e.tag == "iframe")
+    for _ in range(2):
+        user.find(marker="view3d-button").click()
+        for _ in range(50):
+            if "/board3d/" in (frame.props.get("src") or ""):
+                break
+            await asyncio.sleep(0.1)
+    assert "/board3d/" in frame.props["src"] and rows[1]["short"] in frame.props["src"]
+    assert calls == [rows[1]["hash"]]  # made once
+
+
+async def test_3d_view_without_kicad(user: User, monkeypatch) -> None:
+    from kigit_gui import kigit
+
+    async def no_kicad(project: str, rev: str, out: Path) -> list[str]:
+        raise kigit.KigitError("the 3D view needs KiCad's kicad-cli (KiCad 8 or newer), which wasn't found.")
+
+    monkeypatch.setattr(kigit, "board3d", no_kicad)
+    await open_at(user, monkeypatch, PROJECT)
+    await user.should_see("Pick two commits on the left", retries=50)
+    await select(user, [commit_table(user).rows[1]])
+    user.find(marker="view3d-button").click()
+    await user.should_see("Couldn't make the 3D board.")
+    await user.should_see("which wasn't found")
+    assert user.find(marker="view3d-button").elements.pop().enabled  # can try again
+
+
 async def test_first_commit_has_nothing_to_review_against(user: User, monkeypatch) -> None:
     await open_at(user, monkeypatch, PROJECT)
     await user.should_see("Pick two commits on the left", retries=50)

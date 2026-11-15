@@ -1,9 +1,11 @@
 #include "utils/platform.hpp"
 
+#include <algorithm>
 #include <array>
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
+#include <vector>
 
 #ifdef _WIN32
 #include <fcntl.h>
@@ -423,6 +425,33 @@ std::time_t file_time(const fs::path& p) {
     auto sys = std::chrono::system_clock::now() +
                std::chrono::duration_cast<std::chrono::system_clock::duration>(ft - fs::file_time_type::clock::now());
     return std::chrono::system_clock::to_time_t(sys);
+}
+
+std::optional<fs::path> find_kicad_cli() {
+    std::error_code ec;
+    if (std::string set = env("KIGIT_KICAD_CLI"); !set.empty())
+        return fs::is_regular_file(set, ec) ? std::optional<fs::path>(set) : std::nullopt;
+    if (auto found = find_program("kicad-cli")) return found;
+    // Where the KiCad installers put it, newest version first.
+    std::vector<fs::path> spots;
+#ifdef _WIN32
+    for (const char* var : {"ProgramFiles", "ProgramW6432", "LOCALAPPDATA"}) {
+        fs::path base = env(var);
+        if (base.empty()) continue;
+        fs::path kicad = std::string(var) == "LOCALAPPDATA" ? base / "Programs" / "KiCad" : base / "KiCad";
+        std::vector<fs::path> versions;
+        for (const auto& e : fs::directory_iterator(kicad, ec)) versions.push_back(e.path());
+        std::sort(versions.rbegin(), versions.rend());
+        for (const auto& v : versions) spots.push_back(v / "bin" / "kicad-cli.exe");
+    }
+#elif defined(__APPLE__)
+    spots.push_back("/Applications/KiCad/KiCad.app/Contents/MacOS/kicad-cli");
+#else
+    spots = {"/usr/bin/kicad-cli", "/usr/local/bin/kicad-cli"};
+#endif
+    for (const auto& p : spots)
+        if (fs::is_regular_file(p, ec)) return p;
+    return std::nullopt;
 }
 
 } // namespace kigit::platform

@@ -98,6 +98,7 @@ add_executable(kigit
   src/commands/summary.cpp
   src/commands/diff.cpp
   src/commands/history.cpp
+  src/commands/board3d.cpp
   src/commands/projects.cpp
   src/commands/gui.cpp
 )

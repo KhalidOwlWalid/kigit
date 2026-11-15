@@ -149,4 +149,20 @@ TEST_CASE("not a board") {
     CHECK_THROWS(load_board("(kicad_sch (version 1))"));
 }
 
+TEST_CASE("3D model paths into an older KiCad's library") {
+    std::string board = R"((footprint "R" (model "${KICAD8_3DMODEL_DIR}/Resistor_SMD.3dshapes/R_0402.wrl")
+      (model ${KICAD7_3DMODEL_DIR}/X.3dshapes/Y.WRZ) (model "${KIPRJMOD}/3d/own.wrl")
+      (model "${KICAD10_3DMODEL_DIR}/A.3dshapes/B.step")))";
+    int n = 0;
+    std::string ten = modernize_model_paths(board, 10, &n);
+    CHECK(n == 2);
+    CHECK(ten.find(R"("${KICAD10_3DMODEL_DIR}/Resistor_SMD.3dshapes/R_0402.step")") != std::string::npos);
+    CHECK(ten.find("(model ${KICAD10_3DMODEL_DIR}/X.3dshapes/Y.step)") != std::string::npos);
+    CHECK(ten.find(R"("${KIPRJMOD}/3d/own.wrl")") != std::string::npos); // the project's own: as it is
+    // KiCad 9 still has .wrl models: only the variable changes.
+    CHECK(modernize_model_paths(board, 9).find("${KICAD9_3DMODEL_DIR}/Resistor_SMD.3dshapes/R_0402.wrl") !=
+          std::string::npos);
+    CHECK(modernize_model_paths(board, 0) == board); // version unknown: untouched
+}
+
 }

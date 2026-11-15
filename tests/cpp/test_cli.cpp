@@ -1,5 +1,6 @@
 // End-to-end tests: the real kigit binary on the fixture repo.
 #include "helpers.hpp"
+#include "utils/platform.hpp"
 
 #include <doctest/doctest.h>
 #include <nlohmann/json.hpp>
@@ -101,6 +102,30 @@ TEST_CASE("--rewritten: where an amended commit went") {
     CHECK(r["commits"][0]["matches"][0]["subject"] == "reworded");
     CHECK(r["commits"][1]["live"] == true);
     CHECK(run_kigit("--rewritten HEAD -C " + dir).code == 2); // hashes only
+}
+
+TEST_CASE("--3d: one revision, made by kicad-cli") {
+    TempDir tmp;
+    make_fixture_repo(tmp.path());
+    std::string dir = quote((tmp / "board").string());
+    CHECK(run_kigit("--3d HEAD~1 HEAD -C " + dir).code == 2); // one revision only
+
+    // Without kicad-cli: a clear message.
+    kigit::platform::set_env("KIGIT_KICAD_CLI", (tmp / "no-kicad-cli").string());
+    RunResult missing = run_kigit("--3d -C " + dir);
+    CHECK(missing.code == 1);
+    CHECK(missing.err.find("kicad-cli") != std::string::npos);
+    kigit::platform::set_env("KIGIT_KICAD_CLI", "");
+
+    // With KiCad installed: a real .glb (binary glTF) of an older commit,
+    // whose board was in another folder then.
+    if (!kigit::platform::find_kicad_cli()) return;
+    std::string glb = (tmp / "out.glb").string();
+    RunResult made = run_kigit("--3d HEAD~1 -o " + quote(glb) + " -C " + dir);
+    INFO("stderr: " << made.err);
+    REQUIRE(made.code == 0);
+    CHECK(made.out.find("out.glb") != std::string::npos);
+    CHECK(read_text(glb).substr(0, 4) == "glTF");
 }
 
 TEST_CASE("diff across the folder rename, as JSON on stdout") {

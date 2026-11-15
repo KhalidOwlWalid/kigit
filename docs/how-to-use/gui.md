@@ -27,6 +27,16 @@ All commits are listed, newest first, tagged **PCB** / **SCH** when they changed
 
 kigit diffs the two and the viewer opens on the schematic, with the PCB one tab away.
 
+### 3D view
+
+Pick **one** commit (or the working tree at the top) and press **3D** to see that commit's board in 3D, as KiCad draws it: the board with its copper, pads, silkscreen, solder mask and the parts' 3D models. It isn't a comparison, just how the board looked then.
+
+- Drag to rotate, right-drag (or Shift-drag) to pan, scroll to zoom.
+- If it feels slow, press **S** for render stats: how long after your input a frame is drawn, how long each redraw takes (CPU, and GPU where the browser can time it), the gaps between frames while you drag, dropped frames, draw calls and triangles, each as p50 / p95. **Copy** puts them on the clipboard as JSON, handy for a bug report.
+- **Top**, **Bottom** and **3D** jump to those views, **Fit** brings the whole board back into view, and **Parts** hides or shows the parts. Keys: T, B, 3, F and P.
+
+KiCad makes the model: kigit takes the board, its project file and any 3D model files in the repository out of that commit, and runs `kicad-cli pcb export glb` on them. That needs KiCad 8 or newer. kigit finds `kicad-cli` on your PATH or where the KiCad installer puts it; if it's somewhere else, set `KIGIT_KICAD_CLI` to its path. A big board takes a while the first time (about half a minute); after that, the same commit opens straight away for the rest of the session. Parts show when KiCad can find their 3D models: models in KiCad's own library, or files in the repository referenced with `${KIPRJMOD}`. A board saved by an older KiCad points at that version's library (`${KICAD8_3DMODEL_DIR}/...wrl`); kigit points those at your KiCad's library in its temporary copy (and at the `.step` models from KiCad 10 on, which has no `.wrl`), so they show too. Parts whose model file can't be found at all, such as an absolute path on someone else's computer, are left out, and kigit says how many.
+
 ### 4. Review a commit
 
 Pick **one** commit and press **Review**. It's compared with the commit before it, and a review panel opens on the right, for writing down why the commit changed what it changed.
