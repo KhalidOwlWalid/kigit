@@ -389,13 +389,27 @@ def build(start_folder: str):
                 {"name": "date", "label": "Date", "field": "date", "align": "left"},
                 {"name": "subject", "label": "Message", "field": "subject", "align": "left"},
             ]
-            table = ui.table(columns=columns, rows=[], row_key="hash", selection="multiple",
-                             on_select=lambda e: on_select()).props(
-                "dense flat dark virtual-scroll hide-bottom :rows-per-page-options=[0]").classes(
-                "w-full h-[calc(100vh-250px)]")
+            # (In a plain element: a QTable doesn't draw children, so the
+            # right-click menu below hangs on this instead.)
+            with ui.element("div").classes("w-full") as table_box:
+                table = ui.table(columns=columns, rows=[], row_key="hash", selection="multiple",
+                                 on_select=lambda e: on_select()).props(
+                    "dense flat dark virtual-scroll hide-bottom :rows-per-page-options=[0]").classes(
+                    "w-full h-[calc(100vh-250px)]")
             table.add_slot("body-cell-subject", MESSAGE_CELL)
             table.add_slot("body-cell-short", COMMIT_CELL)
             table.add_slot("body-cell-tags", TAGS_CELL)
+            # Right-click a commit: copy its review's link or path, or its hash.
+            # The menu opens on the table's box; rowContextmenu says which row
+            # (none: the header, so everything is off).
+            with table_box, ui.context_menu().mark("commit-menu"):
+                menu_review_link = ui.menu_item("Copy review link", on_click=lambda: copy_review("link")).mark(
+                    "menu-review-link")
+                menu_review_path = ui.menu_item("Copy review file path", on_click=lambda: copy_review("path")).mark(
+                    "menu-review-path")
+                menu_hash = ui.menu_item("Copy commit hash", on_click=lambda: copy_review("hash")).mark(
+                    "menu-hash")
+            table.on("rowContextmenu", lambda e: commit_menu(e.args))
 
     # Wrapped messages: a class on the table (CSS below), remembered in the browser.
     ui.add_head_html("""<style>
@@ -429,6 +443,55 @@ def build(start_folder: str):
         table.update()
         ui.run_javascript(f'try {{ localStorage.setItem("kigit.wrapMessages", "{1 if on else 0}") }} catch {{}}')
     resizer.add(commits_drawer, "left", "commits", 480)
+
+    def commit_menu(args) -> None:
+        """A commit was right-clicked: which menu items apply to it."""
+        row = args[1] if isinstance(args, list) and len(args) > 1 and isinstance(args[1], dict) else None
+        state["menu_row"] = row
+        reviewed = bool(row and row.get("reviewed"))
+        menu_review_link.set_enabled(reviewed)
+        menu_review_path.set_enabled(reviewed)
+        menu_hash.set_enabled(bool(row) and row.get("hash") != LOCAL)
+
+    def copy_review(what: str) -> None:
+        row = state.get("menu_row")
+        if not row or not state["board"]:
+            return
+        if what == "hash":
+            if row["hash"] != LOCAL:
+                ui.clipboard.write(row["hash"])
+                ui.notify(f"Copied {row['hash'][:7]}'s full hash", type="positive")
+            return
+        path = review.all_reviews(Path(state["board"]).parent).get(row["hash"])
+        if path is None:
+            notify(f"{row['short']} has no review", type="warning")
+            return
+        if what == "path":
+            ui.clipboard.write(str(path))
+            ui.notify("Review file path copied", type="positive")
+        else:
+            ui.clipboard.write(review.review_link(row.get("subject", ""), path))
+            ui.notify("Review link copied: paste it into a review or a discussion", type="positive")
+        logs.log.info("copied review %s of %s", what, row["hash"][:7])
+
+    async def open_review_link(review_id: str) -> None:
+        """A link to a review was clicked: open that commit's review."""
+        if not state["board"]:
+            return
+        path = review.folder(Path(state["board"]).parent) / f"{review_id}.md"
+        try:
+            r = review.load(path)
+        except (OSError, ValueError, UnicodeDecodeError):
+            notices.warn(f"That review ({review_id}) is gone: deleted, or not pulled yet",
+                         f"{review.FOLDER}/{review_id}.md isn't there")
+            return
+        row = next((x for x in table.rows if x["hash"] == r.commit), None) or {
+            "hash": r.commit, "parent": r.parent, "subject": r.subject, "date": r.date, "author": r.author}
+        if not row.get("parent"):
+            notify("That review's commit has nothing before it to compare with", type="warning")
+            return
+        await run_diff(row["parent"], row["hash"], review_btn, review_of=row)
+    ui.on("kigit_open_review", lambda e: open_review_link(str(e.args)))
     panels.add(commits_drawer, "commits", "Commits", "left")
 
     def open_project_in_tab() -> None:

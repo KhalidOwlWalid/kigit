@@ -229,3 +229,15 @@ def test_discussions(tmp_path: Path) -> None:
     one = page(tmp_path, f"discussions/{b.id}")
     assert "<b>Author A</b> accepted" in one and "<code>bbbbbbb</code>" in one
     assert not review_doc.build(tmp_path).docs  # threads/ isn't a folder of notes
+
+
+def test_discussion_links_on_the_site(tmp_path: Path) -> None:
+    """A pasted discussion link goes to its page; one to a discussion that's
+    gone shows as missing."""
+    from kigit_gui import threads
+
+    t = threads.start(tmp_path, "Check C1", "x", A, "Author A", A)
+    own(tmp_path, "n.md", f"See {threads.link_markdown(t)} and [old one](threads/deadbeef.md).\n")
+    p = page(tmp_path, "notes/n")
+    assert f'<a href="/discussions/{t.id}">Check C1</a>' in p
+    assert '<span class="wl missing" title="This discussion is gone: deleted, or not pulled yet">old one</span>' in p

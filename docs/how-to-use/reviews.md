@@ -82,6 +82,18 @@ A discussion moves through three states:
 
 Anything you type in the reply box goes along with the button you press ("Moved it 1 mm left", then **Mark as done**).
 
+To change something you wrote, press :material-pencil: on your message, edit it, and **Save**. Only your own messages have the pencil (they're signed with your git name). The message stays where it was and shows *edited*. :material-delete: deletes one of your comments, after asking. Status changes (marked done, accepted, reopened) can't be deleted, since that would change the status; edit their text instead.
+
+### Linking to a discussion or a review
+
+:material-link: at the top of a discussion copies a link to it, `[its title](threads/<id>.md)`. Paste it into a review's summary or note, or into another discussion: it shows with a 💬, and clicking it opens the discussion. On the [Reviews page](#the-reviews-page) it goes to the discussion's page, and it's an ordinary link to the file on GitHub or in Obsidian.
+
+Discussions listed in a review (and in the header's Discussions list) have their own :material-link: button too.
+
+Reviews can be linked the same way: right-click a commit with a review in the commit list and choose **Copy review link** (`[commit message](<id>.md)`). Clicking it in a note or a discussion opens that review. The same menu has **Copy review file path** (the full path of its file) and **Copy commit hash**.
+
+If a linked discussion or review is gone (deleted, or not pulled yet), kigit warns you: when you click the link, and when you open, write or send something that links to it. The warning also goes to the session log and the :material-bell: notifications. On the Reviews page the link shows greyed out.
+
 ### Jump to the commits
 
 The commit hashes in a discussion are links (dotted underline). Click one to compare the commit the discussion was opened on with that commit, and the viewer shows what the discussion points at, pinned and zoomed to:

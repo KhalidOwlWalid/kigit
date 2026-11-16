@@ -148,6 +148,13 @@ class Site:
             if re.match(r"^[a-z][a-z0-9+.-]*:|^/|^#", href, re.IGNORECASE):
                 return m.group(0)  # a web address, mailto:, or a place on the page
             target = self.inside(base / urllib.parse.unquote(href.split("#", 1)[0]))
+            thread = re.search(r"(?:^|/)threads/([0-9a-f]{8})\.md$", href.split("#", 1)[0])
+            if thread:  # a discussion link: relative to reviews/, wherever it's written
+                target = self.root / "threads" / f"{thread.group(1)}.md"
+                if not target.is_file():
+                    return (f'<span class="wl missing" title="This discussion is gone: deleted, or not pulled '
+                            f'yet">{esc(label)}</span>')
+                target = target.resolve()
             if target is None or not target.is_file():
                 return m.group(0)
             to = self.paths.get(target) or self.file_url(target)
@@ -407,6 +414,8 @@ def build(project_dir: str | Path, name: str = "", files_url: str = "", base: st
         for key in (r.id, p.stem):
             site.names.setdefault(key.lower(), to)
         site.paths[p.resolve()] = to
+    for t in talks:
+        site.paths[(root / "threads" / f"{t.id}.md").resolve()] = book.href(f"discussions/{t.id}")
     for r, _ in reviews:  # [[commit subject]] too, after IDs and notes
         if r.subject:
             site.names.setdefault(review.one_line(r.subject).lower(), book.href(f"reviews/{r.id}"))
@@ -566,6 +575,8 @@ def _thread_page(book: Book, t) -> str:
     for m in t.messages:
         verb = threads.VERB.get(m.kind, "")
         head = f' <span class="dot">·</span> at <code>{esc(m.head[:7])}</code>' if m.head else ""
+        if m.edited:
+            head += f' <span class="dot">·</span><i title="Edited {esc(m.edited)}">edited</i>'
         msgs.append(f'<div class="msg{" ev" if verb else ""}"><div class="mh"><b>{esc(m.author)}</b>'
                     f'{" " + esc(verb) if verb else ""}<span class="dot">·</span>{esc(m.time)}{head}</div>'
                     + (f'<div class="md">{book.site.md(m.text)}</div>' if m.text.strip() else "") + "</div>")
@@ -1115,6 +1126,7 @@ math[display=block] { margin: .8em 0; overflow-x: auto; overflow-y: hidden; }
 .wl { text-decoration: none; border-bottom: 1px dashed var(--link); }
 .wl:hover { border-bottom-style: solid; }
 .wl.missing { color: var(--muted); border-bottom-color: var(--faint); cursor: help; }
+.md a[href*="/discussions/"]::before { content: "💬"; margin-right: 3px; font-size: .9em; }
 a[target=_blank]::after { content: "↗"; font-size: .75em; margin-left: 2px; color: var(--faint); }
 .empty { color: var(--muted); font-style: italic; }
 .empty-state { text-align: center; padding: 50px 20px; border: 1px dashed var(--line2); border-radius: 12px; color: var(--muted); }

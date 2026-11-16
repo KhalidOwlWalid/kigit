@@ -289,6 +289,16 @@ def all_reviews(project_dir: str | Path) -> dict[str, Path]:
     return found
 
 
+# A link to a review, pasted into another review or a discussion: Markdown to
+# its file, relative to reviews/ (like a discussion link).
+REVIEW_LINK = re.compile(r"\]\(\s*<?(?:\.\./)*([0-9a-f]{8})\.md")
+
+
+def review_link(subject: str, path: Path) -> str:
+    title = re.sub(r"[\[\]\n]", "", one_line(subject)).strip() or path.stem
+    return f"[{title}]({path.name})"
+
+
 def is_empty(r: Review) -> bool:
     """Nothing written in it: no summary and no notes."""
     return not r.summary.strip() and not r.notes

@@ -98,7 +98,14 @@ _PAGE_JS = """
 (() => {
   document.addEventListener("click", (e) => {
     const a = e.target.closest && e.target.closest(".kigit-md-view a[href]");
-    if (a) { e.preventDefault(); window.open(a.href, "_blank", "noopener"); }
+    if (!a) return;
+    e.preventDefault();
+    // A link to a discussion (threads/<id>.md): open it here.
+    const t = (a.getAttribute("href") || "").match(/(?:^|\/)threads\/([0-9a-f]{8})\.md$/);
+    const r = (a.getAttribute("href") || "").match(/^(?:\.\.\/)*([0-9a-f]{8})\.md$/);
+    if (t) emitEvent("kigit_open_thread", t[1]);
+    else if (r) emitEvent("kigit_open_review", r[1]);  // a link to a review (<id>.md)
+    else window.open(a.href, "_blank", "noopener");
   }, true);
   // Ctrl+S / Cmd+S writes the open review.
   document.addEventListener("keydown", (e) => {
@@ -117,6 +124,8 @@ _PAGE_JS = """
 .kigit-md-view img { max-width: 100%; border-radius: 4px; }
 .kigit-md-view p { margin: 0.3em 0; }
 .kigit-md-view a { color: #7fb3ff; }
+.kigit-md-view a[href*="threads/"]::before { content: "💬"; margin-right: 3px; font-size: .9em; }
+.kigit-md-view a[href$=".md"]:not([href*="/"])::before { content: "📝"; margin-right: 3px; font-size: .9em; }
 .kigit-md-view math { font-size: 1.1em; }
 .kigit-md-view math[display=block] { margin: .6em 0; overflow-x: auto; overflow-y: hidden; }
 .kigit-md-view .math-error { color: #f07178; border-bottom: 1px dotted #f07178; cursor: help; }
@@ -204,6 +213,7 @@ class ReviewPanel:
         logs.log.info("review %s (%s%s)", commit[:7], self.path or "new", ", unwritten draft" if self.dirty else "")
         self.render()
         self.drawer.show()
+        self._check_links()
         if self.panels is not None and self.panels.hidden.get("review"):
             self.panels.set("review", False)  # asked for a review: show it
 
@@ -271,6 +281,7 @@ class ReviewPanel:
                 self.bring_in_view.refresh()
                 self.on_moved()
             return
+        self._check_links()
         try:
             self.path = review.save(self.project, self.review, self.path)
         except OSError as e:
@@ -290,6 +301,12 @@ class ReviewPanel:
         if took_in:
             self.bring_in_view.refresh()
             self.on_moved()
+
+    def _check_links(self) -> None:
+        """Warns about links in this review to discussions that are gone."""
+        if self.discussions is not None and self.review:
+            text = "\n".join([self.review.summary] + [n.body for n in self.review.notes])
+            self.discussions.check_links(text, f"The review of {self.review.commit[:7]}")
 
     def _sync_status(self) -> None:
         """The Write button, the "unsaved" line, and the page's leave warning."""
@@ -562,6 +579,10 @@ class ReviewPanel:
             if t.commit != self.review.commit:
                 ui.label(t.commit[:7]).classes("text-xs text-gray-500 font-mono").tooltip("Opened on this commit")
             ui.label(str(len(t.messages))).classes("text-xs text-gray-500").tooltip("messages")
+            # .stop: copying doesn't open the discussion too.
+            ui.button(icon="link").props("flat dense round size=xs color=grey-6").on(
+                "click.stop", lambda: self.discussions.copy_link(t)).tooltip(
+                "Copy a link to this discussion").mark("review-discussion-link")
 
     @ui.refreshable_method
     def notes_view(self) -> None:

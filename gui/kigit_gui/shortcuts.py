@@ -22,6 +22,8 @@ GROUPS: list[tuple[str, str, list[Shortcut]]] = [
         Shortcut(("?",), "Show this list", ("gui/kigit_gui/app.py", 'emitEvent("kigit_shortcuts")')),
         Shortcut(("Enter",), "In the folder box: open that folder",
                  ("gui/kigit_gui/app.py", 'folder_input.on("keydown.enter"')),
+        Shortcut(("Right-click a commit",), "Copy its review's link or file path, or its hash",
+                 ("gui/kigit_gui/app.py", '"rowContextmenu"')),
         Shortcut(("Drag a panel's edge",), "Resize the commit list, the review panel or the 3D dock",
                  ("gui/kigit_gui/resize.py", "kigit_panel_width")),
         Shortcut(("Double-click a panel's edge",), "Back to its normal size",

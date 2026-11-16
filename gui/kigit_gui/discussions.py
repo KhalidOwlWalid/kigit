@@ -14,7 +14,7 @@ from typing import Awaitable, Callable
 
 from nicegui import ui
 
-from . import logs, review, threads
+from . import logs, notices, review, threads
 from .review import Anchor
 from .md_editor import Editors, rewrite_assets
 from .review_panel import chip_text, project_key
@@ -41,6 +41,13 @@ class Discussions:
                  editors: Editors | None = None) -> None:
         self.focus, self.changed, self.compare_cb = focus, changed, compare
         self.editors = editors
+        # The dialogs live here, not where they're opened from: a Request or a
+        # row in the review panel is redrawn when a message is sent, and a
+        # dialog inside it would go with it.
+        self.host = ui.element("div")  # empty, so it takes no room
+        self._thread_dialog = None
+        self.warned: set[tuple[str, str]] = set()  # (where, discussion) already warned about
+        ui.on("kigit_open_thread", lambda e: self.open_link(str(e.args)))
         self.project: Path | None = None
         self.me = ""
         self.head = ""
@@ -58,7 +65,10 @@ class Discussions:
         if not self.project:
             ui.notify("Open a project first", type="warning")
             return
-        with ui.dialog() as dialog, ui.card().classes("bg-[#161a20] gap-2").style("width: 92vw; max-width: 52rem"):
+        if getattr(self, "_list_dialog", None) is not None:
+            self._list_dialog.delete()  # the last one shown
+        with self.host, ui.dialog() as dialog, ui.card().classes("bg-[#161a20] gap-2").style(
+                "width: 92vw; max-width: 52rem"):
             self._list_dialog = dialog
             self.list_view()
         dialog.open()
@@ -92,6 +102,9 @@ class Discussions:
                         ui.space()
                         ui.label(f"{len(t.messages)} message{'s' if len(t.messages) != 1 else ''}").classes(
                             "text-xs text-gray-500 whitespace-nowrap")
+                        ui.button(icon="link").props("flat dense round size=xs color=grey-6").on(
+                            "click.stop", lambda t=t: self.copy_link(t)).tooltip(
+                            "Copy a link to this discussion").mark("discussion-row-link")
                     with ui.row().classes("w-full items-center gap-2 no-wrap text-xs text-gray-400"):
                         if t.anchor:
                             ui.label(chip_text(t.anchor)).classes("text-amber-300 whitespace-nowrap")
@@ -105,7 +118,12 @@ class Discussions:
     # ------------------------------------------------------- one discussion
     def show_thread(self, thread_id: str) -> None:
         self.thread_id = thread_id
-        with ui.dialog() as dialog, ui.card().classes("bg-[#161a20] gap-2").style("width: 92vw; max-width: 46rem"):
+        self.editing: int | None = None  # the message (index) being edited
+        self.reply = ""  # the reply being typed, kept while the chat redraws
+        if self._thread_dialog is not None:
+            self._thread_dialog.delete()  # the last one shown
+        with self.host, ui.dialog() as dialog, ui.card().classes("bg-[#161a20] gap-2").style(
+                "width: 92vw; max-width: 46rem"):
             self._thread_dialog = dialog
             self.thread_view()
         dialog.open()
@@ -123,6 +141,9 @@ class Discussions:
             status_chip(t.status)
             ui.label(t.title).classes("text-base font-semibold").mark("discussion-title")
             ui.space()
+            ui.button(icon="link", on_click=lambda: self.copy_link(t)).props("flat dense round size=sm").tooltip(
+                "Copy a link to this discussion: paste it into a review or another discussion").mark(
+                "discussion-copy-link")
             ui.button(icon="close", on_click=self._thread_dialog.close).props("flat dense round size=sm")
         with ui.row().classes("w-full items-center gap-2 text-xs text-gray-400"):
             if t.anchor:
@@ -132,12 +153,14 @@ class Discussions:
                 ui.label(f"Opened by {t.by} on commit")
                 self._hash_link(t, t.commit)
                 ui.label(f"· {t.opened}")
+        self.check_links(" ".join(m.text for m in t.messages), f'The discussion "{t.title}"')
         with ui.scroll_area().classes("w-full").style("height: min(26rem, 50vh)") as area:
-            for m in t.messages:
-                self._message(m)
-        area.scroll_to(percent=1.0)
+            for i, m in enumerate(t.messages):
+                self._message(t, i, m)
+        if self.editing is None:
+            area.scroll_to(percent=1.0)
         box = self._editor("Reply: what you changed, or a question. Markdown; paste, drop or click to add files.",
-                           "discussion-reply")
+                           "discussion-reply", self.reply, lambda v: setattr(self, "reply", v))
         with ui.row().classes("w-full items-center gap-2"):
             ui.label(f"as {self.me}").classes("text-xs text-gray-500")
             ui.space()
@@ -156,25 +179,117 @@ class Discussions:
             ui.button("Send", icon="send", on_click=lambda: self._send(box, "comment")).props(
                 "unelevated color=amber-8").mark("discussion-send")
 
-    def _message(self, m: threads.Message) -> None:
+    def _message(self, t: threads.Thread, index: int, m: threads.Message) -> None:
         mine = m.author == self.me
         verb = threads.VERB.get(m.kind, "")
+        editing = mine and self.editing == index
         with ui.row().classes("w-full " + ("justify-end" if mine else "justify-start")):
-            with ui.column().classes("gap-0 max-w-[85%] rounded-lg px-3 py-2 " +
+            with ui.column().classes(("gap-1 w-full" if editing else "gap-0 max-w-[85%]") + " rounded-lg px-3 py-2 " +
                                      ("bg-[#2a2416]" if mine else "bg-[#1c2128]")).mark("discussion-message"):
-                with ui.row().classes("items-baseline gap-2"):
+                with ui.row().classes("items-baseline gap-2 w-full no-wrap"):
                     ui.label(m.author).classes("text-xs font-semibold")
                     ui.label(m.time).classes("text-[11px] text-gray-500")
                     if m.head:
                         ui.label("at").classes("text-[11px] text-gray-500 font-mono")
-                        self._hash_link(self._thread(), m.head, "text-[11px] text-gray-500")
+                        self._hash_link(t, m.head, "text-[11px] text-gray-500")
+                    if m.edited:
+                        ui.label("edited").classes("text-[11px] text-gray-500 italic").tooltip(
+                            f"Edited {m.edited}").mark("discussion-edited")
+                    if mine and not editing:
+                        ui.space()
+                        ui.button(icon="edit", on_click=lambda: self._start_edit(index)).props(
+                            "flat dense round size=xs color=grey-6").tooltip("Edit your message").mark(
+                            "discussion-edit")
+                        if m.kind == "comment":
+                            ui.button(icon="delete", on_click=lambda: self._delete(t, index, m)).props(
+                                "flat dense round size=xs color=grey-6").tooltip("Delete your comment").mark(
+                                "discussion-delete")
                 if verb:
                     icon, color = STATUS_LOOK[threads.STATUS[m.kind]]
                     with ui.row().classes("items-center gap-1"):
                         ui.icon(icon, color=color, size="xs")
                         ui.label(verb.capitalize()).classes("text-xs").classes(f"text-{color.split('-')[0]}-300")
-                if m.text:
-                    ui.html(review.to_html(rewrite_assets(m.text, project_key(self.project)))).classes("kigit-md-view nicegui-markdown text-sm text-gray-200")
+                if editing:
+                    box = self._editor("Your message. Markdown.", "discussion-edit-box", m.text)
+                    with ui.row().classes("w-full justify-end gap-2"):
+                        ui.button("Cancel", on_click=lambda: self._start_edit(None)).props("flat dense no-caps")
+                        ui.button("Save", icon="check", on_click=lambda: self._save_edit(t, index, m, box)).props(
+                            "unelevated dense no-caps color=amber-8").mark("discussion-edit-save")
+                elif m.text:
+                    ui.html(review.to_html(rewrite_assets(m.text, project_key(self.project)))).classes(
+                        "kigit-md-view nicegui-markdown text-sm text-gray-200")
+
+    # ------------------------------------------------------------- links
+    def copy_link(self, t: threads.Thread) -> None:
+        ui.clipboard.write(threads.link_markdown(t))
+        logs.log.info("copied a link to discussion %s", t.id)
+        ui.notify("Link copied: paste it into a review or another discussion", type="positive")
+
+    def open_link(self, thread_id: str) -> None:
+        """A discussion link was clicked: open it, or say it's gone."""
+        if self.project and threads.exists(self.project, thread_id):
+            self.show_thread(thread_id)
+            return
+        notices.warn(f"That discussion ({thread_id}) is gone: deleted, or not pulled yet",
+                     f"reviews/threads/{thread_id}.md isn't there")
+
+    def check_links(self, text: str, where: str) -> list[str]:
+        """Warns (pop-up, log, bell) about links in `text` to discussions or
+        reviews that are gone, once per place and link this session."""
+        if not self.project:
+            return []
+        gone = [("discussion", i, f"reviews/threads/{i}.md") for i in threads.missing(self.project, text)]
+        folder = review.folder(self.project)
+        gone += [("review", i, f"reviews/{i}.md") for i in dict.fromkeys(review.REVIEW_LINK.findall(text or ""))
+                 if not (folder / f"{i}.md").is_file()]
+        for kind, i, file in gone:
+            if (where, i) in self.warned:
+                continue
+            self.warned.add((where, i))
+            notices.warn(f"{where} links to a {kind} that's gone ({i}): deleted, or not pulled yet",
+                         f"{file} isn't there")
+        return [i for _, i, _ in gone]
+
+    async def _delete(self, t: threads.Thread, index: int, m: threads.Message) -> None:
+        with self.host, ui.dialog() as dialog, ui.card().classes("bg-[#161a20] gap-2 w-[26rem] max-w-full"):
+            ui.label("Delete your comment?").classes("text-base font-semibold")
+            ui.label(review.one_line(m.text)[:160] or "(no text)").classes("text-sm text-gray-400")
+            ui.label("It's removed from the discussion's file. Anyone who already pulled it keeps it until they "
+                     "pull again.").classes("text-xs text-gray-500")
+            with ui.row().classes("w-full justify-end gap-2"):
+                ui.button("Cancel", on_click=lambda: dialog.submit(False)).props("flat")
+                ui.button("Delete", icon="delete", on_click=lambda: dialog.submit(True)).props(
+                    "unelevated color=red-8").mark("discussion-delete-confirm")
+        dialog.open()
+        sure = await dialog
+        dialog.delete()
+        if not sure:
+            return
+        try:
+            threads.delete(self.project, t.id, index, self.me, m.time)
+        except (OSError, ValueError) as e:
+            ui.notify(f"Couldn't delete the comment: {e}", type="warning")
+            return
+        logs.log.info("discussion %s: message %d deleted by %s", t.id, index, self.me)
+        self.editing = None
+        self.thread_view.refresh()
+        self.changed()
+
+    def _start_edit(self, index: int | None) -> None:
+        self.editing = index
+        self.thread_view.refresh()
+
+    def _save_edit(self, t: threads.Thread, index: int, m: threads.Message, box: ui.textarea) -> None:
+        self.check_links(box.value or "", "Your message")
+        try:
+            threads.edit(self.project, t.id, index, self.me, m.time, box.value or "")
+        except (OSError, ValueError) as e:
+            ui.notify(f"Couldn't change the message: {e}", type="warning")
+            return
+        logs.log.info("discussion %s: message %d edited by %s", t.id, index, self.me)
+        self.editing = None
+        self.thread_view.refresh()
+        self.changed()
 
     def jump_pair(self, t: threads.Thread, at: str) -> tuple[str, str]:
         """What clicking commit `at` in discussion t compares: the commit it was
@@ -206,12 +321,14 @@ class Discussions:
             self._list_dialog.close()  # the viewer is what you want to see now
         await self.compare_cb(old, new, t.anchor)
 
-    def _editor(self, placeholder: str, mark: str) -> ui.textarea:
+    def _editor(self, placeholder: str, mark: str, value: str = "",
+                on_change: Callable[[str], None] | None = None) -> ui.textarea:
         """A Markdown editor (md_editor.py), or a plain box without one."""
+        on_change = on_change or (lambda v: None)
         if self.editors is None:
-            return ui.textarea(placeholder=placeholder).props("dark outlined autogrow dense").classes(
-                "w-full text-sm").mark(mark)
-        return self.editors.editor("", lambda v: None, placeholder, mark, project_key(self.project))
+            return ui.textarea(value=value, placeholder=placeholder, on_change=lambda e: on_change(e.value or "")).props(
+                "dark outlined autogrow dense").classes("w-full text-sm").mark(mark)
+        return self.editors.editor(value, on_change, placeholder, mark, project_key(self.project))
 
     def _focus(self, t: threads.Thread) -> None:
         self._thread_dialog.close()
@@ -221,12 +338,14 @@ class Discussions:
         text = (box.value or "").strip()
         if kind == "comment" and not text:
             return
+        self.check_links(text, "Your message")
         try:
             threads.add(self.project, self.thread_id, self.me, self.head, text, kind)
         except (OSError, ValueError) as e:
             ui.notify(f"Couldn't add to the discussion: {e}", type="warning")
             return
         logs.log.info("discussion %s: %s by %s", self.thread_id, kind, self.me)
+        self.reply = ""
         self.thread_view.refresh()
         self.changed()
 
@@ -235,7 +354,8 @@ class Discussions:
         """Asks for attention on something in this commit: opens a discussion."""
         if not self.project:
             return None
-        with ui.dialog() as dialog, ui.card().classes("bg-[#161a20] gap-2").style("width: 92vw; max-width: 36rem"):
+        with self.host, ui.dialog() as dialog, ui.card().classes("bg-[#161a20] gap-2").style(
+                "width: 92vw; max-width: 36rem"):
             ui.label("Ask for attention").classes("text-base font-semibold")
             ui.label(f"About {chip_text(anchor)}" if anchor else "About the commit in general (pin something in "
                      "the viewer first to point at it)").classes("text-xs text-amber-300" if anchor else
@@ -257,6 +377,7 @@ class Discussions:
         dialog.delete()
         if not got:
             return None
+        self.check_links(got[1], "Your request")
         t = threads.start(self.project, got[0], got[1], commit, self.me, self.head, anchor)
         logs.log.info("discussion %s opened by %s on %s", t.id, self.me, commit[:7])
         ui.notify(f"Asked for attention: {t.title}", type="positive")

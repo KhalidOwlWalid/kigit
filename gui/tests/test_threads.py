@@ -2,6 +2,8 @@
 
 from pathlib import Path
 
+import pytest
+
 from kigit_gui import threads
 from kigit_gui.review import Anchor, Seen
 
@@ -53,3 +55,56 @@ def test_order_and_counts(tmp_path: Path) -> None:
     (threads.folder(tmp_path) / "junk.md").write_text("not a discussion")
     assert len(threads.all_threads(tmp_path)) == 3  # other files are skipped
     assert threads.all_threads(tmp_path / "nowhere") == []
+
+
+def test_edit_your_own_message(tmp_path: Path) -> None:
+    """Only the author can change a message's text: in place, marked edited,
+    everything else (author, time, kind, status) as it was."""
+    t = threads.start(tmp_path, "Check C1", "Too clsoe.", C1, "Author A", C1)
+    t = threads.add(tmp_path, t.id, "Author B", C2, "Moved it.", "done")
+    first = t.messages[0]
+    with pytest.raises(ValueError):
+        threads.edit(tmp_path, t.id, 0, "Author B", first.time, "not mine")  # someone else's
+    with pytest.raises(ValueError):
+        threads.edit(tmp_path, t.id, 0, "Author A", "1999-01-01 00:00", "x")  # not the message shown
+    with pytest.raises(ValueError):
+        threads.edit(tmp_path, t.id, 5, "Author A", first.time, "x")  # gone
+    with pytest.raises(ValueError):
+        threads.edit(tmp_path, t.id, 0, "Author A", first.time, "  ")  # a comment needs text
+    t = threads.edit(tmp_path, t.id, 0, "Author A", first.time, "Too close.")
+    m = t.messages[0]
+    assert (m.text, m.author, m.time, m.kind) == ("Too close.", "Author A", first.time, "comment") and m.edited
+    assert t.status == "done" and t.messages[1].text == "Moved it." and not t.messages[1].edited
+    text = threads.path_of(tmp_path, t).read_text(encoding="utf-8")
+    assert f"· edited {m.edited}" in text and '"edited": ' in text  # for people, and for kigit
+    again = threads.loads(text)
+    assert again.messages[0].edited == m.edited and again.messages[0].text == "Too close."
+    threads.edit(tmp_path, t.id, 1, "Author B", t.messages[1].time, "")  # a status change can lose its text
+    assert threads.all_threads(tmp_path)[0].messages[1].text == ""
+
+
+def test_delete_your_own_comment(tmp_path: Path) -> None:
+    t = threads.start(tmp_path, "Check C1", "First.", C1, "Author A", C1)
+    t = threads.add(tmp_path, t.id, "Author A", C2, "Oops, wrong board.")
+    t = threads.add(tmp_path, t.id, "Author B", C2, "Done.", "done")
+    with pytest.raises(ValueError):
+        threads.delete(tmp_path, t.id, 2, "Author A", t.messages[2].time)  # someone else's
+    with pytest.raises(ValueError):
+        threads.delete(tmp_path, t.id, 2, "Author B", t.messages[2].time)  # a status change stays
+    t = threads.delete(tmp_path, t.id, 1, "Author A", t.messages[1].time)
+    assert [m.text for m in t.messages] == ["First.", "Done."] and t.status == "done"
+    assert [m.text for m in threads.all_threads(tmp_path)[0].messages] == ["First.", "Done."]
+    with pytest.raises(ValueError):  # the same index is now another message
+        threads.delete(tmp_path, t.id, 1, "Author A", t.messages[0].time)
+
+
+def test_discussion_links(tmp_path: Path) -> None:
+    """A link to a discussion is Markdown to its file; links to ones that are
+    gone are found."""
+    t = threads.start(tmp_path, "C1 [placement]", "x", C1, "Author A", C1)
+    link = threads.link_markdown(t)
+    assert link == f"[C1 placement](threads/{t.id}.md)"
+    text = f"See {link}, again {link}, and [old](../threads/deadbeef.md) [x](threads/nothex.md)."
+    assert threads.linked(text) == [t.id, "deadbeef"]
+    assert threads.exists(tmp_path, t.id) and not threads.exists(tmp_path, "deadbeef")
+    assert threads.missing(tmp_path, text) == ["deadbeef"]

@@ -30,8 +30,11 @@ One file per discussion, so two people rarely touch the same file:
     Moved it 1 mm left.
 
 The bold line is for people (GitHub, Obsidian); kigit reads the comment.
-Messages are only ever added, at the end. The status is the last status
-message's: open (needs attention), done, accepted.
+Messages are added at the end. Their authors can change their text later
+(`edit`): in place, with an "edited" time; nothing else about a message
+changes. They can delete their own comments (`delete`), but not status
+changes, which would change the status. The status is the last status message's: open (needs attention),
+done, accepted.
 """
 
 from __future__ import annotations
@@ -61,6 +64,7 @@ class Message:
     text: str = ""
     head: str = ""      # the repository's HEAD when it was written ("" unknown)
     kind: str = "comment"
+    edited: str = ""    # when its author last changed the text ("" never)
 
 
 @dataclass
@@ -96,8 +100,12 @@ def dumps(t: Thread) -> str:
     for m in t.messages:
         at = f" at {m.head[:7]}" if m.head else ""
         verb = VERB.get(m.kind, "")
-        out.append(f"**{review.one_line(m.author) or 'someone'}** · {m.time} ·{' ' + verb if verb else ''}{at}")
-        meta = json.dumps({"author": m.author, "time": m.time, "head": m.head, "kind": m.kind}, ensure_ascii=False)
+        edited = f" · edited {m.edited}" if m.edited else ""
+        out.append(f"**{review.one_line(m.author) or 'someone'}** · {m.time} ·{' ' + verb if verb else ''}{at}{edited}")
+        fields = {"author": m.author, "time": m.time, "head": m.head, "kind": m.kind}
+        if m.edited:
+            fields["edited"] = m.edited
+        meta = json.dumps(fields, ensure_ascii=False)
         meta = meta.replace("<", "\\u003c").replace(">", "\\u003e")  # a name can't end the comment
         out += [f"<!-- kigit-msg {meta} -->", ""]
         if m.text.strip():
@@ -146,7 +154,7 @@ def loads(text: str) -> Thread:
                 meta = {}
             kind = meta.get("kind") if meta.get("kind") in KINDS else "comment"
             msg, body = Message(str(meta.get("author", "")), str(meta.get("time", "")), "", str(meta.get("head", "")),
-                                kind), []
+                                kind, str(meta.get("edited", ""))), []
         else:
             body.append(lines[i])
         i += 1
@@ -205,6 +213,68 @@ def add(project_dir: str | Path, thread_id: str, author: str, head: str, text: s
     t.messages.append(Message(author, review.now(), text, head, kind))
     save(project_dir, t)
     return t
+
+
+def edit(project_dir: str | Path, thread_id: str, index: int, author: str, time: str, text: str) -> Thread:
+    """Changes the text of message `index` (0 = the first), in the
+    discussion as it is on disk now, if it's `author`'s and was written at
+    `time` (so it's still the message that was shown). Raises ValueError
+    otherwise: only your own messages can be changed."""
+    p = folder(project_dir) / f"{thread_id}.md"
+    t = loads(p.read_text(encoding="utf-8"))
+    m = t.messages[index] if 0 <= index < len(t.messages) else None
+    if m is None or m.author != author or m.time != time:
+        raise ValueError("that message isn't yours, or it's gone")
+    if not text.strip() and m.kind == "comment":
+        raise ValueError("a message needs some text")
+    if text.strip() != m.text.strip():
+        m.text = text
+        m.edited = review.now()
+        save(project_dir, t)
+    return t
+
+
+def delete(project_dir: str | Path, thread_id: str, index: int, author: str, time: str) -> Thread:
+    """Removes `author`'s comment `index` (written at `time`) from the
+    discussion as it is on disk now. Only your own comments: a status change
+    (done, accepted, reopened) stays, since removing it would change the
+    status; its text can be edited away. Raises ValueError otherwise."""
+    p = folder(project_dir) / f"{thread_id}.md"
+    t = loads(p.read_text(encoding="utf-8"))
+    m = t.messages[index] if 0 <= index < len(t.messages) else None
+    if m is None or m.author != author or m.time != time:
+        raise ValueError("that message isn't yours, or it's gone")
+    if m.kind != "comment":
+        raise ValueError("a status change can't be deleted (edit its text instead)")
+    del t.messages[index]
+    save(project_dir, t)
+    return t
+
+
+# A link to a discussion, pasted into a review or another discussion: plain
+# Markdown to its file, relative to reviews/, so it also works on GitHub and
+# in Obsidian from a review file.
+LINK = re.compile(r"\]\(\s*<?(?:\.\./)?threads/([0-9a-f]{8})\.md")
+
+
+def link_markdown(t: Thread) -> str:
+    title = re.sub(r"[\[\]\n]", "", t.title).strip() or "discussion"
+    return f"[{title}](threads/{t.id}.md)"
+
+
+def linked(text: str) -> list[str]:
+    """The discussions a text links to (their IDs, in order, once each)."""
+    return list(dict.fromkeys(LINK.findall(text or "")))
+
+
+def exists(project_dir: str | Path, thread_id: str) -> bool:
+    return (folder(project_dir) / f"{thread_id}.md").is_file()
+
+
+def missing(project_dir: str | Path, text: str) -> list[str]:
+    """The discussions a text links to that aren't there (deleted, or not
+    pulled yet)."""
+    return [i for i in linked(text) if not exists(project_dir, i)]
 
 
 def counts(threads: list[Thread]) -> dict[str, int]:

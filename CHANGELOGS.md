@@ -9,8 +9,12 @@ All notable changes to kigit, newest first. The format follows [Keep a Changelog
 - The **Reviews page** is now a small docs site instead of one long page: tabs for Reviews, Discussions, each folder of your own notes in `reviews/`, and Tags; a sidebar of that tab's pages; one page per review, note and discussion with "On this page"; and a search box over everything that shows results as you type. The Reviews tab opens on the timeline, by month.
 - Review and discussion text boxes are Markdown editors like GitHub's: Write and Preview tabs, a formatting toolbar (heading, bold, italic, quote, code, link, lists, task list; Ctrl+B, Ctrl+I, Ctrl+K), and any file added by paste, drop or click: pictures show inline, other files (datasheets, logs) become links.
 
+- Edit or delete your own messages in a discussion: the pencil on a message you wrote (it's then marked "edited"), and delete for your comments.
+- Copy a link to a discussion (in it, or from its row in a review or the Discussions list) and paste it into a review or another discussion; clicking it opens the discussion. Right-click a commit to copy its review's link (which opens the review when clicked), its file path, or the commit hash. A link to a discussion or review that's gone warns you (pop-up, log and notifications).
+
 ### Fixed
 
+- The discussion window closed when you pressed Send, if it was opened from the review panel.
 - A review emptied of everything kept its file, so the commit list still marked the commit as reviewed. Writing it now removes the file, and empty review files don't count.
 
 ## [0.2.0] - 2026-11-15

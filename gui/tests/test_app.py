@@ -371,12 +371,13 @@ async def test_include_source_checkbox(user: User, monkeypatch) -> None:
 def emit(user: User, event: str, args) -> None:
     """Sends a page event (emitEvent in the browser), e.g. what the viewer
     reports as pinned."""
-    from nicegui.events import GenericEventArguments
+    from nicegui.events import GenericEventArguments, handle_event
 
     with user.client:
         for listener in list(user.client.layout._event_listeners.values()):  # noqa: SLF001
-            if listener.type == event:
-                listener.handler(GenericEventArguments(sender=user.client.layout, client=user.client, args=args))
+            if listener.type == event:  # handle_event: async handlers run too, as in the app
+                handle_event(listener.handler, GenericEventArguments(sender=user.client.layout, client=user.client,
+                                                                     args=args))
 
 
 async def test_review_a_commit(user: User, monkeypatch, tmp_path: Path) -> None:
@@ -1053,6 +1054,168 @@ async def test_discussion_commit_links_compare_and_show(user: User, monkeypatch,
             handle_event(listener.handler, GenericEventArguments(sender=links[0], client=user.client, args=None))
     await user.should_see(f"{opened_on[:7]} ↔ {head[:7]}", retries=50)
     assert any('"name": "TP1"' in c for c in asked)
+
+
+async def test_discussion_stays_open_and_messages_can_be_edited(user: User, monkeypatch, tmp_path: Path) -> None:
+    """Opened from the review panel, the chat stays open after Send (the panel
+    redraws its list then); your own messages can be edited, others' can't."""
+    from kigit_gui import threads
+
+    project = make_fixture_repo(tmp_path / "repo")
+    await open_at(user, monkeypatch, str(project))
+    await user.should_see("Pick two commits on the left", retries=50)
+    v2 = next(r for r in commit_table(user).rows if r["subject"].startswith("v2"))
+    await select(user, [v2])
+    user.find(marker="review-button").click()
+    await user.should_see(marker="review-request", retries=100)
+    user.find(marker="review-request").click()
+    await user.should_see(marker="request-title")
+    user.find(marker="request-title").type("C1 placement")
+    user.find(marker="request-body").type("Too clsoe to U1.")
+    user.find(marker="request-go").click()
+    await user.should_see(marker="review-discussion")
+    t = threads.all_threads(project)[0]
+    threads.add(project, t.id, "Someone else", "", "Why?")  # a colleague's reply, pulled
+
+    user.find(marker="review-discussion").click()  # from the review panel
+    await user.should_see(marker="discussion-title")
+    user.find(marker="discussion-reply").type("Moving it.")
+    user.find(marker="discussion-send").click()
+    await user.should_see("Moving it.")
+    dialog = marked(user, "discussion-title")
+    while not isinstance(dialog, ui.dialog):
+        dialog = dialog.parent_slot.parent
+    assert dialog.value and not dialog.is_deleted  # still open
+    assert marked(user, "discussion-reply").value == ""  # sent, so emptied
+
+    # Edit: a pencil on your own messages only (two of three here).
+    assert len([e for e in user.client.elements.values() if "discussion-edit" in e._markers]) == 2  # noqa: SLF001
+    first = next(e for e in user.client.elements.values() if "discussion-edit" in e._markers)  # noqa: SLF001
+    from nicegui.events import GenericEventArguments, handle_event
+    with user.client:
+        for listener in list(first._event_listeners.values()):  # noqa: SLF001
+            handle_event(listener.handler, GenericEventArguments(sender=first, client=user.client, args=None))
+    await user.should_see(marker="discussion-edit-box")
+    box = marked(user, "discussion-edit-box")
+    assert box.value == "Too clsoe to U1."
+    with user.client:
+        box.value = "Too close to U1."
+    user.find(marker="discussion-edit-save").click()
+    await user.should_see(marker="discussion-edited")
+    m = threads.all_threads(project)[0].messages
+    assert m[0].text == "Too close to U1." and m[0].edited and m[1].text == "Why?" and not m[1].edited
+    assert dialog.value  # still open
+
+
+async def test_discussion_links_and_deleting(user: User, monkeypatch, tmp_path: Path) -> None:
+    """Copy a discussion's link; clicking one opens it; a link to one that's
+    gone warns (pop-up, log, bell), also when a review with it is opened.
+    Your own comments can be deleted."""
+    from kigit_gui import notices, threads
+
+    project = make_fixture_repo(tmp_path / "repo")
+    await open_at(user, monkeypatch, str(project))
+    await user.should_see("Pick two commits on the left", retries=50)
+    t = threads.start(project, "C1 placement", "Too close.", "a" * 40, "kigit tests", "a" * 40)
+    gone = threads.start(project, "Old point", "x", "a" * 40, "kigit tests", "a" * 40)
+    copied = []
+    monkeypatch.setattr(ui.clipboard, "write", lambda text: copied.append(text))
+
+    emit(user, "kigit_open_thread", t.id)  # a link clicked in a note or message
+    await user.should_see(marker="discussion-title")
+    user.find(marker="discussion-copy-link").click()
+    assert copied == [f"[C1 placement](threads/{t.id}.md)"]
+    await user.should_see("Link copied")
+
+    threads.path_of(project, gone).unlink()  # deleted (or not pulled)
+    before = len(notices.items)
+    emit(user, "kigit_open_thread", gone.id)
+    await user.should_see(f"That discussion ({gone.id}) is gone")
+    assert notices.items[0].level == "warning" and gone.id in notices.items[0].title and len(notices.items) == before + 1
+
+    # A review that links to it: warned once when it's opened.
+    v2 = next(r for r in commit_table(user).rows if r["subject"].startswith("v2"))
+    from kigit_gui import review as review_mod
+    review_mod.save(project, review_mod.Review(commit=v2["hash"], parent=v2["parent"], subject=v2["subject"],
+                                               summary=f"See {copied[0]} and [old](threads/{gone.id}.md)."))
+    await select(user, [v2])
+    user.find(marker="review-button").click()
+    await user.should_see(f"links to a discussion that's gone ({gone.id})", retries=100)
+    review_warnings = lambda: [n for n in notices.items if "links to a discussion that's gone" in n.title  # noqa: E731
+                               and gone.id in n.title]
+    assert len(review_warnings()) == 1 and t.id not in review_warnings()[0].title  # only the one that's gone
+    user.find(marker="review-button").click()  # opened again: not warned again
+    await asyncio.sleep(0.5)
+    assert len(review_warnings()) == 1
+
+    # Delete your own comment, after a confirmation.
+    emit(user, "kigit_open_thread", t.id)
+    await user.should_see(marker="discussion-delete")
+    user.find(marker="discussion-delete").click()
+    await user.should_see(marker="discussion-delete-confirm")
+    user.find(marker="discussion-delete-confirm").click()
+    for _ in range(30):
+        if not threads.all_threads(project)[0].messages:
+            break
+        await asyncio.sleep(0.1)
+    assert next(x for x in threads.all_threads(project) if x.id == t.id).messages == []
+
+
+async def test_copy_review_links_from_the_commit_list(user: User, monkeypatch, tmp_path: Path) -> None:
+    """Right-click a commit: copy its review's link or file path, or its
+    hash. A review link opens that review; one that's gone warns. Discussion
+    rows in the review panel have their own copy button."""
+    from kigit_gui import notices, review as review_mod, threads
+
+    project = make_fixture_repo(tmp_path / "repo")
+    await open_at(user, monkeypatch, str(project))
+    await user.should_see("Pick two commits on the left", retries=50)
+    copied = []
+    monkeypatch.setattr(ui.clipboard, "write", lambda text: copied.append(text))
+    rows = commit_table(user).rows
+    v2 = next(r for r in rows if r["subject"].startswith("v2"))
+    other = next(r for r in rows if r["subject"] == "docs only")
+    path = review_mod.save(project, review_mod.Review(commit=v2["hash"], parent=v2["parent"], subject=v2["subject"],
+                                                      summary="x"))
+    user.find(marker="open-button").click()  # reload: v2 is now reviewed
+    for _ in range(100):
+        v2 = next((r for r in commit_table(user).rows if r["hash"] == v2["hash"]), v2)
+        if v2["reviewed"]:
+            break
+        await asyncio.sleep(0.1)
+    assert v2["reviewed"]
+
+    table = commit_table(user)
+
+    def right_click(row: dict) -> None:
+        from nicegui.events import GenericEventArguments, handle_event
+        with user.client:
+            for listener in list(table._event_listeners.values()):  # noqa: SLF001
+                if listener.type == "rowContextmenu":
+                    handle_event(listener.handler, GenericEventArguments(sender=table, client=user.client,
+                                                                         args=[{}, row, 0]))
+
+    right_click(other)  # no review: only the hash
+    assert not marked(user, "menu-review-link").enabled and marked(user, "menu-hash").enabled
+    right_click(v2)
+    assert marked(user, "menu-review-link").enabled and marked(user, "menu-review-path").enabled
+    for item in ("menu-review-link", "menu-review-path", "menu-hash"):
+        user.find(marker=item).click()
+    assert copied == [f"[{v2['subject']}]({path.name})", str(path), v2["hash"]]
+
+    emit(user, "kigit_open_review", path.stem)  # the link, clicked in a note
+    await user.should_see(f"ID {path.stem}", retries=100)
+    assert marked(user, "review-panel").value and marked(user, "review-id").text == f"ID {path.stem}"
+    emit(user, "kigit_open_review", "deadbeef")
+    await user.should_see("That review (deadbeef) is gone")
+    assert "deadbeef" in notices.items[0].title
+
+    t = threads.start(project, "C1 placement", "x", v2["hash"], "kigit tests", v2["hash"])
+    user.find(marker="review-button").click()  # the panel lists it now
+    await user.should_see(marker="review-discussion-link", retries=100)
+    user.find(marker="review-discussion-link").click()
+    assert copied[-1] == f"[C1 placement](threads/{t.id}.md)"
+    assert not [e for e in user.client.elements.values() if "discussion-title" in e._markers]  # not opened  # noqa: SLF001
 
 
 async def test_pulled_discussions_show_up(user: User, monkeypatch, tmp_path: Path) -> None:

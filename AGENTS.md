@@ -507,6 +507,23 @@ at once. localStorage settings are per origin, so per port.
   kind} -->` (kind: comment, done, accepted, reopened); the status is the
   last status message's (open/done/accepted). Messages are appended and
   written at once (no Write); `threads.add` re-reads the file first.
+  `threads.edit` changes your own message's text in place (by index,
+  checked against author and time; `edited` in its meta and the bold line).
+  The discussion dialogs are created in `Discussions.host`, not where
+  they're opened from: the review panel's list is redrawn on every send.
+  `threads.delete` removes your own comment (not a status change). Links:
+  `threads.link_markdown` gives `[title](threads/<id>.md)` (relative to
+  reviews/); the panel's link click handler (review_panel `_PAGE_JS`)
+  emits `kigit_open_thread` for such hrefs (`Discussions.open_link`).
+  `Discussions.check_links` warns about links to missing discussions
+  (`notices.warn`: pop-up, log, bell) once per place and discussion per
+  session: on opening a review or discussion, Write, send, edit, request.
+  The Reviews site sends them to `discussions/<id>`, or a `.wl.missing`.
+  Review links: `review.review_link` gives `[subject](<id>.md)`; the click
+  handler emits `kigit_open_review` (`open_review_link` in app.py runs
+  that commit's review). The commit list's right-click menu is a
+  `ui.context_menu` on `table_box` (a QTable doesn't render children);
+  `rowContextmenu` (`[event, row, index]`) says which row it's for.
   Author: git `user.name` (`kigit --log` now gives `user` and `head`).
   GUI: Request in the review panel (`Discussions.request`), the header's
   Discussions list with a badge (red while any is open), a chat dialog with

@@ -46,6 +46,15 @@ items: list[Notice] = []  # newest first
 version = 0               # changes whenever the list does (the GUI's bell watches it)
 
 
+def warn(message: str, detail: str = "") -> Notice:
+    """A warning: shown now, in the log, and kept for the bell."""
+    from nicegui import ui
+
+    logs.log.warning("shown to user: %s%s", message, f" ({detail})" if detail else "")
+    ui.notify(message, type="warning", multi_line=True, close_button=True)
+    return add("warning", message, detail)
+
+
 def add(level: str, title: str, detail: str = "", headers: tuple[str, ...] = (),
         rows: list[tuple[str, ...]] | None = None) -> Notice:
     global version
