@@ -4,6 +4,8 @@ All notable changes to kigit, newest first. The format follows [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-11-16
+
 ### Added
 
 - The **Reviews page** is now a small docs site instead of one long page: tabs for Reviews, Discussions, each folder of your own notes in `reviews/`, and Tags; a sidebar of that tab's pages; one page per review, note and discussion with "On this page"; and a search box over everything that shows results as you type. The Reviews tab opens on the timeline, by month.
@@ -132,7 +134,8 @@ The first release.
 - The GUI could freeze on Windows when stopped with Ctrl+C.
 - Build fixes for GitHub Actions (CMake policy minimum, doctest warnings on MSVC).
 
-[Unreleased]: https://github.com/KhalidOwlWalid/kigit/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/KhalidOwlWalid/kigit/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/KhalidOwlWalid/kigit/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/KhalidOwlWalid/kigit/compare/v0.1.2...v0.2.0
 [0.1.2]: https://github.com/KhalidOwlWalid/kigit/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/KhalidOwlWalid/kigit/compare/v0.1.0...v0.1.1
