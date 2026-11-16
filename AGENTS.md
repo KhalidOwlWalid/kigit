@@ -325,8 +325,9 @@ at once. localStorage settings are per origin, so per port.
   400 px would be left for the viewer. Viewer sidebar: `shell.js` sets
   `--aside-w`; no handle in the narrow (< 760 px) layout. The source panel's
   height was already adjustable.
-- Window: native (pywebview, `ui.run(native=True)`) by default on Windows,
-  browser elsewhere; `--native` / `--browser` override. `choose_window()`
+- Window: the browser by default everywhere (Windows too, since the user
+  asked); `--native` opens a pywebview window (`ui.run(native=True)`),
+  `--browser` is the default spelled out. `choose_window()`
   decides, and `native_problem()` probes pywebview in a separate Python
   first, because NiceGUI exits, or shuts the server down, if the window
   can't open. Any problem means fall back to the browser with a warning.

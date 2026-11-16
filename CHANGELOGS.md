@@ -13,6 +13,11 @@ All notable changes to kigit, newest first. The format follows [Keep a Changelog
 - Edit or delete your own messages in a discussion: the pencil on a message you wrote (it's then marked "edited"), and delete for your comments.
 - Copy a link to a discussion (in it, or from its row in a review or the Discussions list) and paste it into a review or another discussion; clicking it opens the discussion. Right-click a commit to copy its review's link (which opens the review when clicked), its file path, or the commit hash. A link to a discussion or review that's gone warns you (pop-up, log and notifications).
 
+### Changed
+
+- `kigit gui` opens in the browser on Windows too; `--native` still opens its own window.
+- Review is greyed out for the working tree and the first commit, with a line saying why (commit your changes first; the first commit has nothing before it).
+
 ### Fixed
 
 - The discussion window closed when you pressed Send, if it was opened from the review panel.

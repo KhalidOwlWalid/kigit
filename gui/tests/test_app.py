@@ -1299,13 +1299,23 @@ async def test_pulled_discussions_show_up(user: User, monkeypatch, tmp_path: Pat
     assert badge.visible and badge.text == "1"
 
 
-async def test_first_commit_has_nothing_to_review_against(user: User, monkeypatch) -> None:
+async def test_why_a_commit_cant_be_reviewed(user: User, monkeypatch) -> None:
+    """Review is off for the first commit and the working tree, and the line
+    next to it says why."""
     await open_at(user, monkeypatch, PROJECT)
     await user.should_see("Pick two commits on the left", retries=50)
-    first = next(r for r in commit_table(user).rows if r["subject"] == "v1: first board")
+    rows = commit_table(user).rows
+    first = next(r for r in rows if r["subject"] == "v1: first board")
     await select(user, [first])
-    user.find(marker="review-button").click()
-    await user.should_see("This is the first commit")
+    assert not marked(user, "review-button").enabled
+    await user.should_see("the first commit has nothing before it to review against")
+    await select(user, [rows[0]])  # the working tree
+    assert not marked(user, "review-button").enabled
+    await user.should_see("your uncommitted changes can't be reviewed until you commit them")
+    assert "It can't be reviewed" in rows[0]["tip"]
+    await select(user, [rows[1]])  # a commit: fine
+    assert marked(user, "review-button").enabled
+    await user.should_see("review it, or pick one more")
 
 
 async def test_panels_are_resizable(user: User, monkeypatch) -> None:

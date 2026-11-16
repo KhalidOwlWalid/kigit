@@ -6,7 +6,7 @@ kigit gui ~/path/to/board  # or any folder
 kigit gui --port 9000      # on a port of your choice
 ```
 
-On Windows the GUI opens in its own window (Edge WebView2, built into Windows 10/11); on Linux it opens in your web browser. `--native` and `--browser` choose; if a window can't be opened, it says why and uses the browser. It only listens on 127.0.0.1, so it isn't reachable from the network.
+The GUI opens in your web browser, on Windows and Linux alike. `kigit gui --native` opens it in its own window instead (Edge WebView2 on Windows); if a window can't be opened, it says why and uses the browser. It only listens on 127.0.0.1, so it isn't reachable from the network.
 
 It serves on port 8765, or the next free one when another kigit GUI already has it, so you can run several at once (say, one per project); the address it uses is printed when it starts. `--port N` picks the port yourself, and stops with a message if it's taken. Panel widths and other display settings are remembered per port.
 

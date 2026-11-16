@@ -10,8 +10,8 @@ def never():
     raise AssertionError("shouldn't check for a window system")
 
 
-def test_auto_is_native_on_windows():
-    assert app.choose_window("auto", "win32", lambda: None) == (True, None)
+def test_auto_is_the_browser_on_windows_too():
+    assert app.choose_window("auto", "win32", never) == (False, None)
 
 
 def test_auto_is_browser_elsewhere_without_checking():

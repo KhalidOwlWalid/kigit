@@ -327,6 +327,9 @@ def build(start_folder: str):
                     "unelevated dense color=blue-grey-8").tooltip(
                     "See this commit's board in 3D, as KiCad draws it (made by kicad-cli)").mark("view3d-button")
                 picked = ui.label("").classes("text-xs text-gray-300 truncate")
+            # Why Review is off for what's picked (the working tree, the first commit).
+            why_review = ui.label("").classes("text-xs text-amber-300 leading-tight").mark("why-no-review")
+            why_review.set_visibility(False)
             # Off by default: silkscreen makes comparisons slower and pages bigger.
             silk = ui.checkbox("Include silkscreen", value=False).props("dense dark").classes("text-xs").tooltip(
                 "Also compare and draw the silkscreen (labels, outlines, logos). Applies to every comparison."
@@ -1202,6 +1205,8 @@ body.kigit-dragging iframe { pointer-events: none; }  /* else the frames swallow
             tip = "Your working tree, which matches HEAD."
         if head and not filtered():  # with filters the first row needn't be HEAD
             tip += f"\n\nHEAD is {head.short}: {head.subject}"
+        tip += "\n\nCompare it with a commit to see your changes. It can't be reviewed: reviews belong to commits, " \
+               "so commit it first."
         rows.append({"hash": LOCAL, "short": "HEAD*" if local.dirty else "HEAD", "pcb": local.pcb,
                      "sch": local.sch, "date": "now", "subject": subject, "tip": tip, "parent": "",
                      "reviewed": False})
@@ -1225,11 +1230,20 @@ body.kigit-dragging iframe { pointer-events: none; }  /* else the frames swallow
             table.update()
         n = len(table.selected)
         compare_btn.set_enabled(n == 2)
-        review_btn.set_enabled(n == 1 and table.selected[0]["hash"] != LOCAL)
+        one = table.selected[0] if n == 1 else None
+        # Review needs a commit with one before it: say why when it can't.
+        why_not = ("your uncommitted changes can't be reviewed until you commit them"
+                   if one and one["hash"] == LOCAL else
+                   "the first commit has nothing before it to review against"
+                   if one and not one.get("parent") else "")
+        review_btn.set_enabled(bool(one) and not why_not)
         view3d_btn.set_enabled(1 <= n <= MAX_3D and not state.get("busy3d"))
         names = [r["short"] for r in table.selected]
-        picked.text = (" ↔ ".join(names) if n == 2 else f"{names[0]}: review it, or pick one more" if n == 1
+        picked.text = (" ↔ ".join(names) if n == 2 else f"{names[0]}: pick one more to compare" if why_not
+                       else f"{names[0]}: review it, or pick one more" if n == 1
                        else f"{', '.join(names)}: 3D side by side" if n > 2 else "Nothing picked")
+        why_review.text = f"No review: {why_not}." if why_not else ""
+        why_review.set_visibility(bool(why_not))
         hint.set_visibility(state["history"] is not None)
 
     # ---------------------------------------------------------------- compare
@@ -1741,10 +1755,12 @@ def native_problem() -> str | None:
 def choose_window(mode: str, platform: str = sys.platform, problem=native_problem) -> tuple[bool, str | None]:
     """Native window or browser tab: (native, why not native if it was wanted).
 
-    mode is "native", "browser" or "auto" (native on Windows, browser elsewhere).
-    Native falls back to the browser when it can't work here.
+    mode is "native", "browser" or "auto" (the browser, on every system: a
+    tab is what people expect, and it has the browser's tools). Native, asked
+    for with --native, falls back to the browser when it can't work here.
+    `platform` is kept for callers and tests; the choice no longer depends on it.
     """
-    if mode == "browser" or (mode == "auto" and platform != "win32"):
+    if mode != "native":
         return False, None
     why = problem()
     return (why is None), why
@@ -1799,9 +1815,9 @@ def main() -> None:
                         help=f"local port (default {DEFAULT_PORT}, or the next free one if another kigit gui has it)")
     window = parser.add_mutually_exclusive_group()
     window.add_argument("--native", dest="window", action="store_const", const="native",
-                        help="open in its own window (default on Windows); falls back to the browser if it can't")
+                        help="open in its own window instead of a browser tab; falls back to the browser if it can't")
     window.add_argument("--browser", dest="window", action="store_const", const="browser",
-                        help="open in the web browser (default on Linux)")
+                        help="open in the web browser (the default)")
     parser.set_defaults(window="auto")
     parser.add_argument("--no-browser", action="store_true",
                         help="don't open anything; just serve at http://127.0.0.1:PORT")
