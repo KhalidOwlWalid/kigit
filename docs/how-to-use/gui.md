@@ -23,7 +23,7 @@ When `kigit gui` starts in a folder without a KiCad project to open (say, your h
 
 Each card shows:
 
-- **A picture of the board**, rendered by KiCad (`kicad-cli pcb render`, a few seconds, in the background) when you open the project, and again once the board file has changed. Without KiCad the card shows an icon.
+- **A picture of the board**, rendered by KiCad (`kicad-cli pcb render`, a few seconds, in the background) when you open the project, and again once the board file has changed. KiCad 8 has no 3D render, so with it the picture is a 2D drawing of the board's top instead. Without KiCad the card shows an icon.
 - **When you last opened it**, and the **last two commits you compared** there.
 - **Open** opens the project; **Resume** opens it and compares those commits again; the cross takes it off the list (the project itself is untouched). A project whose folder has gone is shown greyed out.
 

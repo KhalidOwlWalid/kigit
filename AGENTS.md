@@ -205,6 +205,18 @@ at once. localStorage settings are per origin, so per port.
   kicad-cli doesn't define older versions' variables, KiCad 10's library has
   only STEP, and `--subst-models` doesn't help when the .wrl is missing.
   "Could not add 3D model" lines are counted into one warning.
+  KiCad versions (`kicad_major`, from `kicad-cli version`): 9+ get
+  `--include-pads/-silkscreen/-soldermask`; 8 doesn't have them (glb with
+  tracks and zones only, plus a warning); an unknown version that turns
+  them down ("Unknown argument", `unknown_option`) is retried without
+  them; 7 and older are refused (no glb). `check_readable` stops early with
+  a clear message when the board's `(version N)` is newer than that KiCad
+  reads (8: 20240108, 7: 20221018). `--render` has no `pcb render` before
+  9: it writes a 2D `pcb export svg` (top layers, board-sized) next to -o
+  as `.svg` and prints that path; the GUI keeps `thumbnails/<key>.png` or
+  `.svg` (`sessions.thumb`), served by `/session-thumb/{name}`. Tested with
+  a stand-in kicad-cli (test_cli). Windows picks the newest KiCad folder
+  by number, not name.
 - Used by the GUI: `--log` (history JSON; `--max`, `--since`, `--until`
   where a bare date means the whole day, `--kicad-only`; each commit has its
   first `parent`, the real one even when filtered), `--projects`

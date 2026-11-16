@@ -106,6 +106,7 @@ def forget(board: str) -> None:
 
 # --------------------------------------------------------------- snapshots
 # A picture of each board (kigit --render), for its card: thumbnails/<key>.png
+# (or .svg with KiCad 8)
 # next to sessions.json, made again when the board file is newer.
 
 def thumb_key(board: str) -> str:
@@ -113,7 +114,11 @@ def thumb_key(board: str) -> str:
 
 
 def thumb(board: str) -> Path:
-    return path().parent / "thumbnails" / f"{thumb_key(board)}.png"
+    """The board's picture: <key>.png (KiCad 9's 3D render), or <key>.svg
+    (a 2D picture: KiCad 8 has no render). The .png path if there's neither."""
+    base = path().parent / "thumbnails" / thumb_key(board)
+    found = [p for p in (base.with_suffix(".png"), base.with_suffix(".svg")) if p.is_file()]
+    return max(found, key=lambda p: p.stat().st_mtime) if found else base.with_suffix(".png")
 
 
 def thumb_fresh(board: str) -> bool:

@@ -204,9 +204,19 @@ async def test_landing_cards_show_board_pictures(user: User, monkeypatch, tmp_pa
     assert img.source.startswith(f"/session-thumb/{sessions.thumb_key(board)}.png")
     assert made == [board]  # fresh: not made again
     from kigit_gui import app as gui_app
-    response = await gui_app._session_thumb(sessions.thumb_key(board))  # noqa: SLF001
-    assert response.status_code == 200
+    response = await gui_app._session_thumb(f"{sessions.thumb_key(board)}.png")  # noqa: SLF001
+    assert response.status_code == 200 and response.media_type == "image/png"
     assert (await gui_app._session_thumb("../../etc")).status_code == 404  # noqa: SLF001
+    assert (await gui_app._session_thumb(f"{sessions.thumb_key(board)}.exe")).status_code == 404  # noqa: SLF001
+
+    # With KiCad 8 there's no 3D render: kigit makes a 2D .svg instead, and
+    # that's the picture (the older .png goes).
+    svg = sessions.thumb(board).with_suffix(".svg")
+    svg.write_text('<svg xmlns="http://www.w3.org/2000/svg"/>')
+    sessions.thumb(board).with_suffix(".png").unlink()
+    assert sessions.thumb(board) == svg and sessions.thumb_fresh(board)
+    response = await gui_app._session_thumb(svg.name)  # noqa: SLF001
+    assert response.status_code == 200 and response.media_type == "image/svg+xml"
 
 
 async def test_shortcuts_list(user: User, monkeypatch) -> None:

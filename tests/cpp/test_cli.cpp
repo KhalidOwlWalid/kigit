@@ -108,6 +108,73 @@ TEST_CASE("--rewritten: where an amended commit went") {
     CHECK(run_kigit("--rewritten HEAD -C " + dir).code == 2); // hashes only
 }
 
+#ifndef _WIN32
+// A stand-in kicad-cli: says `version` (or fails it, for "unknown"), turns
+// down what KiCad 8 doesn't have (as KiCad does: "Unknown argument"), and
+// writes a placeholder where a real one would write its output. Every call
+// is logged, so the test can see what kigit asked for.
+static fs::path fake_kicad_cli(const fs::path& dir, const std::string& version) {
+    fs::path cli = dir / "kicad-cli";
+    std::ofstream(cli) << "#!/bin/sh\n"
+                          "echo \"$*\" >> \"" << (dir / "calls.log").string() << "\"\n"
+                          "if [ \"$1\" = version ]; then " << (version.empty() ? "exit 1" : "echo " + version) << "; exit 0; fi\n"
+                          "if [ \"$1 $2\" = \"pcb render\" ]; then echo 'Unknown argument: render' >&2; exit 1; fi\n"
+                          "out=''; prev=''\n"
+                          "for a in \"$@\"; do\n"
+                          "  case \"$a\" in --include-pads|--include-silkscreen|--include-soldermask) "
+                          "echo \"Unknown argument: $a\" >&2; exit 1;; esac\n"
+                          "  [ \"$prev\" = --output ] && out=\"$a\"; prev=\"$a\"\n"
+                          "done\n"
+                          "echo placeholder > \"$out\"\n";
+    fs::permissions(cli, fs::perms::owner_all);
+    return cli;
+}
+
+TEST_CASE("--3d and --render with KiCad 8 (or an older kicad-cli)") {
+    TempDir tmp;
+    make_fixture_repo(tmp.path());
+    std::string dir = quote((tmp / "board").string());
+    // The fixture board is in KiCad 10's format, which KiCad 8 can't read: the
+    // working tree's copy (what --3d and --render use by default) as KiCad 8's.
+    fs::path pcb = tmp / "board" / "demo.kicad_pcb";
+    std::string text = read_text(pcb);
+    size_t at = text.find("(version ");
+    REQUIRE(at != std::string::npos);
+    text.replace(at, text.find(')', at) - at + 1, "(version 20240108)");
+    std::ofstream(pcb, std::ios::binary) << text;
+    for (const std::string version : {"8.0.5", ""}) {  // KiCad 8, and one whose version is unknown
+        CAPTURE(version);
+        fs::path bin = tmp / ("cli" + version);
+        fs::create_directories(bin);
+        kigit::platform::set_env("KIGIT_KICAD_CLI", fake_kicad_cli(bin, version).string());
+        RunResult made = run_kigit("--3d -o " + quote((tmp / "b.glb").string()) + " -C " + dir);
+        INFO("stderr: " << made.err);
+        CHECK(made.code == 0);
+        CHECK(made.err.find("without pads, silkscreen or solder mask") != std::string::npos);  // said
+        std::string calls = read_text(bin / "calls.log");
+        CHECK(calls.find("pcb export glb --include-tracks --include-zones --force --output") != std::string::npos);
+
+        RunResult pic = run_kigit("--render -o " + quote((tmp / "pic.png").string()) + " -C " + dir);
+        INFO("stderr: " << pic.err);
+        CHECK(pic.code == 0);
+        CHECK(pic.out.find("pic.svg") != std::string::npos);  // no 3D render: a 2D picture, as .svg
+        CHECK(fs::exists(tmp / "pic.svg"));
+        CHECK(read_text(bin / "calls.log").find("pcb export svg --layers") != std::string::npos);
+        fs::remove(tmp / "pic.svg");
+    }
+    // A board saved by a newer KiCad than KiCad 8 can read: said in words.
+    fs::path bin = tmp / "cli8.0.5";  // the KiCad 8 one from above
+    kigit::platform::set_env("KIGIT_KICAD_CLI", (bin / "kicad-cli").string());
+    fs::path newer = tmp / "newer" / "x.kicad_pcb";
+    fs::create_directories(newer.parent_path());
+    std::ofstream(newer) << "(kicad_pcb\n\t(version 20241229)\n\t(generator \"pcbnew\")\n)\n";
+    RunResult old = run_kigit("--render -o " + quote((tmp / "n.png").string()) + " -C " + quote(newer.string()));
+    CHECK(old.code == 1);
+    CHECK(old.err.find("saved by a newer KiCad (file version 20241229)") != std::string::npos);
+    kigit::platform::set_env("KIGIT_KICAD_CLI", "");
+}
+#endif
+
 TEST_CASE("--3d: one revision, made by kicad-cli") {
     TempDir tmp;
     make_fixture_repo(tmp.path());

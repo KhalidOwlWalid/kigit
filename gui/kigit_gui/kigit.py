@@ -177,9 +177,17 @@ async def example(dest: Path) -> Path:
     return Path(out.decode().strip().splitlines()[-1])
 
 
-async def render(board: str, out_file: Path) -> None:
-    """Writes a picture of the board on disk (top view, KiCad's 3D render)."""
-    await _run("-C", board, "-q", "--render", "-o", str(out_file))
+async def render(board: str, out_file: Path) -> Path:
+    """Writes a picture of the board on disk (top view, KiCad's 3D render)
+    and returns where: out_file, or the same with .svg (KiCad 8 has no 3D
+    render, so kigit makes a 2D picture). An older picture in the other
+    format is removed."""
+    out, _ = await _run("-C", board, "-q", "--render", "-o", str(out_file))
+    made = Path(out.strip().splitlines()[-1]) if out.strip() else out_file
+    for other in (out_file.with_suffix(".png"), out_file.with_suffix(".svg")):
+        if other != made:
+            other.unlink(missing_ok=True)
+    return made
 
 
 @dataclass

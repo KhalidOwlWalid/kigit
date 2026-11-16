@@ -72,3 +72,22 @@ def test_snapshot_paths(tmp_path: Path) -> None:
     later = time.time() + 10
     os.utime(board, (later, later))  # the board was saved again since
     assert not sessions.thumb_fresh(str(board))
+
+
+def test_render_keeps_the_picture_kigit_made(tmp_path, monkeypatch) -> None:
+    """kigit --render prints where the picture went: .png (KiCad 9's render)
+    or .svg (KiCad 8, a 2D picture); the other, older one is removed."""
+    import asyncio
+
+    from kigit_gui import kigit
+
+    png, svg = tmp_path / "k.png", tmp_path / "k.svg"
+
+    async def fake_run(*args):
+        svg.write_text("<svg/>")
+        return f"{svg}\n", ""
+
+    png.write_bytes(b"old")
+    monkeypatch.setattr(kigit, "_run", fake_run)
+    assert asyncio.run(kigit.render("b.kicad_pcb", png)) == svg
+    assert svg.exists() and not png.exists()

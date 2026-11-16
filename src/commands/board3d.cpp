@@ -13,6 +13,7 @@
 #include <cctype>
 #include <cstdio>
 #include <fstream>
+#include <regex>
 #include <sstream>
 #include <stdexcept>
 
@@ -51,6 +52,41 @@ std::string tail(const std::string& text, size_t lines = 6) {
 int kicad_major(const fs::path& cli) {
     platform::RunResult r = platform::run({cli.string(), "version"}, true);
     return r.ok ? std::atoi(r.out.c_str()) : 0;
+}
+
+// The newest board file format each KiCad can open: (kicad_pcb (version N)).
+// A board saved by a newer KiCad makes an older kicad-cli fail, so say so
+// first, in words. Unknown (0, or 9 and later): left to kicad-cli.
+long newest_board_version(int major) {
+    if (major == 8) return 20240108;
+    if (major == 7) return 20221018;
+    return 0;
+}
+
+long board_file_version(const std::string& board) {
+    static const std::regex v(R"re(\(kicad_pcb\s*\(version\s+(\d+)\))re");
+    std::smatch m;
+    std::string head = board.substr(0, 400);
+    return std::regex_search(head, m, v) ? std::atol(m[1].str().c_str()) : 0;
+}
+
+void check_readable(const std::string& board, int major, const fs::path& cli) {
+    long newest = newest_board_version(major), version = board_file_version(board);
+    if (newest && version > newest)
+        throw std::runtime_error("this board was saved by a newer KiCad (file version " + std::to_string(version) +
+                                 ") than the KiCad " + std::to_string(major) + " kigit uses (" + cli.string() +
+                                 "), which can't open it. Install KiCad 9 or newer, or set KIGIT_KICAD_CLI to a "
+                                 "newer kicad-cli.");
+}
+
+// kicad-cli turned an option or command down (an older KiCad).
+bool unknown_option(const platform::RunResult& r) {
+    std::string all = r.err + "\n" + r.out;
+    std::transform(all.begin(), all.end(), all.begin(), [](unsigned char c) { return std::tolower(c); });
+    for (const char* says : {"unknown argument", "unrecognized", "unknown command", "invalid argument",
+                             "unknown option", "no such command"})
+        if (all.find(says) != std::string::npos) return true;
+    return false;
 }
 
 // The revision's files kicad-cli needs, in a temporary copy of the repo
@@ -112,22 +148,44 @@ int run_board3d(const Options& o, const fs::path& project) {
     fs::path tmp = fs::temp_directory_path() /
                    ("kigit-3d-" + std::to_string(platform::process_id()) + "-" + rev.short_hash);
     fs::remove_all(tmp);
-    fs::path input = checkout(g, rev, tmp, kicad_major(*cli));
+    const int major = kicad_major(*cli);
+    if (major > 0 && major < 8)
+        throw std::runtime_error("the 3D view needs KiCad 8 or newer; " + cli->string() + " is KiCad " +
+                                 std::to_string(major) + " (it can't export a 3D model kigit can show).\n"
+                                 "Install a newer KiCad, or set KIGIT_KICAD_CLI to its kicad-cli.");
+    fs::path input = checkout(g, rev, tmp, major);
+    check_readable(read_disk(input).value_or(""), major, *cli);
 
     if (out.has_parent_path()) fs::create_directories(out.parent_path());
-    std::vector<std::string> args{cli->string(), "pcb", "export", "glb", "--include-tracks", "--include-pads",
-                                  "--include-zones", "--include-silkscreen", "--include-soldermask", "--force",
-                                  "--output", out.string(), input.string()};
-    spdlog::info("3d: running {}", cli->string());
-    std::error_code ec;
-    fs::remove(out, ec);
+    // KiCad 9 added pads, silkscreen and solder mask to the export; KiCad 8
+    // only knows tracks and zones (and turns the others down as unknown).
+    std::vector<std::string> base{"--include-tracks", "--include-zones", "--force"};
+    std::vector<std::string> newer{"--include-pads", "--include-silkscreen", "--include-soldermask"};
     // kicad-cli writes a scratch file ("$tempfile$.bin.tmp") next to its
     // output, so it writes into our own temp folder and the result is moved
     // into place: exports running at the same time (the GUI's side-by-side
     // view, all into one cache folder) would otherwise share that file.
     fs::path made = tmp / "board.glb";
-    args[args.size() - 2] = made.string();
-    platform::RunResult r = platform::run(args, true);
+    auto export_glb = [&](bool all) {
+        std::vector<std::string> args{cli->string(), "pcb", "export", "glb"};
+        args.insert(args.end(), base.begin(), base.end());
+        if (all) args.insert(args.end(), newer.begin(), newer.end());
+        args.insert(args.end(), {"--output", made.string(), input.string()});
+        return platform::run(args, true);
+    };
+    spdlog::info("3d: running {} (KiCad {})", cli->string(), major ? std::to_string(major) : "?");
+    std::error_code ec;
+    fs::remove(out, ec);
+    bool all = major == 0 || major >= 9;
+    platform::RunResult r = export_glb(all);
+    if (!r.ok && all && unknown_option(r)) {  // an older KiCad than its version said (or none said)
+        spdlog::info("3d: kicad-cli turned the newer options down; again without them");
+        all = false;
+        r = export_glb(false);
+    }
+    if (r.ok && !all)
+        warn("KiCad " + (major ? std::to_string(major) : std::string("(older)")) +
+             " makes the 3D board without pads, silkscreen or solder mask (KiCad 9 or newer adds them)");
     // Parts whose 3D model KiCad couldn't find: "Could not add 3D model for
     // U405." then "File not found: <path>". Listed on stderr, one per line
     // ("missing 3D model: REF<tab>PATH"), for the GUI's notifications.
@@ -187,11 +245,36 @@ int run_render(const Options& o, const fs::path& project) {
     fs::path tmp = fs::temp_directory_path() / ("kigit-render-" + std::to_string(platform::process_id()));
     fs::remove_all(tmp);
     fs::create_directories(tmp);
+    const int major = kicad_major(*cli);
+    check_readable(read_disk(board).value_or(""), major, *cli);
+    // KiCad 9's 3D render; before that there's no `pcb render`, so a 2D
+    // picture of the top instead (SVG: the board's size, no drawing sheet),
+    // written next to -o with an .svg extension.
+    auto render_png = [&](const fs::path& to) {
+        return platform::run({cli->string(), "pcb", "render", "--side", "top", "--width", "480", "--height", "480",
+                              "--background", "transparent", "--quality", "basic", "--zoom", "0.95", "--output",
+                              to.string(), fs::absolute(board).string()},
+                             true);
+    };
+    auto export_svg = [&](const fs::path& to) {
+        return platform::run({cli->string(), "pcb", "export", "svg", "--layers",
+                              "F.Cu,F.Paste,F.Mask,F.SilkS,Edge.Cuts", "--page-size-mode", "2",
+                              "--exclude-drawing-sheet", "--output", to.string(), fs::absolute(board).string()},
+                             true);
+    };
     fs::path made = tmp / "board.png";
-    platform::RunResult r = platform::run({cli->string(), "pcb", "render", "--side", "top", "--width", "480",
-                                           "--height", "480", "--background", "transparent", "--quality", "basic",
-                                           "--zoom", "0.95", "--output", made.string(), fs::absolute(board).string()},
-                                          true);
+    platform::RunResult r;
+    bool svg = major > 0 && major < 9;
+    if (!svg) {
+        r = render_png(made);
+        svg = !r.ok && unknown_option(r);  // no `pcb render` here after all
+    }
+    if (svg) {
+        spdlog::info("render: KiCad {} has no 3D render; a 2D picture instead", major ? std::to_string(major) : "?");
+        made = tmp / "board.svg";
+        out.replace_extension(".svg");
+        r = export_svg(made);
+    }
     for (const auto& text : {r.out, r.err}) {
         std::istringstream in(text);
         for (std::string l; std::getline(in, l);)

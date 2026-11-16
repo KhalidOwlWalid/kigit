@@ -177,15 +177,19 @@ def show_log() -> None:
     dialog.open()
 
 
-@app.get("/session-thumb/{key}.png")
-async def _session_thumb(key: str):
-    """A recent project's picture (sessions.thumb), for the landing page."""
+@app.get("/session-thumb/{name}")
+async def _session_thumb(name: str):
+    """A recent project's picture (sessions.thumb: <key>.png, or .svg with
+    KiCad 8), for the landing page."""
     from fastapi.responses import FileResponse, Response
 
-    if not re.fullmatch(r"[0-9a-f]{16}", key):
+    m = re.fullmatch(r"[0-9a-f]{16}\.(png|svg)", name)
+    if not m:
         return Response(status_code=404)
-    f = sessions.path().parent / "thumbnails" / f"{key}.png"
-    return FileResponse(f, headers={"Cache-Control": "no-cache"}) if f.is_file() else Response(status_code=404)
+    f = sessions.path().parent / "thumbnails" / name
+    kind = "image/svg+xml" if m.group(1) == "svg" else "image/png"
+    return FileResponse(f, media_type=kind, headers={"Cache-Control": "no-cache"}) if f.is_file() \
+        else Response(status_code=404)
 
 
 _SHORTCUTS_CSS = """<style>
@@ -1079,7 +1083,8 @@ body.kigit-dragging iframe { pointer-events: none; }  /* else the frames swallow
         slot.clear()
         with slot:
             if sessions.thumb(board).is_file():
-                src = f"/session-thumb/{sessions.thumb_key(board)}.png?v={int(sessions.thumb(board).stat().st_mtime)}"
+                pic = sessions.thumb(board)
+                src = f"/session-thumb/{pic.name}?v={int(pic.stat().st_mtime)}"
                 ui.image(src).props("fit=contain no-spinner").classes("w-full h-full").mark("session-thumb")
             else:
                 ui.icon("developer_board", color="grey-8").classes("text-6xl")
@@ -1092,7 +1097,7 @@ body.kigit-dragging iframe { pointer-events: none; }  /* else the frames swallow
                 continue
             state["snapshotting"].add(board)
             try:
-                await kigit.render(board, sessions.thumb(board))
+                await kigit.render(board, sessions.thumb(board).with_suffix(".png"))
                 logs.log.info("snapshot of %s", board)
             except kigit.KigitError as e:
                 if "kicad-cli" in str(e) and "wasn't found" in str(e):

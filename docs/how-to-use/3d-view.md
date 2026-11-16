@@ -5,6 +5,14 @@ See a commit's board in 3D, the way KiCad draws it: copper, pads, silkscreen, so
 !!! note "Needs KiCad 8 or newer"
     KiCad makes the 3D model (`kicad-cli pcb export glb`); kigit only shows it. kigit finds `kicad-cli` on your PATH or where the KiCad installer puts it; if it's somewhere else, set `KIGIT_KICAD_CLI` to its path.
 
+    | KiCad | What you get |
+    | --- | --- |
+    | 9, 10 | The full board: copper, pads, solder mask, silkscreen and parts |
+    | 8 | Copper (tracks and zones) and parts, without pads, solder mask or silkscreen (KiCad 8 can't export those); kigit says so |
+    | 7 or older | No 3D view: KiCad 7 can't export a model kigit can show |
+
+    A board saved by a newer KiCad than the one kigit finds (say, saved in KiCad 9, with KiCad 8 installed) can't be opened by it; kigit says so. If you have several KiCads, kigit uses the newest it finds (or `KIGIT_KICAD_CLI`).
+
 ## One commit
 
 In the [GUI](gui.md), pick **one** commit (or the working tree at the top) and press **3D**.

@@ -441,7 +441,10 @@ std::optional<fs::path> find_kicad_cli() {
         fs::path kicad = std::string(var) == "LOCALAPPDATA" ? base / "Programs" / "KiCad" : base / "KiCad";
         std::vector<fs::path> versions;
         for (const auto& e : fs::directory_iterator(kicad, ec)) versions.push_back(e.path());
-        std::sort(versions.rbegin(), versions.rend());
+        // By number, newest first: as text "8.0" would come before "10.0".
+        auto number = [](const fs::path& p) { return std::strtod(p.filename().string().c_str(), nullptr); };
+        std::sort(versions.begin(), versions.end(),
+                  [&](const fs::path& a, const fs::path& b) { return number(a) > number(b); });
         for (const auto& v : versions) spots.push_back(v / "bin" / "kicad-cli.exe");
     }
 #elif defined(__APPLE__)
