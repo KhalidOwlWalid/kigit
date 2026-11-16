@@ -93,7 +93,8 @@ Hidden or not is remembered, like the sizes.
 
 The Notebook opens on the right without covering the viewer, so you can keep clicking parts while you write:
 
-- **Your folders and notes**, as a tree, and a search box over all of them. Click a folder to choose where new notes go.
+- **Your folders and notes**, browsed like files: click a folder to go into it, :material-arrow-up: or the path above the list to go back. New notes and folders go where you are. A search box looks through all of them.
+- **Rename or delete** a note or folder from its :material-dots-vertical: menu (a note's title box renames it too). Deleting asks first and says what goes: how many notes and other files a folder holds, and whether any of it has changes git doesn't have yet (those can't be brought back).
 - **The note**, in the same editor as reviews. It's saved as you type.
 - **Pins:** pin a part, net or footprint in the viewer, then **Pin it here**. Unlike a review note, a note isn't tied to a commit: a pin remembers where it was pinned, so clicking it later shows it in the comparison on screen, or opens the one it came from. ✕ unpins.
 - **Notes about what's pinned:** pin something in the viewer and the Notebook lists every note that pins it (on the PCB or the schematic: footprint C2 and part C2 are the same thing) or mentions it by name. The **Notebook** button shows how many.

@@ -278,3 +278,14 @@ def test_nested_folders_are_sub_tabs(tmp_path: Path) -> None:
     usb = page(tmp_path, "notes/OwlPCB_Notes/System Implementation/USB-UART")
     assert "Footprint U3" in usb and "kigit-pins" not in usb
     assert '<a class="subl cur" href="/notes/OwlPCB_Notes/System%20Implementation/">' in usb
+
+
+def test_pictures_open_full_size(tmp_path: Path) -> None:
+    """Pictures on the Reviews page (and in the GUI) open full size on click."""
+    from kigit_gui import lightbox
+
+    _, new = make(tmp_path)
+    r = page(tmp_path, f"reviews/{new.id}")
+    assert 'id="kigit-lightbox"' in r and 'e.target.closest("main .md img")' in r
+    assert "main .md img { cursor: zoom-in; }" in r
+    assert 'closest(".kigit-md-view img")' in lightbox.html(".kigit-md-view")

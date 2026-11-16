@@ -32,7 +32,7 @@ from pathlib import Path
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from nicegui import app
 
-from . import review
+from . import lightbox, review
 from .review import Review
 
 _MIME = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif",
@@ -914,7 +914,7 @@ def render(project_dir: str | Path, page: str = "", name: str = "", files_url: s
                        ("HOME", book.href("")), ("TABS", tabs), ("SIDE", _sidebar(book, p)),
                        ("CRUMBS", _crumbs(book, p) if p.kind != "home" else ""), ("BODY", body),
                        ("PREVNEXT", _prev_next(book, p)), ("TOC", _toc_html(toc)), ("LOGO", _LOGO),
-                       ("SUBTABS", _subtabs(book, p)), ("SEARCH", book.href("search.json")), ("BASE", book.base), ("KIND", p.kind)):
+                       ("SUBTABS", _subtabs(book, p)), ("LIGHTBOX", lightbox.html("main .md")), ("SEARCH", book.href("search.json")), ("BASE", book.base), ("KIND", p.kind)):
         out = out.replace(f"%%{key}%%", value)
     return out
 
@@ -1396,6 +1396,7 @@ a[target=_blank]::after { content: "↗"; font-size: .75em; margin-left: 2px; co
   });
 })();
 </script>
+%%LIGHTBOX%%
 </body>
 </html>
 """

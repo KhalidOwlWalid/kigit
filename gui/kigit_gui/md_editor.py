@@ -13,7 +13,9 @@ Ctrl+K ask for the address in a dialog, from Python.
 
 from __future__ import annotations
 
+import html
 import re
+from pathlib import Path
 from typing import Callable
 
 from nicegui import ui
@@ -289,6 +291,37 @@ class Editors:
         return result
 
 
+_EMBED = re.compile(r"!\[\[([^\]|#]+)(?:#[^\]|]*)?(?:\|([^\]]*))?\]\]")
+_PICTURE = re.compile(r"\.(png|jpe?g|gif|webp|svg)$", re.IGNORECASE)
+
+
 def rewrite_assets(text: str, key: str) -> str:
-    """Markdown with assets/ links pointing at the GUI's file route, for preview."""
-    return re.sub(r"\]\(\s*assets/", f"](/review-files/{key}/", text)
+    """Markdown with pictures pointing at the GUI's file routes, for preview:
+    assets/ (what kigit stores), and Obsidian embeds (![[picture.png]] or
+    ![[picture.png|300]], found by name anywhere in reviews/)."""
+    text = re.sub(r"\]\(\s*assets/", f"](/review-files/{key}/", text)
+    if "![[" not in text:
+        return text
+    from urllib.parse import quote
+
+    from .review_panel import _projects
+    project = _projects.get(key)
+    if project is None:
+        return text
+    base = review.folder(project)
+    found: dict[str, str] = {}
+
+    def embed(m: re.Match) -> str:
+        name, size = m.group(1).strip(), (m.group(2) or "").strip()
+        if not _PICTURE.search(name):
+            return m.group(0)
+        if name.lower() not in found:
+            hit = next((p for p in base.rglob(Path(name).name) if p.is_file()), None) if base.is_dir() else None
+            found[name.lower()] = quote(hit.relative_to(base).as_posix()) if hit else ""
+        rel = found[name.lower()]
+        if not rel:
+            return m.group(0)
+        width = f' width="{int(size)}"' if size.isdigit() else ""
+        return f'<img src="/reviews-doc/{key}/files/{rel}" alt="{html.escape(Path(name).name)}"{width}>'
+
+    return _EMBED.sub(embed, text)

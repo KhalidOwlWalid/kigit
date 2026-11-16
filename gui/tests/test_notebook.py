@@ -93,3 +93,39 @@ def test_log(tmp_path: Path) -> None:
     assert (r / "Logs.md").read_text() == "## 1st November 2026\n- 00:00 First line\n"
     assert notebook.log_heading(datetime(2026, 11, 22)) == "## 22nd November 2026"
     assert notebook.log_heading(datetime(2026, 11, 13)) == "## 13th November 2026"
+
+
+def test_rename_folder_and_delete(tmp_path: Path) -> None:
+    """Folders can be renamed; notes and folders deleted, but nothing of
+    kigit's and never reviews/ itself."""
+    import pytest
+
+    r = vault(tmp_path)
+    sysimpl = r / "OwlPCB_Notes" / "System Implementation"
+    moved = notebook.rename_folder(tmp_path, sysimpl, "Systems")
+    assert moved == r / "OwlPCB_Notes" / "Systems" and (moved / "USB-UART.md").exists()
+    with pytest.raises(ValueError):
+        notebook.rename_folder(tmp_path, moved, "images")  # there's one already
+    assert notebook.contents(r / "OwlPCB_Notes") == (2, 2)  # Logs.md, USB-UART.md; images/shot.png, .obsidian/app.md
+    for kigits in (r, r / "threads", next(r.glob("*.md")), r / "index.md", tmp_path / "elsewhere.md"):
+        with pytest.raises(ValueError):
+            notebook.delete(tmp_path, kigits)
+    notebook.delete(tmp_path, moved / "USB-UART.md")
+    assert not (moved / "USB-UART.md").exists()
+    notebook.delete(tmp_path, r / "OwlPCB_Notes")
+    assert not (r / "OwlPCB_Notes").exists() and (r / "threads").exists()
+
+
+def test_obsidian_pictures_show_in_the_gui(tmp_path: Path) -> None:
+    """![[picture.png]] (Obsidian's way) is found by name in reviews/ and
+    shown in the GUI's previews, like on the Reviews page."""
+    from kigit_gui.md_editor import rewrite_assets
+    from kigit_gui.review_panel import project_key
+
+    r = vault(tmp_path)
+    key = project_key(tmp_path)
+    out = rewrite_assets("See ![[shot.png|300]] and ![[missing.png]] and ![[Logs]] and ![x](assets/a.png)", key)
+    assert f'<img src="/reviews-doc/{key}/files/OwlPCB_Notes/images/shot.png" alt="shot.png" width="300">' in out
+    assert "![[missing.png]]" in out and "![[Logs]]" in out  # not there / not a picture: as written
+    assert f"](/review-files/{key}/a.png)" in out
+    assert r

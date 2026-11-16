@@ -488,8 +488,13 @@ at once. localStorage settings are per origin, so per port.
   only written when its text or pins change. `about(anchor)`: pinned
   (`same_component`: footprint = part by reference, nets and buses by name)
   then mentioned (whole word). `log()`: `- HH:MM line (pin · at abc1234)`
-  under `## 16th November 2026` in the folder's `Logs.md`. The panel is a
-  seamless right-hand dialog (the viewer still takes clicks), autosaves
+  under `## 16th November 2026` in the folder's `Logs.md`. The panel
+  browses one folder at a time (`listing`, `go`, ⬆ and a clickable path);
+  each row's ⋮ renames (`rename`, `rename_folder`) or deletes (`delete`,
+  after a warning from `contents` and `unsaved_in_git`); only your notes
+  and folders (`_inside`), never reviews/ itself or kigit's files. Its
+  dialogs go in `NotebookPanel.host`, not inside the row that opened them.
+  The panel is a seamless right-hand dialog (the viewer still takes clicks), autosaves
   0.8 s after typing stops, and N (`kigit_quick_note`) makes a note about
   what's pinned. A pin is shown in the comparison on screen
   (`focus_if_shown`), else its `seen` comparison is opened. Reviews site:
@@ -508,6 +513,12 @@ at once. localStorage settings are per origin, so per port.
   header's calendar button, You / Everyone) draws `heatmap_svg` (53 week
   columns, Sunday on top, `<title>` tooltips, 5 levels scaled to the
   busiest day) and `stats` (total, by kind, streaks, busiest day).
+- Pictures (`lightbox.py`): clicking an `<img>` in rendered Markdown
+  (`.kigit-md-view` in the GUI, `main .md` on the Reviews site) opens a
+  full-size overlay (Esc or a click closes it; pictures inside links stay
+  links). `md_editor.rewrite_assets` turns Obsidian `![[pic.png|300]]`
+  into an `<img>` served by `/reviews-doc/{key}/files/` (found by name
+  anywhere in reviews/), so the GUI shows them like the site does.
 - The owl (`owl.py`, an easter egg; keep it out of the docs and the
   shortcuts list): a snowy owl in SVG, all JS/CSS in the page, off by
   default. Its door is a small owl face in the header, between the kigit

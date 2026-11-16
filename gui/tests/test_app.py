@@ -1456,6 +1456,57 @@ async def test_the_owl_and_its_door(user: User, monkeypatch) -> None:
     assert 'localStorage.getItem("kigit.owl") === "1"' in owl.PAGE  # off unless turned on
     assert "pointer-events: none" in owl.PAGE.split("#kigit-owl {", 1)[1].split("}", 1)[0]
     assert "kigit-owl" not in str(shortcuts.GROUPS)  # a secret: not in the shortcuts list
+    assert 'id="kigit-lightbox"' in user.client.body_html  # pictures in reviews open full size
+
+
+async def test_notebook_browse_rename_delete(user: User, monkeypatch, tmp_path: Path) -> None:
+    """The Notebook browses folders like a file browser (in, and back up);
+    notes and folders can be renamed, and deleted after a warning."""
+    from kigit_gui.notebook_panel import NotebookPanel
+
+    project = make_fixture_repo(tmp_path / "repo")
+    vault = project / "reviews" / "Owl" / "System"
+    vault.mkdir(parents=True)
+    (vault / "USB.md").write_text("# USB\n\nCH340.\n")
+    await open_at(user, monkeypatch, str(project))
+    await user.should_see("Pick two commits on the left", retries=50)
+    user.find(marker="notebook-button").click()
+    await user.should_see(marker="notebook-folder")
+    nb = NotebookPanel.current
+
+    def names(marker: str) -> list[str]:
+        return [next(c.text for c in e.descendants() if isinstance(c, ui.label))
+                for e in user.client.elements.values() if marker in e._markers]  # noqa: SLF001
+
+    assert names("notebook-folder") == ["Owl"]
+    with user.client:
+        nb.go(project / "reviews" / "Owl")  # what clicking a folder does
+    await user.should_see("System")
+    assert names("notebook-folder") == ["System"] and marked(user, "notebook-up").enabled
+    with user.client:
+        nb.go(vault)
+    await user.should_see("USB")
+    assert names("notebook-note") == ["USB"]
+    user.find(marker="notebook-up").click()  # back up
+    await user.should_see("System")
+    assert names("notebook-folder") == ["System"]
+
+    async def answer(title, value):
+        return "Systems"
+    monkeypatch.setattr(nb, "_ask_name", answer)
+    with user.client:
+        await nb.rename_dialog(vault)  # ⋮ > Rename
+    systems = project / "reviews" / "Owl" / "Systems"
+    assert (systems / "USB.md").exists() and not vault.exists()
+    await user.should_see("Systems")
+
+    with user.client:
+        task = asyncio.create_task(nb.delete_dialog(systems))  # ⋮ > Delete
+    await user.should_see("Everything in it goes: 1 note")
+    await user.should_see(marker="notebook-delete-uncommitted")  # never committed: gone for good
+    user.find(marker="notebook-delete-go").click()
+    await task
+    assert not systems.exists() and (project / "reviews" / "Owl").exists()
 
 
 def review_anchor(name: str, seen: dict):

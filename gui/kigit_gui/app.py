@@ -35,7 +35,7 @@ from pathlib import Path
 
 from nicegui import app, background_tasks, ui
 
-from . import activity, buildtime, kigit, logs, mentions, notices, owl, review, rewritten, sessions, shortcuts, threads
+from . import activity, buildtime, kigit, lightbox, logs, mentions, notices, owl, review, rewritten, sessions, shortcuts, threads
 from .discussions import Discussions
 from .folder_picker import FolderPicker
 from .md_editor import Editors
@@ -326,6 +326,7 @@ def build(start_folder: str):
     resizer = Resizer()
     panels = Panels()
     owl.add()  # (off unless you find its door)
+    ui.add_body_html(lightbox.html(".kigit-md-view"))  # click a picture in a review, note or message: full size
     editors = Editors()  # Markdown editors: reviews and discussions
 
     # ---------------------------------------------------------------- header

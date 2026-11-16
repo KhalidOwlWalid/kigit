@@ -20,6 +20,8 @@ from __future__ import annotations
 
 import json
 import re
+import shutil
+import subprocess
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -85,6 +87,19 @@ def tree(project_dir: str | Path) -> Folder:
         return f
 
     return walk(base) if base.is_dir() else Folder(base)
+
+
+def listing(project_dir: str | Path, folder: Path) -> Folder:
+    """One folder's folders and notes (what the browser shows), the same
+    rules as tree()."""
+    def find(f: Folder) -> Folder | None:
+        if f.path == folder:
+            return f
+        for sub in f.folders:
+            if folder == sub.path or sub.path in folder.parents:
+                return find(sub)
+        return None
+    return find(tree(project_dir)) or Folder(folder)
 
 
 def all_notes(project_dir: str | Path) -> list[Path]:
@@ -175,6 +190,59 @@ def rename(note: Note, title: str) -> Note:
     note.path, note.title = new_path, title
     write(note)
     return note
+
+
+def _inside(project_dir: str | Path, p: Path) -> bool:
+    """A path in your notes: inside reviews/, not reviews/ itself, not kigit's."""
+    base = root(project_dir).resolve()
+    try:
+        rel = p.resolve().relative_to(base)
+    except ValueError:
+        return False
+    return bool(rel.parts) and not _hidden(base / rel, base) and p.resolve() not in _kigit_files(project_dir)
+
+
+def rename_folder(project_dir: str | Path, folder: Path, name: str) -> Path:
+    name = _file_name(review.one_line(name).strip())
+    if not _inside(project_dir, folder) or not folder.is_dir():
+        raise ValueError("that isn't one of your note folders")
+    if name == folder.name:
+        return folder
+    target = folder.with_name(name)
+    if target.exists():
+        raise ValueError(f"there's already a {name} there")
+    folder.rename(target)
+    return target
+
+
+def contents(folder: Path) -> tuple[int, int]:
+    """(notes, other files) in a folder, all the way down."""
+    files = [p for p in folder.rglob("*") if p.is_file()]
+    notes = sum(1 for p in files if p.suffix.lower() == ".md"
+                and not any(part.startswith(".") for part in p.relative_to(folder).parts))
+    return notes, len(files) - notes  # others: pictures, and hidden things like .obsidian/
+
+
+def unsaved_in_git(project_dir: str | Path, p: Path) -> int:
+    """How many files at p have changes git doesn't have (new or edited):
+    deleting those loses them for good. -1 if git can't tell."""
+    try:
+        r = subprocess.run(["git", "-C", str(Path(project_dir)), "status", "--porcelain", "--", str(p)],
+                           capture_output=True, text=True, timeout=10)
+    except (OSError, subprocess.TimeoutExpired):
+        return -1
+    return len([line for line in r.stdout.splitlines() if line.strip()]) if r.returncode == 0 else -1
+
+
+def delete(project_dir: str | Path, p: Path) -> None:
+    """Deletes a note, or a folder and everything in it. Only your notes and
+    folders: never reviews/ itself or kigit's files and folders."""
+    if not _inside(project_dir, p):
+        raise ValueError("that isn't one of your notes or note folders")
+    if p.is_dir():
+        shutil.rmtree(p)
+    else:
+        p.unlink()
 
 
 # ------------------------------------------------------------- finding notes

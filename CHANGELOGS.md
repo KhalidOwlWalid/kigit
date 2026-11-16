@@ -6,8 +6,9 @@ All notable changes to kigit, newest first. The format follows [Keep a Changelog
 
 ### Added
 
+- Click a picture in a review, note or discussion to see it full size (in kigit and on the Reviews page). Obsidian's `![[picture.png]]` pictures now show in kigit too, not just on the Reviews page.
 - Somewhere in the GUI there's a door. Something lives behind it. Hoo knows.
-- **Notebook**: your own notes, as Markdown in `reviews/` (an Obsidian vault works as it is), in folders as deep as you like. A panel beside the viewer: the folder tree, search, the note (saved as you type), pins to parts not tied to a commit, the notes about whatever's pinned (counted on its button), N for a quick note about it, and Today's log (a line under today's date in `Logs.md`). On the Reviews page, nested folders are rows of sub-tabs.
+- **Notebook**: your own notes, as Markdown in `reviews/` (an Obsidian vault works as it is), in folders as deep as you like. A panel beside the viewer: your folders browsed like files (in, and back up), search, rename and delete (deleting warns what goes and whether git still has it), the note (saved as you type), pins to parts not tied to a commit, the notes about whatever's pinned (counted on its button), N for a quick note about it, and Today's log (a line under today's date in `Logs.md`). On the Reviews page, nested folders are rows of sub-tabs.
 
 ### Changed
 

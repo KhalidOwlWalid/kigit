@@ -24,6 +24,8 @@ SAVE_AFTER = 0.8  # seconds of no typing before it's written
 
 
 class NotebookPanel:
+    current: "NotebookPanel | None" = None
+
     """project(): the project folder (or None); pinned(): what's pinned in the
     viewer; head(): the commit you're on; focus(anchor) shows a pin in the
     open comparison and says if it found it; compare(old, new, anchor)
@@ -43,6 +45,10 @@ class NotebookPanel:
         self.saved = ""
         self.status = None                # the open note's "Saved 12:03"
         self.dialog = None
+        # Its own dialogs live here, not inside the row whose menu opened
+        # them (the list is redrawn, and would take them with it).
+        self.host = ui.element("div")
+        NotebookPanel.current = self  # the page's (for tests)
         ui.timer(0.4, self._autosave)
         # N (outside a text box): a new note about what's pinned.
         ui.add_body_html("""<script>
@@ -86,7 +92,7 @@ document.addEventListener("keydown", (e) => {
         with ui.row().classes("w-full items-center gap-1 no-wrap"):
             ui.icon("menu_book").classes("text-amber-500")
             ui.label("Notebook").classes("text-base font-semibold")
-            ui.label(self._where()).classes("text-xs text-gray-500 truncate")
+            self.where_label = ui.label(self._where()).classes("text-xs text-gray-500 truncate")
             ui.space()
             ui.button(icon="today", on_click=self.log_dialog).props("flat dense round size=sm").tooltip(
                 "Today's log: add a line to Logs.md, under today's date").mark("notebook-log")
@@ -161,38 +167,54 @@ document.addEventListener("keydown", (e) => {
                     ui.label(self._rel(n.path.parent)).classes("text-xs text-gray-500 truncate")
             return
         root = notebook.root(self.project)
-        tree = notebook.tree(self.project)
-
-        def nodes(f: notebook.Folder) -> list[dict]:
-            out = [{"id": str(sub.path), "label": sub.path.name, "icon": "folder", "children": nodes(sub)}
-                   for sub in f.folders]
-            out += [{"id": str(p), "label": p.stem, "icon": "description"} for p in f.notes]
-            return out
-
-        items = nodes(tree)
-        if not items:
-            ui.label("No notes yet. Make one with the note button, or press N.").classes(
+        here = self.folder if self.folder and self.folder.is_dir() and (self.folder == root or root in
+                                                                        self.folder.parents) else root
+        self.folder = here
+        # Where you are: back up a level, and the path (each part goes there).
+        with ui.row().classes("w-full items-center gap-1 no-wrap px-1 py-1 border-b border-[#29303a]"):
+            ui.button(icon="arrow_upward", on_click=lambda: self.go(here.parent)).props(
+                "flat dense round size=sm").tooltip("Back up a folder").mark("notebook-up").set_enabled(here != root)
+            parts = [root, *reversed([p for p in here.parents if root in p.parents]), here] if here != root else [root]
+            for i, p in enumerate(parts):
+                if i:
+                    ui.label("/").classes("text-xs text-gray-600")
+                ui.label("reviews" if p == root else p.name).classes(
+                    "text-xs cursor-pointer hover:text-amber-300 " + ("text-gray-200 font-semibold" if p == here
+                                                                       else "text-gray-400")).on(
+                    "click", lambda p=p: self.go(p)).mark("notebook-crumb")
+        listing = notebook.listing(self.project, here)
+        if not listing.folders and not listing.notes:
+            ui.label("Nothing here yet: make a note or a folder with the buttons above, or press N.").classes(
                 "text-xs text-gray-500 italic p-2")
-            return
-        t = ui.tree(items, label_key="label", on_select=lambda e: self._picked(e.value)).props(
-            "dense dark no-transition selected-color=amber-5").classes("w-full text-sm").mark("notebook-tree")
-        if self.note is not None:
-            t._props["selected"] = str(self.note.path)  # noqa: SLF001  (a path could hold quotes)
-            t.expand([str(p) for p in self.note.path.parents if root in p.parents or p == root])
-        elif self.folder is not None:
-            t.expand([str(p) for p in [self.folder, *self.folder.parents] if root in p.parents])
-        else:
-            t.expand()  # nothing open yet: show it all
+        for sub in listing.folders:
+            notes, _ = notebook.contents(sub.path)
+            self._row(sub.path, "folder", sub.path.name, f"{notes} note{'s' if notes != 1 else ''}",
+                      lambda p=sub.path: self.go(p))
+        for p in listing.notes:
+            current = self.note is not None and self.note.path == p
+            self._row(p, "description", p.stem, "", lambda p=p: self.open(p), current)
 
-    def _picked(self, value) -> None:
-        if not value:
-            return
-        p = Path(value)
-        if p.is_dir():
-            self.folder = p
-            self.view.refresh()
-        elif p.is_file():
-            self.open(p)
+    def _row(self, path: Path, icon: str, name: str, meta: str, on_click, current: bool = False) -> None:
+        """A folder (click: go in) or a note (click: open), with ⋮ for rename and delete."""
+        with ui.row().classes("w-full items-center gap-2 no-wrap px-2 py-0.5 cursor-pointer rounded " +
+                              ("bg-[#2a2416]" if current else "hover:bg-[#1c2128]")).on("click", on_click).mark(
+                "notebook-folder" if icon == "folder" else "notebook-note"):
+            ui.icon(icon, size="xs").classes("text-amber-500" if icon == "folder" else "text-gray-400")
+            ui.label(name).classes("text-sm truncate flex-grow")
+            if meta:
+                ui.label(meta).classes("text-xs text-gray-500 whitespace-nowrap")
+            if icon == "folder":
+                ui.icon("chevron_right", size="xs").classes("text-gray-600")
+            with ui.button(icon="more_vert").props("flat dense round size=xs color=grey-6").on("click.stop", lambda: None):
+                with ui.menu():
+                    ui.menu_item("Rename", on_click=lambda: self.rename_dialog(path)).mark("notebook-rename")
+                    ui.menu_item("Delete", on_click=lambda: self.delete_dialog(path)).mark("notebook-delete")
+
+    def go(self, folder: Path) -> None:
+        """Into a folder (or back up)."""
+        self.folder = folder
+        self.list_view.refresh()
+        self.where_label.text = self._where()
 
     def _search(self, q: str) -> None:
         self.query = q
@@ -335,11 +357,105 @@ document.addEventListener("keydown", (e) => {
         """N: a new note about what's pinned (or a plain one)."""
         self.new_note(about=self.pinned_cb())
 
+    async def _ask_name(self, title: str, value: str) -> str | None:
+        with self.host, ui.dialog() as dialog, ui.card().classes("bg-[#161a20] gap-2 w-[26rem]"):
+            ui.label(title).classes("text-sm font-semibold")
+            name = ui.input(value=value).props("dark dense outlined autofocus").classes("w-full").mark(
+                "notebook-rename-input")
+            name.on("keydown.enter", lambda: dialog.submit(name.value))
+            with ui.row().classes("w-full justify-end"):
+                ui.button("Cancel", on_click=lambda: dialog.submit(None)).props("flat")
+                ui.button("Rename", on_click=lambda: dialog.submit(name.value)).props(
+                    "unelevated color=amber-8").mark("notebook-rename-go")
+        dialog.open()
+        got = await dialog
+        dialog.delete()
+        return (got or "").strip() or None
+
+    async def rename_dialog(self, path: Path) -> None:
+        self._save()
+        if path.is_dir():
+            name = await self._ask_name(f"Rename the folder {path.name}", path.name)
+            if not name:
+                return
+            try:
+                new = notebook.rename_folder(self.project, path, name)
+            except (OSError, ValueError) as e:
+                ui.notify(f"Couldn't rename it: {e}", type="warning")
+                return
+            # Anything open inside it moves with it.
+            if self.note is not None and (self.note.path.parent == path or path in self.note.path.parents):
+                self.note.path = new / self.note.path.relative_to(path)
+            if self.folder is not None and (self.folder == path or path in self.folder.parents):
+                self.folder = new / self.folder.relative_to(path)
+        else:
+            try:
+                n = self.note if self.note is not None and self.note.path == path else notebook.read(path)
+            except (OSError, UnicodeDecodeError) as e:
+                ui.notify(f"Couldn't read {path.name}: {e}", type="warning")
+                return
+            name = await self._ask_name(f"Rename the note {n.title}", n.title)
+            if not name:
+                return
+            try:
+                notebook.rename(n, name)
+            except OSError as e:
+                ui.notify(f"Couldn't rename it: {e}", type="warning")
+                return
+        logs.log.info("notebook: renamed %s", path)
+        self.view.refresh()
+
+    async def delete_dialog(self, path: Path) -> None:
+        """Asks first, saying what goes and whether git still has it."""
+        self._save()
+        folder = path.is_dir()
+        notes, others = notebook.contents(path) if folder else (1, 0)
+        loose = notebook.unsaved_in_git(self.project, path)
+        with self.host, ui.dialog() as dialog, ui.card().classes("bg-[#161a20] gap-2 w-[30rem]"):
+            with ui.row().classes("items-center gap-2"):
+                ui.icon("warning", color="red-4")
+                ui.label(f"Delete {'the folder' if folder else 'the note'} {path.stem if not folder else path.name}?"
+                         ).classes("text-base font-semibold")
+            if folder:
+                ui.label(f"Everything in it goes: {notes} note{'s' if notes != 1 else ''}"
+                         + (f" and {others} other file{'s' if others != 1 else ''} (pictures, ...)" if others else "")
+                         + ".").classes("text-sm text-gray-300")
+            ui.label("It's deleted from disk, not moved to a bin.").classes("text-sm text-gray-300")
+            if loose > 0:
+                ui.label(f"{loose} file{'s have' if loose != 1 else ' has'} changes git doesn't have yet (never "
+                         "committed, or edited since): those are gone for good.").classes(
+                    "text-sm text-red-300").mark("notebook-delete-uncommitted")
+            elif loose == 0:
+                ui.label("Git has all of it, so a commit from before this can bring it back.").classes(
+                    "text-xs text-gray-500")
+            with ui.row().classes("w-full justify-end"):
+                ui.button("Cancel", on_click=lambda: dialog.submit(False)).props("flat")
+                ui.button("Delete", icon="delete", on_click=lambda: dialog.submit(True)).props(
+                    "unelevated color=red-8").mark("notebook-delete-go")
+        dialog.open()
+        sure = await dialog
+        dialog.delete()
+        if not sure:
+            return
+        try:
+            notebook.delete(self.project, path)
+        except (OSError, ValueError) as e:
+            ui.notify(f"Couldn't delete it: {e}", type="warning")
+            return
+        logs.log.info("notebook: deleted %s", path)
+        if self.note is not None and (self.note.path == path or path in self.note.path.parents):
+            self.note, self.dirty_at = None, 0.0
+        if self.folder is not None and (self.folder == path or path in self.folder.parents):
+            self.folder = path.parent
+        ui.notify(f"Deleted {path.name}", type="positive")
+        self.view.refresh()
+        self.set_pinned()
+
     async def new_folder(self) -> None:
         if not self.project:
             return
         parent = self.folder or notebook.root(self.project)
-        with ui.dialog() as dialog, ui.card().classes("bg-[#161a20] gap-2 w-[24rem]"):
+        with self.host, ui.dialog() as dialog, ui.card().classes("bg-[#161a20] gap-2 w-[24rem]"):
             ui.label(f"New folder in {self._rel(parent) or 'reviews/'}").classes("text-sm font-semibold")
             name = ui.input(placeholder="Folder name").props("dark dense outlined autofocus").classes("w-full").mark(
                 "notebook-folder-name")
@@ -360,7 +476,7 @@ document.addEventListener("keydown", (e) => {
             return
         folder = self.folder or notebook.root(self.project)
         pinned = self.pinned_cb()
-        with ui.dialog() as dialog, ui.card().classes("bg-[#161a20] gap-2 w-[30rem]"):
+        with self.host, ui.dialog() as dialog, ui.card().classes("bg-[#161a20] gap-2 w-[30rem]"):
             ui.label("Today's log").classes("text-sm font-semibold")
             ui.label(f"Added to {self._rel(folder / notebook.LOG) or notebook.LOG}, under today's date"
                      + (f", about {chip_text(pinned)}" if pinned else "") + ".").classes("text-xs text-gray-400")
