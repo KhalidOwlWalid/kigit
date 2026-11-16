@@ -1312,6 +1312,53 @@ async def test_rename_a_discussion_and_retitle_a_note(user: User, monkeypatch, t
     await user.should_see("Unsaved changes")
 
 
+async def test_mentions_in_the_chat_and_the_bell(user: User, monkeypatch, tmp_path: Path) -> None:
+    """A link to your discussion from another shows in your chat ("mentioned
+    this in ...", which opens it); a new one, pulled, rings the bell (@)."""
+    from kigit_gui import notices, threads
+
+    project = make_fixture_repo(tmp_path / "repo")
+    mine = threads.start(project, "C1 placement", "x", "a" * 40, "kigit tests", "a" * 40)
+    threads.start(project, "Older", f"See {threads.link_markdown(mine)}", "a" * 40, "Someone else", "a" * 40)
+    before = {n.id for n in notices.items}  # (the list is shared by the tests in a run)
+    for n in notices.items:
+        n.read = True  # earlier tests' warnings would show "!", which comes before "@"
+    ours = lambda: [n for n in notices.items if n.level == "mention" and n.id not in before]  # noqa: E731
+    await open_at(user, monkeypatch, str(project))
+    await user.should_see("Pick two commits on the left", retries=50)
+    assert not ours()  # what was there already: no news
+    other = threads.start(project, "USB-C recessed", f"Like {threads.link_markdown(mine)}", "a" * 40,
+                          "Someone else", "a" * 40)  # as if pulled
+    for _ in range(80):  # the folder is watched every 4 s
+        if ours():
+            break
+        await asyncio.sleep(0.1)
+    told = ours()
+    assert len(told) == 1 and 'mentioned "C1 placement" in the discussion "USB-C recessed"' in told[0].title
+    badge = marked(user, "notices-badge")
+    for _ in range(30):
+        if badge.visible:
+            break
+        await asyncio.sleep(0.1)
+    assert badge.visible and badge.text == "@"
+
+    emit(user, "kigit_open_thread", mine.id)
+    await user.should_see("Someone else mentioned this in the discussion \"USB-C recessed\"")
+    assert len([e for e in user.client.elements.values() if "discussion-mention" in e._markers]) == 2  # noqa: SLF001
+    rows = [e for e in user.client.elements.values() if "discussion-mention" in e._markers]  # noqa: SLF001
+    row = next(r for r in rows if any("USB-C" in str(getattr(c, "text", "")) for c in r.descendants()))
+    from nicegui.events import GenericEventArguments, handle_event
+    with user.client:  # click it: that discussion opens
+        for listener in list(row._event_listeners.values()):  # noqa: SLF001
+            handle_event(listener.handler, GenericEventArguments(sender=row, client=user.client, args=None))
+    for _ in range(30):
+        titles = [e.text for e in user.client.elements.values() if "discussion-title" in e._markers]  # noqa: SLF001
+        if "USB-C recessed" in titles:
+            break
+        await asyncio.sleep(0.1)
+    assert "USB-C recessed" in titles and other.id
+
+
 def review_anchor(name: str, seen: dict):
     from kigit_gui.review import Anchor
     return Anchor.from_dict({"tab": "pcb", "kind": "footprint", "name": name, "seen": seen})

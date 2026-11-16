@@ -96,6 +96,14 @@ Discussions listed in a review (and in the header's Discussions list) have their
 
 Reviews can be linked the same way: right-click a commit with a review in the commit list and choose **Copy review link** (`[commit message](<id>.md)`). Clicking it in a note or a discussion opens that review. The same menu has **Copy review file path** (the full path of its file) and **Copy commit hash**.
 
+### Mentions
+
+A discussion shows where it's linked from, in among its messages at the time it happened: "*Author B* mentioned this in the discussion *USB-C recessed*" (or *the review of ...*). Click it to go there. On the [Reviews page](#the-reviews-page), discussions and reviews have a **Mentioned in** list.
+
+When someone else links to a discussion you opened or wrote in, the :material-bell: shows an **@** and a notification says where (it also pops up). Mentions that come with a `git pull` arrive the same way, within a few seconds. kigit keeps which ones you've seen in its [app folder](../app-folder.md), per project; the first time it sees a project, mentions already there count as seen.
+
+Nothing is written into the linked discussion: mentions are worked out from the links themselves, so editing or deleting the message with the link takes the mention away too.
+
 If a linked discussion or review is gone (deleted, or not pulled yet), kigit warns you: when you click the link, and when you open, write or send something that links to it. The warning also goes to the session log and the :material-bell: notifications. On the Reviews page the link shows greyed out.
 
 ### Jump to the commits

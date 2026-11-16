@@ -35,7 +35,7 @@ from pathlib import Path
 
 from nicegui import app, background_tasks, ui
 
-from . import buildtime, kigit, logs, notices, review, rewritten, sessions, shortcuts, threads
+from . import buildtime, kigit, logs, mentions, notices, review, rewritten, sessions, shortcuts, threads
 from .discussions import Discussions
 from .folder_picker import FolderPicker
 from .md_editor import Editors
@@ -223,7 +223,8 @@ def show_shortcuts() -> None:
     dialog.open()
 
 
-_LEVEL_LOOK = {"error": ("error", "red-4"), "warning": ("warning", "amber-5"), "info": ("info", "blue-4")}
+_LEVEL_LOOK = {"error": ("error", "red-4"), "warning": ("warning", "amber-5"), "info": ("info", "blue-4"),
+               "mention": ("alternate_email", "purple-3")}
 
 
 def show_notices() -> None:
@@ -504,17 +505,21 @@ def build(start_folder: str):
         folder = str(Path(state["board"]).parent)
         ui.navigate.to("/?" + urllib.parse.urlencode({"folder": folder, "board": state["board"]}), new_tab=True)
 
-    # The bell: a red "!" while warnings or errors are unread.
+    # The bell: a red "!" while warnings or errors are unread, "@" for mentions.
     seen_version = {"v": -1}
 
     def bell_refresh() -> None:
         if seen_version["v"] == notices.version:
             return
         seen_version["v"] = notices.version
-        n = notices.unread_problems()
-        bell_badge.set_visibility(n > 0)
-        bell_tip.text = f"Notifications: {n} new warning{'s' if n != 1 else ''} or error{'s' if n != 1 else ''}" \
-            if n else "Notifications"
+        n, at = notices.unread_problems(), notices.unread_mentions()
+        # Problems first ("!"); else "@" for someone mentioning your discussions.
+        bell_badge.set_visibility(n > 0 or at > 0)
+        bell_badge.set_text("!" if n else "@")
+        bell_badge.props(f"color={'red' if n else 'purple-5'}")
+        parts = ([f"{n} new warning{'s' if n != 1 else ''} or error{'s' if n != 1 else ''}"] if n else []) + \
+                ([f"{at} new mention{'s' if at != 1 else ''} of your discussions"] if at else [])
+        bell_tip.text = "Notifications: " + ", ".join(parts) if parts else "Notifications"
     ui.timer(1.0, bell_refresh)
     ui.add_head_html(_SHORTCUTS_CSS)
     # A crowded header: labels stay beside their icons; the folder box gives way.
@@ -715,9 +720,32 @@ body.kigit-dragging iframe { pointer-events: none; }  /* else the frames swallow
         table.update()
 
     # ---------------------------------------------------------- discussions
+    def tell_mentions() -> None:
+        """New mentions of your discussions (by others; a pull brings them):
+        to the bell, and a pop-up."""
+        if not disc.project:
+            return
+        try:
+            new = mentions.new_for_me(disc.project, disc.me)
+        except OSError as e:
+            logs.log.warning("couldn't look for mentions: %s", e)
+            return
+        titles = {t.id: t.title for t in disc.all()}
+        for m in new:
+            about = titles.get(m.target.split(":", 1)[1], "your discussion")
+            where = f'the discussion "{m.title}"' if m.kind == "discussion" else f'the review of "{m.title}"'
+            notices.add("mention", f'{m.author or "Someone"} mentioned "{about}" in {where}', m.time)
+            logs.log.info("mention: %s linked %s from %s %s", m.author, m.target, m.kind, m.source)
+        if new:
+            first = new[0]
+            more = f" (and {len(new) - 1} more)" if len(new) > 1 else ""
+            ui.notify(f"{first.author or 'Someone'} mentioned your discussion in \"{first.title}\"{more}", type="info",
+                      icon="alternate_email")
+
     def threads_changed() -> None:
         """Discussions were added to or changed (here, or pulled): the header
-        count, the commit list's flags, the open review's list."""
+        count, the commit list's flags, the open review's list, mentions."""
+        tell_mentions()
         items = disc.all()
         n = threads.counts(items)
         active = n["open"] + n["done"]
@@ -733,11 +761,17 @@ body.kigit-dragging iframe { pointer-events: none; }  /* else the frames swallow
             panel.threads_view.refresh()
 
     def threads_sig() -> tuple:
-        d = threads.folder(disc.project) if disc.project else None
-        try:
-            return tuple(sorted((p.name, p.stat().st_mtime_ns) for p in d.glob("*.md"))) if d and d.is_dir() else ()
-        except OSError:
+        """The discussion files, and the review files (a review can mention a
+        discussion): what a pull would change."""
+        if not disc.project:
             return ()
+        out = []
+        for d in (threads.folder(disc.project), review.folder(disc.project)):
+            try:
+                out += sorted((str(p), p.stat().st_mtime_ns) for p in d.glob("*.md")) if d.is_dir() else []
+            except OSError:
+                pass
+        return tuple(out)
 
     def watch_threads() -> None:  # e.g. after a git pull
         if disc.project and threads_sig() != state.get("thread_sig"):
@@ -756,7 +790,7 @@ body.kigit-dragging iframe { pointer-events: none; }  /* else the frames swallow
                                       {{ once: true }});""")
 
     disc = Discussions(focus=focus, changed=lambda: threads_changed(), compare=compare_and_show, editors=editors,
-                       pinned=lambda: panel.pinned)
+                       pinned=lambda: panel.pinned, open_review=lambda rid: open_review_link(rid))
     ui.timer(4.0, watch_threads)
 
     panel = ReviewPanel(focus=focus, on_saved=on_review_saved, resizer=resizer,

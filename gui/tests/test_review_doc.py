@@ -241,3 +241,16 @@ def test_discussion_links_on_the_site(tmp_path: Path) -> None:
     p = page(tmp_path, "notes/n")
     assert f'<a href="/discussions/{t.id}">Check C1</a>' in p
     assert '<span class="wl missing" title="This discussion is gone: deleted, or not pulled yet">old one</span>' in p
+
+
+def test_mentioned_in(tmp_path: Path) -> None:
+    """A discussion's or review's page lists where it's linked from."""
+    from kigit_gui import threads
+
+    _, new = make(tmp_path)
+    t = threads.start(tmp_path, "Check C1", "x", A, "Author A", A)
+    threads.start(tmp_path, "Other", f"See {threads.link_markdown(t)} and [r]({new.id}.md)", A, "Author B", A)
+    p = page(tmp_path, f"discussions/{t.id}")
+    assert 'id="mentioned">Mentioned in</h2>' in p and 'the discussion "Other"</a>' in p and "by Author B" in p
+    r = page(tmp_path, f"reviews/{new.id}")
+    assert 'the discussion "Other"' in r and 'href="#mentioned">Mentioned in</a>' in r

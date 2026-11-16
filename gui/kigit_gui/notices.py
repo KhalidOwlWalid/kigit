@@ -20,13 +20,13 @@ from nicegui import app
 
 from . import logs
 
-LEVELS = ("error", "warning", "info")
+LEVELS = ("error", "warning", "info", "mention")  # mention: someone linked to your discussion
 KEEP = 200  # newest kept
 
 
 @dataclass
 class Notice:
-    level: str                      # error, warning or info
+    level: str                      # error, warning, info or mention
     title: str
     detail: str = ""
     headers: tuple[str, ...] = ()   # a table, e.g. ("Part", "Model file")
@@ -69,6 +69,10 @@ def add(level: str, title: str, detail: str = "", headers: tuple[str, ...] = (),
 
 def unread_problems() -> int:
     return sum(1 for n in items if not n.read and n.level in ("error", "warning"))
+
+
+def unread_mentions() -> int:
+    return sum(1 for n in items if not n.read and n.level == "mention")
 
 
 def mark_read() -> None:
@@ -125,7 +129,7 @@ _PAGE = """<!doctype html>
 <title>%%TITLE%%</title>
 <style>
 :root { --bg: #0f1115; --panel: #161a20; --line: #29303a; --text: #e6e9ee; --muted: #9aa4b2; --faint: #6b7584;
-  --accent: #e8b84d; --error: #f07178; --warning: #e8b84d; --info: #7fb3ff; }
+  --accent: #e8b84d; --error: #f07178; --warning: #e8b84d; --info: #7fb3ff; --mention: #c39bff; }
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
 header { position: sticky; top: 0; display: flex; gap: 12px; align-items: center; padding: 10px 18px;
@@ -136,6 +140,7 @@ label { color: var(--muted); font-size: 13px; display: flex; gap: 6px; align-ite
 main { padding: 14px 18px 40px; }
 .n { background: var(--panel); border: 1px solid var(--line); border-left: 3px solid var(--line); border-radius: 8px; padding: 10px 14px; margin-bottom: 10px; }
 .n.error { border-left-color: var(--error); } .n.warning { border-left-color: var(--warning); } .n.info { border-left-color: var(--info); }
+.n.mention { border-left-color: var(--mention); } .mention .lvl { color: var(--mention); }
 .n .h { display: flex; gap: 10px; align-items: baseline; } .n .when { color: var(--faint); font-size: 12px; font-variant-numeric: tabular-nums; }
 .n .lvl { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; }
 .error .lvl { color: var(--error); } .warning .lvl { color: var(--warning); } .info .lvl { color: var(--info); }

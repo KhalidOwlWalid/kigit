@@ -299,6 +299,7 @@ class Book:
     docs: list[Doc]
     pages: dict[str, Page] = field(default_factory=dict)
     tabs: list[Tab] = field(default_factory=list)
+    mentions: dict = field(default_factory=dict)  # mentions.all_mentions: what's linked from where
 
     def href(self, url: str, frag: str = "") -> str:
         return self.base + urllib.parse.quote(url, safe="/") + (f"#{frag}" if frag else "")
@@ -354,6 +355,8 @@ def build(project_dir: str | Path, name: str = "", files_url: str = "", base: st
     docs.sort(key=lambda d: d.path.relative_to(root).as_posix().lower())
     talks = threads.all_threads(project)  # needing attention first
     book = Book(name, root, base, site, reviews, talks, docs)
+    from . import mentions
+    book.mentions = mentions.all_mentions(project)
 
     # Tabs: Home, Reviews, Discussions, one per top folder of notes, loose notes, Tags.
     book.tabs.append(Tab("home", "Home", ""))
@@ -609,6 +612,23 @@ def _doc_page(book: Book, d: Doc) -> tuple[str, list]:
             + f'<div class="md">{body}</div></section>'), toc
 
 
+def _mentioned_in(book: Book, target: str) -> tuple[str, list]:
+    """'Mentioned in': the discussions and reviews that link here."""
+    found = book.mentions.get(target, [])
+    if not found:
+        return "", []
+    rows = []
+    for m in found:
+        if m.kind == "discussion":
+            to, what = book.href(f"discussions/{m.source}"), f'the discussion "{esc(m.title)}"'
+        else:
+            frag = f"n-{m.where}" if m.where not in ("", "summary") else ""
+            to, what = book.href(f"reviews/{m.source}", frag), f'the review of "{esc(m.title)}"'
+        rows.append(f'<li><a href="{to}">{what}</a> <span class="mm">by {esc(m.author)} · {esc(m.time)}</span></li>')
+    return (f'<h2 class="section" id="mentioned">Mentioned in</h2><ul class="mentioned">{"".join(rows)}</ul>',
+            [(2, "mentioned", "Mentioned in")])
+
+
 def _card_list(book: Book, pages: list[Page], empty: str = "Nothing here.") -> str:
     if not pages:
         return f'<p class="empty">{esc(empty)}</p>'
@@ -801,6 +821,8 @@ def render(project_dir: str | Path, page: str = "", name: str = "", files_url: s
         body = '<h1 class="title">Timeline</h1><p class="lede">Every review, newest commit first.</p>' + body
     elif p.kind == "review":
         body, toc = _review_page(book, p.obj)
+        more, more_toc = _mentioned_in(book, f"review:{p.obj.id}")
+        body, toc = body + more, toc + more_toc
     elif p.kind == "discussions":
         groups = []
         for status in ("open", "done", "accepted"):
@@ -811,7 +833,8 @@ def render(project_dir: str | Path, page: str = "", name: str = "", files_url: s
                 toc.append((2, f"s-{status}", _THREAD_LOOK[status][0]))
         body = '<h1 class="title">Discussions</h1>' + "".join(groups)
     elif p.kind == "thread":
-        body = _thread_page(book, p.obj)
+        body, toc = _mentioned_in(book, f"thread:{p.obj.id}")
+        body = _thread_page(book, p.obj) + body
     elif p.kind == "folder":
         body = f'<h1 class="title">{esc(p.title)}</h1>' + _folder(book, p.tab)
     elif p.kind == "note":
@@ -1102,6 +1125,9 @@ h2.month { font-size: 13px; font-weight: 650; letter-spacing: .08em; text-transf
 .tag.big { font-size: 14px; padding: 3px 12px; display: inline-flex; gap: 8px; align-items: center; }
 .tag.big span { color: var(--faint); font-size: 12px; }
 .times { color: var(--faint); font-size: 11.5px; margin-top: 8px; }
+.mentioned { list-style: none; padding: 0; margin: 0; display: grid; gap: 6px; }
+.mentioned li::before { content: "@"; color: var(--t-question); margin-right: 8px; font-weight: 600; }
+.mentioned .mm { color: var(--faint); font-size: 12.5px; }
 
 /* Markdown */
 .md > :first-child { margin-top: 0; } .md > :last-child { margin-bottom: 0; }

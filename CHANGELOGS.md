@@ -4,6 +4,10 @@ All notable changes to kigit, newest first. The format follows [Keep a Changelog
 
 ## [Unreleased]
 
+### Added
+
+- **Mentions**: a discussion shows where it's linked from ("Author B mentioned this in ..."), among its messages; the Reviews page has a "Mentioned in" list on discussions and reviews. When someone else links to a discussion you're in, the bell shows an @ (pulled mentions too). Worked out from the links, so nothing is written into the linked discussion.
+
 ## [0.2.1] - 2026-11-16
 
 ### Added

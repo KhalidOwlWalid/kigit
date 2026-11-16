@@ -539,6 +539,17 @@ at once. localStorage settings are per origin, so per port.
   (`notices.warn`: pop-up, log, bell) once per place and discussion per
   session: on opening a review or discussion, Write, send, edit, request.
   The Reviews site sends them to `discussions/<id>`, or a `.wl.missing`.
+  Mentions (`mentions.py`): `all_mentions(project)` scans discussion
+  messages and reviews (summary, notes) for discussion and review links,
+  keyed `thread:<id>` / `review:<id>` (self-links skipped); computed each
+  time, never written into the linked file. The chat shows them by time
+  (`Discussions._mention`), the site as "Mentioned in". `new_for_me`
+  (called from `threads_changed`, which `watch_threads` triggers on any
+  discussion or review file change) returns others' mentions of
+  discussions you opened or wrote in, not yet seen; seen keys per project
+  in `<app data>/kigit/mentions-seen.json` (a project's first look is a
+  quiet baseline). They're `mention` notices: the bell shows "@" (purple)
+  unless problems ("!") are unread.
   Review links: `review.review_link` gives `[subject](<id>.md)`; the click
   handler emits `kigit_open_review` (`open_review_link` in app.py runs
   that commit's review). The commit list's right-click menu is a

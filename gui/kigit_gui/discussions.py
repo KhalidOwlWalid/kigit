@@ -12,9 +12,9 @@ import getpass
 from pathlib import Path
 from typing import Awaitable, Callable
 
-from nicegui import ui
+from nicegui import background_tasks, ui
 
-from . import logs, notices, review, threads
+from . import logs, mentions, notices, review, threads
 from .review import Anchor
 from .md_editor import Editors, rewrite_assets
 from .review_panel import chip_text, project_key
@@ -38,9 +38,11 @@ class Discussions:
 
     def __init__(self, focus: Callable[[Anchor], None], changed: Callable[[], None],
                  compare: Callable[[str, str, Anchor | None], Awaitable[None]] | None = None,
-                 editors: Editors | None = None, pinned: Callable[[], Anchor | None] | None = None) -> None:
+                 editors: Editors | None = None, pinned: Callable[[], Anchor | None] | None = None,
+                 open_review: Callable[[str], Awaitable[None]] | None = None) -> None:
         self.focus, self.changed, self.compare_cb = focus, changed, compare
         self.pinned = pinned or (lambda: None)  # what's pinned in the viewer now
+        self.open_review = open_review  # open_review(review id): show that review
         self.editors = editors
         # The dialogs live here, not where they're opened from: a Request or a
         # row in the review panel is redrawn when a message is sent, and a
@@ -193,8 +195,16 @@ class Discussions:
                 ui.label(f"· {t.opened}")
         self.check_links(" ".join(m.text for m in t.messages), f'The discussion "{t.title}"')
         with ui.scroll_area().classes("w-full").style("height: min(26rem, 50vh)") as area:
-            for i, m in enumerate(t.messages):
-                self._message(t, i, m)
+            # The chat, with where it was mentioned (links to it from other
+            # discussions and reviews) in among the messages, by time.
+            said = mentions.all_mentions(self.project).get(f"thread:{t.id}", [])
+            timeline = sorted([(m.time, 0, i, m) for i, m in enumerate(t.messages)]
+                              + [(x.time, 1, j, x) for j, x in enumerate(said)], key=lambda e: (e[0], e[1], e[2]))
+            for _, is_mention, i, item in timeline:
+                if is_mention:
+                    self._mention(item)
+                else:
+                    self._message(t, i, item)
         if self.editing is None:
             area.scroll_to(percent=1.0)
         box = self._editor("Reply: what you changed, or a question. Markdown; paste, drop or click to add files.",
@@ -337,6 +347,22 @@ class Discussions:
         self.editing = None
         self.thread_view.refresh()
         self.changed()
+
+    def _mention(self, m: mentions.Mention) -> None:
+        """'Author mentioned this in X': click to go there."""
+        where = f'the discussion "{m.title}"' if m.kind == "discussion" else f'the review of "{m.title}"'
+        with ui.row().classes("w-full justify-center items-center gap-1 text-xs text-gray-400 py-1 cursor-pointer "
+                              "hover:text-purple-300").on("click", lambda: self._go_to(m)).mark("discussion-mention"):
+            ui.icon("alternate_email", size="xs").classes("text-purple-300")
+            ui.label(f"{m.author or 'Someone'} mentioned this in {where}").classes("underline decoration-dotted")
+            ui.label(f"· {m.time}").classes("text-gray-500")
+
+    def _go_to(self, m: mentions.Mention) -> None:
+        if m.kind == "discussion":
+            self.open_link(m.source)
+        elif self.open_review is not None:
+            self._thread_dialog.close()
+            background_tasks.create(self.open_review(m.source))
 
     def _start_edit(self, index: int | None) -> None:
         self.editing = index

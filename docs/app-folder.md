@@ -33,6 +33,7 @@ In the GUI, the :material-receipt-text: log button shows the log's full path and
 | `log/` | A log for every run, named after when it started (`kigit_2026-11-15_14-03-12_1234.log`, `kigit-gui_...`). Old logs are kept. | the command line and the GUI |
 | `sessions.json` | Your [recent projects](how-to-use/gui.md#landing-page): each project opened and the last two commits compared there | the GUI |
 | `thumbnails/` | The board pictures on the landing page, one per project | the GUI (with KiCad) |
+| `mentions-seen.json` | Which [mentions](how-to-use/reviews.md#mentions) of your discussions you've been told about, per project (for the bell) | the GUI |
 | `3d-build-times.json` | How long each board's [3D model](how-to-use/3d-view.md#making-the-model) took to make, for the progress bar | the GUI |
 | `gui-env/` | The GUI's Python and packages, set up the first time you run `kigit gui` | the installed kigit |
 | `example/` | The [example project](example.md), if you tried it from the GUI | the GUI |
