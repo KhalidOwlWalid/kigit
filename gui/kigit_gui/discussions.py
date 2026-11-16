@@ -38,8 +38,9 @@ class Discussions:
 
     def __init__(self, focus: Callable[[Anchor], None], changed: Callable[[], None],
                  compare: Callable[[str, str, Anchor | None], Awaitable[None]] | None = None,
-                 editors: Editors | None = None) -> None:
+                 editors: Editors | None = None, pinned: Callable[[], Anchor | None] | None = None) -> None:
         self.focus, self.changed, self.compare_cb = focus, changed, compare
+        self.pinned = pinned or (lambda: None)  # what's pinned in the viewer now
         self.editors = editors
         # The dialogs live here, not where they're opened from: a Request or a
         # row in the review panel is redrawn when a message is sent, and a
@@ -107,7 +108,8 @@ class Discussions:
                             "Copy a link to this discussion").mark("discussion-row-link")
                     with ui.row().classes("w-full items-center gap-2 no-wrap text-xs text-gray-400"):
                         if t.anchor:
-                            ui.label(chip_text(t.anchor)).classes("text-amber-300 whitespace-nowrap")
+                            more = f" +{len(t.more)}" if t.more else ""
+                            ui.label(chip_text(t.anchor) + more).classes("text-amber-300 whitespace-nowrap")
                         ui.label(f"opened by {t.by} on {t.commit[:7]} · {t.opened}").classes("truncate")
                     if last and last.text:
                         ui.label(f"{last.author}: {review.one_line(last.text)}").classes(
@@ -146,9 +148,30 @@ class Discussions:
                 "discussion-copy-link")
             ui.button(icon="close", on_click=self._thread_dialog.close).props("flat dense round size=sm")
         with ui.row().classes("w-full items-center gap-2 text-xs text-gray-400"):
-            if t.anchor:
-                ui.chip(chip_text(t.anchor), icon="my_location", on_click=lambda: self._focus(t)).props(
-                    "dense outline color=amber-5 clickable").classes("text-xs").tooltip("Show it in the viewer")
+            mine = t.by == self.me  # whoever opened it can change what it's about
+            for i, a in enumerate(t.anchors):
+                chip = ui.chip(chip_text(a), icon="my_location", removable=mine,
+                               on_click=lambda a=a: self._focus(t, a)).props(
+                    "dense outline color=amber-5 clickable").classes("text-xs").mark("discussion-anchor")
+                chip.tooltip("Show it in the viewer")
+                if mine:
+                    chip.on("remove", lambda i=i: self._repoint(t, [x for j, x in enumerate(t.anchors) if j != i]))
+            if mine:
+                pinned = self.pinned()
+                with ui.button(icon="edit_location_alt").props("flat dense round size=sm color=grey-5").mark(
+                        "discussion-repoint"):
+                    ui.tooltip("Change what this discussion is about")
+                    with ui.menu():
+                        what = chip_text(pinned) if pinned else "what's pinned (click something in the viewer first)"
+                        add = ui.menu_item(f"Add {what}", on_click=lambda: self._repoint(t, t.anchors + [pinned])).mark(
+                            "discussion-repoint-add")
+                        item = ui.menu_item(f"Point it at {what} instead",
+                                            on_click=lambda: self._repoint(t, [pinned])).mark("discussion-repoint-pinned")
+                        add.set_enabled(pinned is not None and not any(review.same_thing(pinned, x) for x in t.anchors))
+                        item.set_enabled(pinned is not None)
+                        if t.anchors:
+                            ui.menu_item("Make it about the commit in general",
+                                         on_click=lambda: self._repoint(t, [])).mark("discussion-repoint-general")
             with ui.row().classes("items-baseline gap-1"):
                 ui.label(f"Opened by {t.by} on commit")
                 self._hash_link(t, t.commit)
@@ -205,7 +228,7 @@ class Discussions:
                                 "flat dense round size=xs color=grey-6").tooltip("Delete your comment").mark(
                                 "discussion-delete")
                 if verb:
-                    icon, color = STATUS_LOOK[threads.STATUS[m.kind]]
+                    icon, color = STATUS_LOOK.get(threads.STATUS.get(m.kind, ""), ("my_location", "grey-5"))
                     with ui.row().classes("items-center gap-1"):
                         ui.icon(icon, color=color, size="xs")
                         ui.label(verb.capitalize()).classes("text-xs").classes(f"text-{color.split('-')[0]}-300")
@@ -249,6 +272,16 @@ class Discussions:
             notices.warn(f"{where} links to a {kind} that's gone ({i}): deleted, or not pulled yet",
                          f"{file} isn't there")
         return [i for _, i, _ in gone]
+
+    def _repoint(self, t: threads.Thread, anchors: list) -> None:
+        try:
+            threads.repoint(self.project, t.id, self.me, self.head, [a for a in anchors if a])
+        except (OSError, ValueError) as e:
+            ui.notify(f"Couldn't change what it's about: {e}", type="warning")
+            return
+        logs.log.info("discussion %s now about %s", t.id, ", ".join(a.label for a in anchors if a) or "the commit")
+        self.thread_view.refresh()
+        self.changed()
 
     async def _delete(self, t: threads.Thread, index: int, m: threads.Message) -> None:
         with self.host, ui.dialog() as dialog, ui.card().classes("bg-[#161a20] gap-2 w-[26rem] max-w-full"):
@@ -330,9 +363,9 @@ class Discussions:
                 "dark outlined autogrow dense").classes("w-full text-sm").mark(mark)
         return self.editors.editor(value, on_change, placeholder, mark, project_key(self.project))
 
-    def _focus(self, t: threads.Thread) -> None:
+    def _focus(self, t: threads.Thread, anchor: Anchor | None = None) -> None:
         self._thread_dialog.close()
-        self.focus(t.anchor)
+        self.focus(anchor or t.anchor)
 
     def _send(self, box: ui.textarea, kind: str) -> None:
         text = (box.value or "").strip()

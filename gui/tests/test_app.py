@@ -1218,6 +1218,70 @@ async def test_copy_review_links_from_the_commit_list(user: User, monkeypatch, t
     assert not [e for e in user.client.elements.values() if "discussion-title" in e._markers]  # not opened  # noqa: SLF001
 
 
+async def test_change_what_a_note_or_discussion_points_at(user: User, monkeypatch, tmp_path: Path) -> None:
+    """A note or a discussion pointed at the wrong thing can be pointed at
+    what's pinned now; only the discussion's opener can change it."""
+    from kigit_gui import review as review_mod, threads
+
+    project = make_fixture_repo(tmp_path / "repo")
+    await open_at(user, monkeypatch, str(project))
+    await user.should_see("Pick two commits on the left", retries=50)
+    v2 = next(r for r in commit_table(user).rows if r["subject"].startswith("v2"))
+    await select(user, [v2])
+    user.find(marker="review-button").click()
+    await user.should_see(marker="review-add-note", retries=100)
+    seen = {"old": v2["parent"], "new": v2["hash"], "side": "new"}
+    emit(user, "kigit_pinned", {"tab": "pcb", "kind": "footprint", "name": "R2", "seen": seen})  # the wrong one
+    user.find(marker="review-add-note").click()
+    await user.should_see("Footprint R2")
+    emit(user, "kigit_pinned", {"tab": "pcb", "kind": "footprint", "name": "C1", "seen": seen})
+    user.find(marker="review-note-repoint-pinned").click()  # instead: C1
+    await user.should_see("Unsaved changes")
+    emit(user, "kigit_pinned", {"tab": "sch", "kind": "part", "name": "R2", "seen": seen})
+    user.find(marker="review-note-repoint-add").click()  # as well: C1, R2
+    emit(user, "kigit_pinned", {"tab": "pcb", "kind": "net", "name": "GND", "seen": seen})
+    user.find(marker="review-note-repoint-add").click()  # C1, R2, GND
+    chips = [e for e in user.client.elements.values() if "review-note-anchor" in e._markers]  # noqa: SLF001
+    assert [c.text for c in chips] == ["Footprint C1", "Part R2", "PCB net GND"]
+    from nicegui.events import GenericEventArguments, handle_event
+    with user.client:  # the x on R2's chip
+        for listener in list(chips[1]._event_listeners.values()):  # noqa: SLF001
+            if listener.type == "remove":
+                handle_event(listener.handler, GenericEventArguments(sender=chips[1], client=user.client, args=None))
+    user.find(marker="review-write").click()
+    for _ in range(30):
+        written = review_mod.all_reviews(project).get(v2["hash"])
+        if written:
+            break
+        await asyncio.sleep(0.1)
+    assert [a.name for a in review_mod.load(written).notes[0].anchors] == ["C1", "GND"]  # was R2
+
+    mine = threads.start(project, "Crystal", "x", v2["hash"], "kigit tests", v2["hash"],
+                         review_anchor("R2", seen))
+    theirs = threads.start(project, "Theirs", "x", v2["hash"], "Someone else", v2["hash"], review_anchor("R2", seen))
+    emit(user, "kigit_open_thread", theirs.id)
+    await user.should_see(marker="discussion-title")
+    assert not [e for e in user.client.elements.values() if "discussion-repoint" in e._markers]  # noqa: SLF001
+    emit(user, "kigit_open_thread", mine.id)
+    await user.should_see(marker="discussion-repoint")
+    user.find(marker="discussion-repoint-add").click()  # GND, still pinned: R2 and GND
+    await user.should_see("Changed what it's about")
+    t = next(x for x in threads.all_threads(project) if x.id == mine.id)
+    assert [a.name for a in t.anchors] == ["R2", "GND"] and t.messages[-1].kind == "repointed"
+    user.find(marker="discussion-repoint-pinned").click()  # GND instead
+    for _ in range(30):
+        t = next(x for x in threads.all_threads(project) if x.id == mine.id)
+        if len(t.anchors) == 1:
+            break
+        await asyncio.sleep(0.1)
+    assert [a.name for a in t.anchors] == ["GND"]
+
+
+def review_anchor(name: str, seen: dict):
+    from kigit_gui.review import Anchor
+    return Anchor.from_dict({"tab": "pcb", "kind": "footprint", "name": name, "seen": seen})
+
+
 async def test_pulled_discussions_show_up(user: User, monkeypatch, tmp_path: Path) -> None:
     """A discussion that arrives on disk (a git pull) is picked up by itself."""
     from kigit_gui import threads

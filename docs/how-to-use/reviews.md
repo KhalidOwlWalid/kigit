@@ -13,6 +13,7 @@ In the [GUI](gui.md), pick **one** commit and press **Review**. kigit compares i
 
 - **Summary:** the commit as a whole.
 - **Notes:** click a net, footprint, part or bus in the viewer to pin it, then press **+ Note**: the note points at it. Click the note's chip later to show it again in the viewer. Without anything pinned, the note is a general one.
+- **More than one thing, or the wrong one:** pin something else in the viewer, then use :material-map-marker-radius: next to the note's chips. **Add what's pinned** points the note at that too (a note can be about several parts, nets or footprints), **Replace with what's pinned** points it there instead, and **Make it a general note** drops them all. The ✕ on a chip takes just that one off.
 
     A note remembers the two commits it was pinned in, so it can still show a net or part that commit **deleted**: its chip turns red and says "removed".
 
@@ -81,6 +82,8 @@ A discussion moves through three states:
 | :material-check-decagram:{ style="color: #5fc48a" } **Accepted** | Settled: the discussion is closed | **Reopen** |
 
 Anything you type in the reply box goes along with the button you press ("Moved it 1 mm left", then **Mark as done**).
+
+If you opened a discussion, :material-map-marker-radius: next to what it's about changes that, the same way as for notes: add what's pinned in the viewer, point it there instead, or make it about the commit in general; ✕ on a chip takes one off. The chat records the change ("Now about Footprint Y1, Part C5").
 
 To change something you wrote, press :material-pencil: on your message, edit it, and **Save**. Only your own messages have the pencil (they're signed with your git name). The message stays where it was and shows *edited*. :material-delete: deletes one of your comments, after asking. Status changes (marked done, accepted, reopened) can't be deleted, since that would change the status; edit their text instead.
 

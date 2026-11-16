@@ -752,7 +752,8 @@ body.kigit-dragging iframe { pointer-events: none; }  /* else the frames swallow
             if (f) f.addEventListener("load", () => setTimeout(() => f.contentWindow.postMessage({msg}, "*"), 300),
                                       {{ once: true }});""")
 
-    disc = Discussions(focus=focus, changed=lambda: threads_changed(), compare=compare_and_show, editors=editors)
+    disc = Discussions(focus=focus, changed=lambda: threads_changed(), compare=compare_and_show, editors=editors,
+                       pinned=lambda: panel.pinned)
     ui.timer(4.0, watch_threads)
 
     panel = ReviewPanel(focus=focus, on_saved=on_review_saved, resizer=resizer,

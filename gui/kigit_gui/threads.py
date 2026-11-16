@@ -33,7 +33,9 @@ The bold line is for people (GitHub, Obsidian); kigit reads the comment.
 Messages are added at the end. Their authors can change their text later
 (`edit`): in place, with an "edited" time; nothing else about a message
 changes. They can delete their own comments (`delete`), but not status
-changes, which would change the status. The status is the last status message's: open (needs attention),
+changes, which would change the status. Whoever opened a discussion can
+change what it's about (`repoint`): the anchor in the header changes and a
+"repointed" message says so. The status is the last status message's: open (needs attention),
 done, accepted.
 """
 
@@ -49,10 +51,11 @@ from . import review
 from .review import Anchor
 
 FOLDER = "threads"
-KINDS = ("comment", "done", "accepted", "reopened")
+KINDS = ("comment", "done", "accepted", "reopened", "repointed")
 STATUS = {"done": "done", "accepted": "accepted", "reopened": "open"}  # what each kind sets the status to
 LABELS = {"open": "Needs attention", "done": "Done, to be accepted", "accepted": "Accepted"}
-VERB = {"comment": "", "done": "marked done", "accepted": "accepted", "reopened": "reopened"}
+VERB = {"comment": "", "done": "marked done", "accepted": "accepted", "reopened": "reopened",
+        "repointed": "changed what it's about"}
 
 _MSG = re.compile(r"^<!-- kigit-msg (\{.*\}) -->$")
 
@@ -73,9 +76,14 @@ class Thread:
     commit: str                 # the commit it was opened on
     by: str = ""
     opened: str = ""
-    anchor: Anchor | None = None
+    anchor: Anchor | None = None  # what it's about (the first, if several)
     id: str = field(default_factory=lambda: secrets.token_hex(4))
     messages: list[Message] = field(default_factory=list)
+    more: list[Anchor] = field(default_factory=list)  # anything else it's about
+
+    @property
+    def anchors(self) -> list[Anchor]:
+        return ([self.anchor] if self.anchor else []) + list(self.more)
 
     @property
     def status(self) -> str:
@@ -96,7 +104,10 @@ def folder(project_dir: str | Path) -> Path:
 def dumps(t: Thread) -> str:
     anchor = json.dumps(t.anchor.to_dict(), ensure_ascii=False) if t.anchor else ""
     out = ["---", f"id: {t.id}", f"title: {review.one_line(t.title)}", f"opened: {t.opened}",
-           f"by: {review.one_line(t.by)}", f"commit: {t.commit}", f"anchor: {anchor}", "---", ""]
+           f"by: {review.one_line(t.by)}", f"commit: {t.commit}", f"anchor: {anchor}"]
+    if t.more:  # "anchor" stays the first: older kigit reads that
+        out.append(f"more: {json.dumps([a.to_dict() for a in t.more], ensure_ascii=False)}")
+    out += ["---", ""]
     for m in t.messages:
         at = f" at {m.head[:7]}" if m.head else ""
         verb = VERB.get(m.kind, "")
@@ -134,6 +145,11 @@ def loads(text: str) -> Thread:
         except json.JSONDecodeError:
             pass
     t = Thread(head["title"], head.get("commit", ""), head.get("by", ""), head.get("opened", ""), anchor, head["id"])
+    try:
+        more = json.loads(head.get("more") or "[]")
+    except json.JSONDecodeError:
+        more = []
+    t.more = [a for a in (Anchor.from_dict(x) for x in more if isinstance(more, list)) if a]
     msg: Message | None = None
     body: list[str] = []
 
@@ -247,6 +263,30 @@ def delete(project_dir: str | Path, thread_id: str, index: int, author: str, tim
     if m.kind != "comment":
         raise ValueError("a status change can't be deleted (edit its text instead)")
     del t.messages[index]
+    save(project_dir, t)
+    return t
+
+
+def repoint(project_dir: str | Path, thread_id: str, author: str, head: str, anchors: list[Anchor]) -> Thread:
+    """Changes what the discussion is about (a mistake, or more to it):
+    the parts, nets or footprints in `anchors`, or the commit in general
+    (empty). Only whoever opened it can; a "repointed" message says what it's
+    about now (it doesn't change the status). Raises ValueError otherwise."""
+    p = folder(project_dir) / f"{thread_id}.md"
+    t = loads(p.read_text(encoding="utf-8"))
+    if t.by != author:
+        raise ValueError(f"only {t.by or 'whoever opened it'} can change what it's about")
+    unique: list[Anchor] = []
+    for a in anchors:
+        if not any(review.same_thing(a, u) for u in unique):
+            unique.append(a)
+    old = t.anchors
+    if len(old) == len(unique) and all(review.same_thing(x, y) for x, y in zip(old, unique)):
+        return t
+    t.anchor, t.more = (unique[0], unique[1:]) if unique else (None, [])
+    labels = lambda xs: ", ".join(a.label for a in xs)  # noqa: E731
+    t.messages.append(Message(author, review.now(), f"Now about {labels(unique) or 'the commit in general'}"
+                              + (f" (was {labels(old)})" if old else "") + ".", head, "repointed"))
     save(project_dir, t)
     return t
 

@@ -372,14 +372,14 @@ def build(project_dir: str | Path, name: str = "", files_url: str = "", base: st
     add(Page("reviews", "Timeline", "reviews", "timeline"))
     for r, _ in reviews:
         text = " ".join([r.subject, _plain(r.summary)]
-                        + [f"{n.title} {n.anchor.label if n.anchor else ''} {_plain(n.body)}" for n in r.notes]
+                        + [f"{n.title} {' '.join(a.label for a in n.anchors)} {_plain(n.body)}" for n in r.notes]
                         + [r.author, r.id, r.commit])  # findable, but last: snippets show the text
         add(Page(f"reviews/{r.id}", r.subject or "(no message)", "reviews", "review", r.date, text,
                  sorted({t for n in r.notes for t in n.tags}), r, r.date[:7]))
     if talks:
         add(Page("discussions", "Discussions", "discussions", "discussions"))
         for t in talks:
-            text = " ".join([t.title, t.by, t.anchor.label if t.anchor else ""]
+            text = " ".join([t.title, t.by, " ".join(a.label for a in t.anchors)]
                             + [f"{m.author} {_plain(m.text)}" for m in t.messages])
             add(Page(f"discussions/{t.id}", t.title, "discussions", "thread", t.opened, text, [t.status], t,
                      _THREAD_LOOK[t.status][0]))
@@ -433,7 +433,7 @@ def search_index(book: Book) -> list[dict]:
         for n in r.notes:
             out.append({"u": book.href(f"reviews/{r.id}", f"n-{n.id}"), "t": n.title or "Note",
                         "k": f"Note · {review.one_line(r.subject)[:60]}", "d": r.date[:10], "g": n.tags,
-                        "x": f"{n.anchor.label if n.anchor else ''} {_plain(n.body)}"[:3000]})
+                        "x": f"{' '.join(a.label for a in n.anchors)} {_plain(n.body)}"[:3000]})
     return out
 
 
@@ -441,14 +441,19 @@ _KIND_LABEL = {"review": "Review", "thread": "Discussion", "note": "Note"}
 
 
 # ------------------------------------------------------------------ pieces
-def _anchor_html(n) -> str:
-    if not n.anchor:
-        return '<span class="anchor general">General note</span>'
-    a = n.anchor
+def _one_anchor(a) -> str:
     cls = "anchor removed" if a.removed else "anchor"
     label = a.label + (" · removed" if a.removed else "")
     return (f'<span class="{cls}" title="{esc(a.where)}"><b class="tab tab-{esc(a.tab)}">{esc(a.tab.upper())}</b>'
             f'{esc(label)}</span>')
+
+
+def _anchor_html(n) -> str:
+    """What a note (or discussion) is about: a badge each."""
+    anchors = n.anchors
+    if not anchors:
+        return '<span class="anchor general">General note</span>'
+    return "".join(_one_anchor(a) for a in anchors)
 
 
 _THREAD_LOOK = {"open": ("Needs attention", "t-risk"), "done": ("Done, to be accepted", "t-todo"),
@@ -568,9 +573,8 @@ def _thread_page(book: Book, t) -> str:
 
     label, cls = _THREAD_LOOK[t.status]
     about = ""
-    if t.anchor:
-        about = (f'<span class="anchor"><b class="tab tab-{esc(t.anchor.tab)}">{esc(t.anchor.tab.upper())}</b>'
-                 f'{esc(t.anchor.label)}</span>')
+    if t.anchors:
+        about = "".join(_one_anchor(a) for a in t.anchors)
     msgs = []
     for m in t.messages:
         verb = threads.VERB.get(m.kind, "")

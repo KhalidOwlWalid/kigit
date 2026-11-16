@@ -125,15 +125,23 @@ class Anchor:
 class Note:
     title: str = ""
     body: str = ""
-    anchor: Anchor | None = None
+    anchor: Anchor | None = None  # what it's about (the first, if several)
     tags: list[str] = field(default_factory=list)
     id: str = field(default_factory=lambda: secrets.token_hex(4))
     created: str = ""  # when first written
     edited: str = ""   # when last written with a change ("" if never)
+    more: list[Anchor] = field(default_factory=list)  # anything else it's about
+
+    @property
+    def anchors(self) -> list[Anchor]:
+        return ([self.anchor] if self.anchor else []) + list(self.more)
+
+    def set_anchors(self, anchors: list[Anchor]) -> None:
+        self.anchor, self.more = (anchors[0], list(anchors[1:])) if anchors else (None, [])
 
     def content(self) -> tuple:
         """What counts as an edit: as it's written to the file."""
-        return (one_line(self.title), self.body.strip(), self.anchor, list(self.tags))
+        return (one_line(self.title), self.body.strip(), self.anchor, list(self.more), list(self.tags))
 
 
 @dataclass
@@ -168,6 +176,8 @@ def dumps(r: Review) -> str:
         out += [r.summary.strip(), ""]
     for n in r.notes:
         meta = {"id": n.id, "anchor": n.anchor.to_dict() if n.anchor else None, "tags": n.tags}
+        if n.more:  # "anchor" stays the first: older kigit reads that
+            meta["more"] = [a.to_dict() for a in n.more]
         if n.created:
             meta["created"] = n.created
         if n.edited:
@@ -227,7 +237,9 @@ def loads(text: str) -> Review:
                         tags=[t for t in tags if isinstance(t, str)] if isinstance(tags, list) else [],
                         id=str(meta.get("id") or secrets.token_hex(4)),
                         created=meta["created"] if isinstance(meta.get("created"), str) else "",
-                        edited=meta["edited"] if isinstance(meta.get("edited"), str) else "")
+                        edited=meta["edited"] if isinstance(meta.get("edited"), str) else "",
+                        more=[a for a in (Anchor.from_dict(x) for x in meta.get("more") or []
+                                          if isinstance(meta.get("more"), list)) if a])
             i += 2
             continue
         chunk.append(lines[i])
@@ -297,6 +309,12 @@ REVIEW_LINK = re.compile(r"\]\(\s*<?(?:\.\./)*([0-9a-f]{8})\.md")
 def review_link(subject: str, path: Path) -> str:
     title = re.sub(r"[\[\]\n]", "", one_line(subject)).strip() or path.stem
     return f"[{title}]({path.name})"
+
+
+def same_thing(a: Anchor | None, b: Anchor | None) -> bool:
+    """The same net, part or footprint, wherever it was pinned."""
+    key = lambda x: (x.tab, x.kind, x.name) if x else None  # noqa: E731
+    return key(a) == key(b)
 
 
 def is_empty(r: Review) -> bool:
@@ -374,8 +392,8 @@ def retarget(r: Review, commit: str, parent: str, subject: str, date: str, autho
     own comparison follow it; other pinned commits follow `moved` (old hash
     -> new) where they were rewritten too."""
     moved = moved or {}
-    for n in r.notes:
-        s = n.anchor.seen if n.anchor else None
+    for a in (a for n in r.notes for a in n.anchors):
+        s = a.seen
         if not s:
             continue
         if (s.old, s.new) == (r.parent, r.commit):

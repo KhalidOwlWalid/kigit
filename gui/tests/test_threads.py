@@ -108,3 +108,37 @@ def test_discussion_links(tmp_path: Path) -> None:
     assert threads.linked(text) == [t.id, "deadbeef"]
     assert threads.exists(tmp_path, t.id) and not threads.exists(tmp_path, "deadbeef")
     assert threads.missing(tmp_path, text) == ["deadbeef"]
+
+
+def test_repoint(tmp_path: Path) -> None:
+    """Whoever opened a discussion can change what it's about; it's said in
+    the chat, and the status stays."""
+    y1 = Anchor("pcb", "footprint", "Y1", Seen("0" * 40, C1, "new"))
+    t = threads.start(tmp_path, "Crystal", "SMD instead?", C1, "Author A", C1, y1)
+    t = threads.add(tmp_path, t.id, "Author B", C2, "Done.", "done")
+    x1 = Anchor("pcb", "footprint", "X1", Seen("0" * 40, C2, "new"))
+    with pytest.raises(ValueError):
+        threads.repoint(tmp_path, t.id, "Author B", C2, [x1])  # not the opener
+    t = threads.repoint(tmp_path, t.id, "Author A", C2, [x1])
+    assert t.anchor.name == "X1" and t.status == "done"
+    assert (t.messages[-1].kind, t.messages[-1].text) == ("repointed", "Now about Footprint X1 (was Footprint Y1).")
+    again = threads.all_threads(tmp_path)[0]
+    assert again.anchor.name == "X1" and again.messages[-1].kind == "repointed"
+    same = Anchor("pcb", "footprint", "X1", Seen(C1, C2, "new"))  # the same part, pinned elsewhere
+    assert len(threads.repoint(tmp_path, t.id, "Author A", C2, [same]).messages) == 3  # nothing to say
+    t = threads.repoint(tmp_path, t.id, "Author A", C2, [])
+    assert t.anchor is None and t.messages[-1].text == "Now about the commit in general (was Footprint X1)."
+
+
+def test_about_several_things(tmp_path: Path) -> None:
+    """A discussion can be about several parts; the first stays in "anchor"
+    (what older kigit reads), the rest in "more"."""
+    y1 = Anchor("pcb", "footprint", "Y1")
+    c5, c6 = Anchor("sch", "part", "C5"), Anchor("sch", "part", "C6")
+    t = threads.start(tmp_path, "Crystal", "x", C1, "Author A", C1, y1)
+    t = threads.repoint(tmp_path, t.id, "Author A", C1, [y1, c5, c6, Anchor("sch", "part", "C5")])  # C5 once
+    assert [a.name for a in t.anchors] == ["Y1", "C5", "C6"]
+    assert t.messages[-1].text == "Now about Footprint Y1, Part C5, Part C6 (was Footprint Y1)."
+    text = threads.path_of(tmp_path, t).read_text(encoding="utf-8")
+    assert '"name": "Y1"' in text.split("more:")[0] and "more: [" in text
+    assert [a.name for a in threads.all_threads(tmp_path)[0].anchors] == ["Y1", "C5", "C6"]

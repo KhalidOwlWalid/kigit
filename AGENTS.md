@@ -511,6 +511,12 @@ at once. localStorage settings are per origin, so per port.
   checked against author and time; `edited` in its meta and the bold line).
   The discussion dialogs are created in `Discussions.host`, not where
   they're opened from: the review panel's list is redrawn on every send.
+  Several anchors: notes and discussions keep the first in `anchor` (what
+  older files and code read) and the rest in `more` (`"more": [...]` in
+  the note's meta, a `more:` line in a discussion's header); `.anchors` is
+  all of them, `Note.set_anchors` sets them, `review.same_thing` compares
+  by tab/kind/name. `threads.repoint(..., anchors)` (opener only) adds a
+  `repointed` message (no status change).
   `threads.delete` removes your own comment (not a status change). Links:
   `threads.link_markdown` gives `[title](threads/<id>.md)` (relative to
   reviews/); the panel's link click handler (review_panel `_PAGE_JS`)

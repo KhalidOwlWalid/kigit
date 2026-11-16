@@ -355,13 +355,29 @@ class ReviewPanel:
         self.editing ^= {key}
         self.summary_view.refresh() if key == "summary" else self.notes_view.refresh()
 
-    def point_at_pinned(self, note: Note) -> None:
-        note.anchor = self.pinned
+    def point_at_pinned(self, note: Note, add: bool = False) -> None:
+        """Points the note at what's pinned in the viewer: instead of what it
+        pointed at, or as well (add)."""
+        if self.pinned is None:
+            ui.notify("Click a net, part or footprint in the viewer first, then point the note at it")
+            return
+        if add and any(review.same_thing(a, self.pinned) for a in note.anchors):
+            ui.notify(f"The note already points at {self.pinned.label}")
+            return
+        note.set_anchors(note.anchors + [self.pinned] if add else [self.pinned])
         self.changed()
         self.notes_view.refresh()
 
+    def remove_anchor(self, note: Note, index: int) -> None:
+        anchors = note.anchors
+        if 0 <= index < len(anchors):
+            del anchors[index]
+            note.set_anchors(anchors)
+            self.changed()
+        self.notes_view.refresh()
+
     def unanchor(self, note: Note) -> None:
-        note.anchor = None
+        note.set_anchors([])
         self.changed()
         self.notes_view.refresh()
 
@@ -574,8 +590,9 @@ class ReviewPanel:
                 "review-discussion"):
             ui.icon(icon, color=color, size="xs")
             ui.label(t.title).classes("text-sm truncate flex-grow")
-            if t.anchor:
-                ui.label(t.anchor.name).classes("text-xs text-amber-300 whitespace-nowrap")
+            if t.anchors:
+                ui.label(", ".join(a.name for a in t.anchors)).classes(
+                    "text-xs text-amber-300 whitespace-nowrap truncate max-w-[8rem]")
             if t.commit != self.review.commit:
                 ui.label(t.commit[:7]).classes("text-xs text-gray-500 font-mono").tooltip("Opened on this commit")
             ui.label(str(len(t.messages))).classes("text-xs text-gray-500").tooltip("messages")
@@ -596,23 +613,37 @@ class ReviewPanel:
     def _note_card(self, note: Note) -> None:
         editing = note.id in self.editing
         with ui.card().classes("w-full bg-[#1c2128] gap-1 p-2").props("flat bordered"):
-            with ui.row().classes("w-full items-center gap-1 no-wrap"):
-                if note.anchor:
-                    color = "red-4" if note.anchor.removed else "amber-5"
-                    ui.chip(chip_text(note.anchor), icon="my_location",
-                            on_click=lambda n=note: self.focus_cb(n.anchor)).props(
-                        f"dense outline color={color} clickable").classes("text-xs max-w-[70%] truncate").tooltip(
-                        "Show it in the viewer" + (f". {note.anchor.where}" if note.anchor.where else ""))
-                else:
+            with ui.row().classes("w-full items-center gap-1"):
+                # What it's about: one chip each (click: show it; x: take it off).
+                for i, a in enumerate(note.anchors):
+                    color = "red-4" if a.removed else "amber-5"
+                    ui.chip(chip_text(a), icon="my_location", removable=True,
+                            on_click=lambda a=a: self.focus_cb(a)).props(
+                        f"dense outline color={color} clickable").classes("text-xs max-w-[70%] truncate").on(
+                        "remove", lambda n=note, i=i: self.remove_anchor(n, i)).tooltip(
+                        "Show it in the viewer" + (f". {a.where}" if a.where else "")).mark("review-note-anchor")
+                if not note.anchors:
                     ui.label("General note").classes("text-xs text-gray-500")
+                # Pointed at the wrong thing, or more to it: change it here, where it shows.
+                with ui.button(icon="edit_location_alt").props("flat dense round size=xs color=grey-5").mark(
+                        "review-note-repoint"):
+                    ui.tooltip("Change what this note points at")
+                    with ui.menu():
+                        ui.menu_item("Add what's pinned in the viewer",
+                                     on_click=lambda n=note: self.point_at_pinned(n, add=True)).mark(
+                            "review-note-repoint-add")
+                        ui.menu_item("Replace with what's pinned in the viewer",
+                                     on_click=lambda n=note: self.point_at_pinned(n)).mark("review-note-repoint-pinned")
+                        if note.anchors:
+                            ui.menu_item("Make it a general note", on_click=lambda n=note: self.unanchor(n))
                 ui.space()
                 ui.button(icon="visibility" if editing else "edit",
                           on_click=lambda n=note: self.toggle_edit(n.id)).props("flat dense round size=sm").tooltip(
                     "Preview" if editing else "Edit")
                 with ui.button(icon="more_vert").props("flat dense round size=sm"):
                     with ui.menu():
-                        pin_item = ui.menu_item("Point at what's pinned", on_click=lambda n=note: self.point_at_pinned(n))
-                        pin_item.set_enabled(self.pinned is not None)
+                        ui.menu_item("Point at what's pinned", on_click=lambda n=note: self.point_at_pinned(n))
+                        ui.menu_item("Add what's pinned", on_click=lambda n=note: self.point_at_pinned(n, add=True))
                         if note.anchor:
                             ui.menu_item("Make it a general note", on_click=lambda n=note: self.unanchor(n))
                         ui.menu_item("Delete note", on_click=lambda n=note: self.remove_note(n))

@@ -297,3 +297,16 @@ def test_known_tags(tmp_path: Path) -> None:
     assert review.known_tags(tmp_path) == review.TAGS
     review.save(tmp_path, Review(commit=COMMIT, notes=[Note(tags=["thermal", "risk"]), Note(tags=["emc"])]))
     assert review.known_tags(tmp_path) == review.TAGS + ["emc", "thermal"]
+
+
+def test_note_about_several_things(tmp_path: Path) -> None:
+    n = Note(title="Decoupling", anchor=Anchor("sch", "part", "C5"))
+    n.set_anchors(n.anchors + [Anchor("sch", "part", "C6"), Anchor("pcb", "net", "+3V3", Seen("a" * 40, "b" * 40, "new"))])
+    r = Review(commit="b" * 40, parent="a" * 40, subject="x", notes=[n])
+    again = review.loads(review.dumps(r)).notes[0]
+    assert [a.name for a in again.anchors] == ["C5", "C6", "+3V3"] and again.anchor.name == "C5"
+    review.retarget(again_r := review.loads(review.dumps(r)), "c" * 40, "d" * 40, "x", "", "")
+    assert again_r.notes[0].anchors[2].seen.new == "c" * 40  # every anchor follows a rebase
+    again.set_anchors([])
+    assert again.anchor is None and again.more == [] and again.anchors == []
+    assert review.same_thing(Anchor("sch", "part", "C5"), Anchor("sch", "part", "C5", Seen("x", "y", "new")))
