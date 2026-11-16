@@ -37,6 +37,8 @@ SolidCompression=yes
 WizardStyle=modern
 UninstallDisplayName=kigit {#AppVersion}
 UninstallDisplayIcon={app}\bin\kigit.exe
+; The logo (tools/make_logo.py) on the setup program itself; kigit.exe has it built in.
+SetupIconFile={#SourcePath}..\icons\kigit.ico
 
 [Tasks]
 Name: "addtopath"; Description: "Add kigit to PATH (so you can run kigit from a terminal)"

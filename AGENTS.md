@@ -59,7 +59,7 @@ Pieces:
 | `pcb/` | `board` (load `.kicad_pcb`: items, footprints, zones, silkscreen), `diff` (PCB diff) |
 | `sch/` | `schematic` (load `.kicad_sch` hierarchy, compute nets and buses), `sch_diff` (schematic diff), `netcheck` (compare with a KiCad netlist) |
 | `report/` | `html` (JSON for the viewer and `--json`; embeds the viewer), `viewer_template.hpp.in` |
-| `commands/` | the CLI: `options` (parsing, `--help`), `common` (shared helpers: board paths, warnings, output paths, `git_board`), `summary` (terminal summary), `diff` (compare, also `--check-netlist`), `history` (`--log`, `--rewritten`), `board3d` (`--3d`), `projects` (`--projects`), `gui` (`kigit gui`) |
+| `commands/` | the CLI: `options` (parsing, `--help`), `common` (shared helpers: board paths, warnings, output paths, `git_board`), `summary` (terminal summary), `diff` (compare, also `--check-netlist`), `history` (`--log`, `--rewritten`), `board3d` (`--3d`), `example` (`kigit example`), `uninstall` (`kigit uninstall`), `projects` (`--projects`), `gui` (`kigit gui`) |
 | `src/main.cpp` | starts the session log, then runs the command |
 
 Everything except `commands/` and `main.cpp` builds into the `kigit_core`
@@ -105,6 +105,18 @@ Other folders:
   the nets against KiCad (`kicad-cli sch export netlist` per step,
   `kigit --check-netlist`), then update the pinned hashes.
 - `packaging/windows/kigit.iss`: Windows installer (Inno Setup).
+- `packaging/icons/`: the logo (`kigit.svg`, `.png`, `.ico` at 16-256 px),
+  made by `tools/make_logo.py` (Pillow; regenerate, don't edit). The .ico is
+  compiled into kigit.exe on Windows (`packaging/windows/kigit.rc.in`,
+  configured with the icon's absolute path by CMake) and is the installer's
+  `SetupIconFile`.
+- `kigit uninstall` (`src/commands/uninstall.cpp`): the install is
+  `<prefix>/bin/kigit` with `<prefix>/share/kigit` beside it (anything else,
+  like a build folder, is refused). Removes only `bin/kigit`, `share/kigit`,
+  `libexec/kigit` (never the shared folders), asks unless `--yes`;
+  `--purge` adds `<state dir>/kigit`. No session log (it may remove the
+  folder). Windows: runs `<prefix>/unins000.exe` (Inno's), else tells you
+  to delete the folder (a running .exe can't delete itself).
 - `docs/` + `mkdocs.yml`: the docs site (MkDocs Material; published with
   `mkdocs gh-deploy`, `mkdocs build --strict` to check). GUI screenshots
   live in `docs/img/gui/` and are made by `tools/docs_screenshots.py`
@@ -517,7 +529,8 @@ at once. localStorage settings are per origin, so per port.
   the note's meta, a `more:` line in a discussion's header); `.anchors` is
   all of them, `Note.set_anchors` sets them, `review.same_thing` compares
   by tab/kind/name. `threads.repoint(..., anchors)` (opener only) adds a
-  `repointed` message (no status change).
+  `repointed` message (no status change). `threads.rename` (opener only)
+  adds a `renamed` message holding the old title.
   `threads.delete` removes your own comment (not a status change). Links:
   `threads.link_markdown` gives `[title](threads/<id>.md)` (relative to
   reviews/); the panel's link click handler (review_panel `_PAGE_JS`)

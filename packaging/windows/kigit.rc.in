@@ -1,0 +1,3 @@
+// kigit.exe's icon (Explorer, the taskbar, Apps & features). CMake fills
+// in the path: packaging/icons/kigit.ico, made by tools/make_logo.py.
+1 ICON "@KIGIT_ICON@"

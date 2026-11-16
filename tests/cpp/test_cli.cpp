@@ -218,6 +218,51 @@ TEST_CASE("kigit example: a CRLF checkout (git on Windows) gives the same commit
           "b35493eae535b732fff2a2d632f584bf62b7b0d7");
 }
 
+TEST_CASE("kigit uninstall: only an installed kigit, only its own files") {
+    // A build folder isn't an install: nothing to do.
+    RunResult build = run_kigit("uninstall --yes");
+    CHECK(build.code == 1);
+    CHECK(build.err.find("isn't an installed kigit") != std::string::npos);
+    CHECK(fs::exists(KIGIT_BIN));
+#ifndef _WIN32
+    // An installed layout: <prefix>/bin/kigit, share/kigit, libexec/kigit,
+    // in a folder (bin) that other programs share.
+    TempDir tmp;
+    const fs::path prefix = tmp / "prefix";
+    fs::create_directories(prefix / "bin");
+    fs::create_directories(prefix / "share" / "kigit" / "gui");
+    fs::create_directories(prefix / "libexec" / "kigit");
+    std::ofstream(prefix / "bin" / "other-tool") << "x";
+    fs::copy_file(KIGIT_BIN, prefix / "bin" / "kigit");
+    fs::permissions(prefix / "bin" / "kigit", fs::perms::owner_all);
+    fs::create_directories(tmp / "state" / "kigit" / "log");  // the app folder, here
+    kigit::platform::set_env("XDG_STATE_HOME", (tmp / "state").string());
+    const std::string installed = quote((prefix / "bin" / "kigit").string());
+
+    RunResult no = run("echo n | " + installed + " uninstall");
+    CHECK(no.code == 1);
+    CHECK(fs::exists(prefix / "bin" / "kigit"));  // asked, said no
+
+    RunResult yes = run(installed + " uninstall --yes");
+    INFO("stderr: " << yes.err);
+    CHECK(yes.code == 0);
+    CHECK(!fs::exists(prefix / "bin" / "kigit"));
+    CHECK(!fs::exists(prefix / "share" / "kigit"));
+    CHECK(!fs::exists(prefix / "libexec" / "kigit"));
+    CHECK(fs::exists(prefix / "bin" / "other-tool"));  // the shared folders and what else is in them stay
+    CHECK(fs::exists(prefix / "share"));
+    CHECK(fs::exists(tmp / "state" / "kigit"));  // the app folder only with --purge
+
+    fs::copy_file(KIGIT_BIN, prefix / "bin" / "kigit");
+    fs::permissions(prefix / "bin" / "kigit", fs::perms::owner_all);
+    fs::create_directories(prefix / "share" / "kigit");
+    CHECK(run(installed + " uninstall --yes --purge").code == 0);
+    CHECK(!fs::exists(tmp / "state" / "kigit"));
+    CHECK(fs::exists(tmp / "state"));
+    kigit::platform::set_env("XDG_STATE_HOME", "");
+#endif
+}
+
 TEST_CASE("diff across the folder rename, as JSON on stdout") {
     TempDir tmp;
     make_fixture_repo(tmp.path());

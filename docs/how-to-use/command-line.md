@@ -46,13 +46,21 @@ kigit example [DIR]
 
 Makes the [example project](../example.md) (a git repository) in DIR (default: `./kigit-example`) and prints its project folder. It won't write over an existing folder.
 
+## Uninstalling
+
+```sh
+kigit uninstall [--yes] [--purge]
+```
+
+Removes the kigit you ran: its program, the GUI and the example files (on Linux `bin/kigit`, `share/kigit` and `libexec/kigit` under where you unpacked it; the folders around them stay). It lists them and asks first; `--yes` doesn't ask. `--purge` also removes the [app folder](../app-folder.md) (logs, recent projects, the GUI's Python). On Windows it starts the installer's uninstaller. It does nothing for a kigit built from source.
+
 ## The GUI
 
 ```sh
 kigit gui [FOLDER] [--port N] [--native | --browser]
 ```
 
-Starts the [GUI](gui.md) in FOLDER (default: here). Started outside a KiCad project, it opens on your recent projects. `--port N` picks the port (default: 8765 or the next free one); `--native` / `--browser` choose a window of its own or your browser.
+Starts the [GUI](gui.md) in FOLDER (default: here). Started outside a KiCad project, it opens on your recent projects. `--port N` picks the port (default: 8765 or the next free one); It opens in your browser; `--native` opens a window of its own instead.
 
 ## Scripting
 

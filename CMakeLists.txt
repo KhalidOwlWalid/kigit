@@ -100,6 +100,7 @@ add_executable(kigit
   src/commands/history.cpp
   src/commands/board3d.cpp
   src/commands/example.cpp
+  src/commands/uninstall.cpp
   src/commands/projects.cpp
   src/commands/gui.cpp
 )
@@ -110,6 +111,11 @@ if(WIN32)
   # Plain C library calls without MSVC's "use the _s version" warnings; keep
   # <windows.h> from defining min/max macros.
   target_compile_definitions(kigit_core PUBLIC _CRT_SECURE_NO_WARNINGS NOMINMAX WIN32_LEAN_AND_MEAN)
+  # The logo as kigit.exe's icon (a resource; MSVC's rc and MinGW's windres
+  # both take it). The path is filled in, so it doesn't depend on where rc runs.
+  set(KIGIT_ICON "${CMAKE_CURRENT_SOURCE_DIR}/packaging/icons/kigit.ico")
+  configure_file(packaging/windows/kigit.rc.in "${CMAKE_CURRENT_BINARY_DIR}/kigit.rc" @ONLY)
+  target_sources(kigit PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/kigit.rc")
 endif()
 if(MSVC)
   # /utf-8: the sources contain UTF-8 text (arrows, dots in messages).

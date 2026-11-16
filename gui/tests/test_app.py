@@ -1277,6 +1277,41 @@ async def test_change_what_a_note_or_discussion_points_at(user: User, monkeypatc
     assert [a.name for a in t.anchors] == ["GND"]
 
 
+async def test_rename_a_discussion_and_retitle_a_note(user: User, monkeypatch, tmp_path: Path) -> None:
+    """Whoever opened a discussion can rename it (the chat keeps the old
+    title); a note's title is a text box when it's being edited."""
+    from kigit_gui import threads
+
+    project = make_fixture_repo(tmp_path / "repo")
+    await open_at(user, monkeypatch, str(project))
+    await user.should_see("Pick two commits on the left", retries=50)
+    mine = threads.start(project, "Crystl", "x", "a" * 40, "kigit tests", "a" * 40)
+    theirs = threads.start(project, "Theirs", "x", "a" * 40, "Someone else", "a" * 40)
+    emit(user, "kigit_open_thread", theirs.id)
+    await user.should_see(marker="discussion-title")
+    assert not [e for e in user.client.elements.values() if "discussion-rename" in e._markers]  # noqa: SLF001
+    emit(user, "kigit_open_thread", mine.id)
+    await user.should_see(marker="discussion-rename")
+    user.find(marker="discussion-rename").click()
+    await user.should_see(marker="discussion-title-input")
+    with user.client:
+        marked(user, "discussion-title-input").value = "Crystal footprint"
+    user.find(marker="discussion-title-save").click()
+    await user.should_see("Crystal footprint")
+    t = next(x for x in threads.all_threads(project) if x.id == mine.id)
+    assert t.title == "Crystal footprint" and t.messages[-1].text == "Was: Crystl"
+
+    v2 = next(r for r in commit_table(user).rows if r["subject"].startswith("v2"))
+    await select(user, [v2])
+    user.find(marker="review-button").click()
+    await user.should_see(marker="review-add-note", retries=100)
+    user.find(marker="review-add-note").click()
+    user.find(marker="review-note-title").type("Wrong title")
+    with user.client:
+        marked(user, "review-note-title").value = "Right title"
+    await user.should_see("Unsaved changes")
+
+
 def review_anchor(name: str, seen: dict):
     from kigit_gui.review import Anchor
     return Anchor.from_dict({"tab": "pcb", "kind": "footprint", "name": name, "seen": seen})

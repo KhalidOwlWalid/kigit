@@ -121,6 +121,7 @@ class Discussions:
     def show_thread(self, thread_id: str) -> None:
         self.thread_id = thread_id
         self.editing: int | None = None  # the message (index) being edited
+        self.renaming = False  # the title being edited
         self.reply = ""  # the reply being typed, kept while the chat redraws
         if self._thread_dialog is not None:
             self._thread_dialog.delete()  # the last one shown
@@ -141,7 +142,21 @@ class Discussions:
             return
         with ui.row().classes("w-full items-center gap-2 no-wrap"):
             status_chip(t.status)
-            ui.label(t.title).classes("text-base font-semibold").mark("discussion-title")
+            if getattr(self, "renaming", False) and t.by == self.me:
+                name = ui.input(value=t.title).props("dark dense outlined autofocus").classes(
+                    "flex-grow text-base").mark("discussion-title-input")
+                name.on("keydown.enter", lambda: self._rename(t, name.value))
+                name.on("keydown.escape", lambda: self._renaming(False))
+                ui.button(icon="check", on_click=lambda: self._rename(t, name.value)).props(
+                    "flat dense round size=sm color=amber-5").mark("discussion-title-save")
+                ui.button(icon="undo", on_click=lambda: self._renaming(False)).props(
+                    "flat dense round size=sm").tooltip("Keep the title")
+            else:
+                ui.label(t.title).classes("text-base font-semibold").mark("discussion-title")
+                if t.by == self.me:  # whoever opened it can rename it
+                    ui.button(icon="edit", on_click=lambda: self._renaming(True)).props(
+                        "flat dense round size=xs color=grey-6").tooltip("Rename this discussion").mark(
+                        "discussion-rename")
             ui.space()
             ui.button(icon="link", on_click=lambda: self.copy_link(t)).props("flat dense round size=sm").tooltip(
                 "Copy a link to this discussion: paste it into a review or another discussion").mark(
@@ -272,6 +287,21 @@ class Discussions:
             notices.warn(f"{where} links to a {kind} that's gone ({i}): deleted, or not pulled yet",
                          f"{file} isn't there")
         return [i for _, i, _ in gone]
+
+    def _renaming(self, on: bool) -> None:
+        self.renaming = on
+        self.thread_view.refresh()
+
+    def _rename(self, t: threads.Thread, title: str) -> None:
+        try:
+            threads.rename(self.project, t.id, self.me, self.head, title or "")
+        except (OSError, ValueError) as e:
+            ui.notify(f"Couldn't rename it: {e}", type="warning")
+            return
+        logs.log.info("discussion %s renamed to %s", t.id, title)
+        self.renaming = False
+        self.thread_view.refresh()
+        self.changed()
 
     def _repoint(self, t: threads.Thread, anchors: list) -> None:
         try:

@@ -51,11 +51,11 @@ from . import review
 from .review import Anchor
 
 FOLDER = "threads"
-KINDS = ("comment", "done", "accepted", "reopened", "repointed")
+KINDS = ("comment", "done", "accepted", "reopened", "repointed", "renamed")
 STATUS = {"done": "done", "accepted": "accepted", "reopened": "open"}  # what each kind sets the status to
 LABELS = {"open": "Needs attention", "done": "Done, to be accepted", "accepted": "Accepted"}
 VERB = {"comment": "", "done": "marked done", "accepted": "accepted", "reopened": "reopened",
-        "repointed": "changed what it's about"}
+        "repointed": "changed what it's about", "renamed": "renamed it"}
 
 _MSG = re.compile(r"^<!-- kigit-msg (\{.*\}) -->$")
 
@@ -287,6 +287,24 @@ def repoint(project_dir: str | Path, thread_id: str, author: str, head: str, anc
     labels = lambda xs: ", ".join(a.label for a in xs)  # noqa: E731
     t.messages.append(Message(author, review.now(), f"Now about {labels(unique) or 'the commit in general'}"
                               + (f" (was {labels(old)})" if old else "") + ".", head, "repointed"))
+    save(project_dir, t)
+    return t
+
+
+def rename(project_dir: str | Path, thread_id: str, author: str, head: str, title: str) -> Thread:
+    """Changes the discussion's title. Only whoever opened it can; a
+    "renamed" message keeps the old title. Raises ValueError otherwise."""
+    title = review.one_line(title).strip()
+    if not title:
+        raise ValueError("a discussion needs a title")
+    p = folder(project_dir) / f"{thread_id}.md"
+    t = loads(p.read_text(encoding="utf-8"))
+    if t.by != author:
+        raise ValueError(f"only {t.by or 'whoever opened it'} can rename it")
+    if title == t.title:
+        return t
+    old, t.title = t.title, title
+    t.messages.append(Message(author, review.now(), f"Was: {old}", head, "renamed"))
     save(project_dir, t)
     return t
 

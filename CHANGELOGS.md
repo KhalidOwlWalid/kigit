@@ -10,8 +10,12 @@ All notable changes to kigit, newest first. The format follows [Keep a Changelog
 - Review and discussion text boxes are Markdown editors like GitHub's: Write and Preview tabs, a formatting toolbar (heading, bold, italic, quote, code, link, lists, task list; Ctrl+B, Ctrl+I, Ctrl+K), and any file added by paste, drop or click: pictures show inline, other files (datasheets, logs) become links.
 
 - A note or discussion can be about several parts, nets or footprints, and pointed at something else if it was the wrong one: pin it in the viewer, then add it, or point at it instead (the button next to the note's chips, or the discussion's for whoever opened it); ✕ on a chip removes one.
+- Rename a discussion you opened (the pencil by its title; the chat keeps the old title).
 - Edit or delete your own messages in a discussion: the pencil on a message you wrote (it's then marked "edited"), and delete for your comments.
 - Copy a link to a discussion (in it, or from its row in a review or the Discussions list) and paste it into a review or another discussion; clicking it opens the discussion. Right-click a commit to copy its review's link (which opens the review when clicked), its file path, or the commit hash. A link to a discussion or review that's gone warns you (pop-up, log and notifications).
+
+- `kigit uninstall`: removes the installed kigit (asks first; `--purge` also removes the app folder). On Windows it starts the installer's uninstaller.
+- A kigit logo: on `kigit.exe`, the Windows installer and its uninstall entry (`tools/make_logo.py` makes it).
 
 ### Changed
 

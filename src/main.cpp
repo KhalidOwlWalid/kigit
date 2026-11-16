@@ -54,6 +54,15 @@ logging::Options log_options(int argc, char** argv) {
 
 int main(int argc, char** argv) {
     if (argc >= 2 && std::string(argv[1]) == "gui") return cmd::run_gui(argv[0], argc - 2, argv + 2);
+    if (argc >= 2 && std::string(argv[1]) == "uninstall") {
+        // No session log: the app folder it goes to may be what's removed.
+        logging::Options lo;
+        lo.enabled = false;
+        logging::start(lo);
+        int code = cmd::run_uninstall(argv[0], argc - 2, argv + 2);
+        logging::stop();
+        return code;
+    }
     if (argc >= 2 && std::string(argv[1]) == "example") {
         logging::Options lo;
         lo.enabled = false;

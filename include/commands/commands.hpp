@@ -21,6 +21,9 @@ int run_render(const Options& o, const std::filesystem::path& project);
 int run_projects(const std::filesystem::path& dir, int depth);
 // `kigit example [DIR]`: the example project's git repository, to try kigit on.
 int run_example(const char* argv0, int argc, char** argv);
+
+// `kigit uninstall [--yes] [--purge]`: removes this installed copy of kigit.
+int run_uninstall(const char* argv0, int argc, char** argv);
 // `kigit gui [args]`: the desktop app.
 int run_gui(const char* argv0, int argc, char** argv);
 

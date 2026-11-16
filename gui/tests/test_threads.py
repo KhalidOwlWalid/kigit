@@ -142,3 +142,15 @@ def test_about_several_things(tmp_path: Path) -> None:
     text = threads.path_of(tmp_path, t).read_text(encoding="utf-8")
     assert '"name": "Y1"' in text.split("more:")[0] and "more: [" in text
     assert [a.name for a in threads.all_threads(tmp_path)[0].anchors] == ["Y1", "C5", "C6"]
+
+
+def test_rename(tmp_path: Path) -> None:
+    t = threads.start(tmp_path, "Crystl", "x", C1, "Author A", C1)
+    with pytest.raises(ValueError):
+        threads.rename(tmp_path, t.id, "Author B", C1, "Crystal")  # not the opener
+    with pytest.raises(ValueError):
+        threads.rename(tmp_path, t.id, "Author A", C1, "   ")  # needs a title
+    t = threads.rename(tmp_path, t.id, "Author A", C1, "Crystal\nfootprint")
+    assert t.title == "Crystal footprint" and threads.all_threads(tmp_path)[0].title == "Crystal footprint"
+    assert (t.messages[-1].kind, t.messages[-1].text) == ("renamed", "Was: Crystl") and t.status == "open"
+    assert len(threads.rename(tmp_path, t.id, "Author A", C1, "Crystal footprint").messages) == 2  # same: nothing
