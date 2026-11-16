@@ -46,7 +46,7 @@ In the GUI, the :material-receipt-text: log button shows the log's full path and
 
 ## Deleting it
 
-Everything in the app folder can go. Deleting it forgets your recent projects, their pictures, the 3D build times and the logs; `gui-env/` is set up again the next time you start the GUI (that takes about a minute, as on the first start). Your projects and their [reviews](how-to-use/reviews.md) aren't in it.
+`kigit uninstall --purge` deletes it (after listing what's in it and asking). Everything in the app folder can go. Deleting it forgets your recent projects, their pictures, the 3D build times and the logs; `gui-env/` is set up again the next time you start the GUI (that takes about a minute, as on the first start). Your projects and their [reviews](how-to-use/reviews.md) aren't in it. One thing to keep in mind: the [example project](example.md), if you made it from the GUI, lives in here (`example/`), so anything you wrote in it goes too; copy it somewhere else first to keep it.
 
 ## What isn't in it
 

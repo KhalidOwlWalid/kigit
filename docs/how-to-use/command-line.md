@@ -52,7 +52,7 @@ Makes the [example project](../example.md) (a git repository) in DIR (default: `
 kigit uninstall [--yes] [--purge]
 ```
 
-Removes the kigit you ran: its program, the GUI and the example files (on Linux `bin/kigit`, `share/kigit` and `libexec/kigit` under where you unpacked it; the folders around them stay). It lists them and asks first; `--yes` doesn't ask. `--purge` also removes the [app folder](../app-folder.md) (logs, recent projects, the GUI's Python). On Windows it starts the installer's uninstaller. It does nothing for a kigit built from source.
+Removes the kigit you ran: its program, the GUI and the example files (on Linux `bin/kigit`, `share/kigit` and `libexec/kigit` under where you unpacked it; the folders around them stay). It lists them, says what each is, and asks first; `--yes` doesn't ask. `--purge` also removes the [app folder](../app-folder.md) (logs, recent projects, the GUI's Python), listing what's in it first, with a warning if the example project made by the GUI is there. Your projects, and their reviews, notes and discussions, are never touched: they're in each project's `reviews/` folder. On Windows it starts the installer's uninstaller. It does nothing for a kigit built from source.
 
 ## The GUI
 

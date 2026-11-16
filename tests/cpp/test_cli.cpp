@@ -242,6 +242,14 @@ TEST_CASE("kigit uninstall: only an installed kigit, only its own files") {
     RunResult no = run("echo n | " + installed + " uninstall");
     CHECK(no.code == 1);
     CHECK(fs::exists(prefix / "bin" / "kigit"));  // asked, said no
+    CHECK(no.err.find("the kigit program") != std::string::npos);  // says what each thing is
+    CHECK(no.err.find("Your projects are not touched") != std::string::npos);
+    CHECK(no.err.find("--purge deletes that too") != std::string::npos);
+    fs::create_directories(tmp / "state" / "kigit" / "example");
+    RunResult warned = run("echo n | " + installed + " uninstall --purge");
+    CHECK(warned.err.find("WARNING: the example project") != std::string::npos);  // what --purge also takes
+    CHECK(warned.err.find("session logs") != std::string::npos);
+    CHECK(fs::exists(tmp / "state" / "kigit" / "example"));
 
     RunResult yes = run(installed + " uninstall --yes");
     INFO("stderr: " << yes.err);
