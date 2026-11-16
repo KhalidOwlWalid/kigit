@@ -254,3 +254,27 @@ def test_mentioned_in(tmp_path: Path) -> None:
     assert 'id="mentioned">Mentioned in</h2>' in p and 'the discussion "Other"</a>' in p and "by Author B" in p
     r = page(tmp_path, f"reviews/{new.id}")
     assert 'the discussion "Other"' in r and 'href="#mentioned">Mentioned in</a>' in r
+
+
+def test_nested_folders_are_sub_tabs(tmp_path: Path) -> None:
+    """Folders in folders, as deep as they go: a page each, a row of tabs per
+    level, a tree on the left; a note's pins show on its page (not the
+    kigit-pins comment)."""
+    from kigit_gui import notebook
+
+    own(tmp_path, "OwlPCB_Notes/Logs.md", "# Logs\n")
+    own(tmp_path, "OwlPCB_Notes/System Implementation/USB-UART.md", "# USB-UART\n\nCH340.\n")
+    own(tmp_path, "OwlPCB_Notes/System Implementation/Power/LDO.md", "# LDO\n")
+    n = notebook.read(tmp_path / "reviews" / "OwlPCB_Notes" / "System Implementation" / "USB-UART.md")
+    n.pins = [Anchor("pcb", "footprint", "U3")]
+    notebook.write(n)
+    top = page(tmp_path, "notes/OwlPCB_Notes/")
+    assert 'href="/notes/OwlPCB_Notes/System%20Implementation/">📁 System Implementation</a>' in top
+    assert "2 notes" in top and "Logs" in top  # the folder's card counts what's inside it
+    deep = page(tmp_path, "notes/OwlPCB_Notes/System Implementation/Power/")
+    assert deep.count('class="subtabs"') == 2  # OwlPCB_Notes' folders, then System Implementation's
+    assert '<a class="subl cur" href="/notes/OwlPCB_Notes/System%20Implementation/Power/">📁 Power</a>' in deep
+    assert "<details class=\"nf\" open>" in deep  # the tree, open down to here
+    usb = page(tmp_path, "notes/OwlPCB_Notes/System Implementation/USB-UART")
+    assert "Footprint U3" in usb and "kigit-pins" not in usb
+    assert '<a class="subl cur" href="/notes/OwlPCB_Notes/System%20Implementation/">' in usb

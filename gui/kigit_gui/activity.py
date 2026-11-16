@@ -25,6 +25,7 @@ KINDS = {
     "discussion": ("discussion opened", "discussions opened"),
     "reply": ("discussion reply", "discussion replies"),
     "3d": ("3D view", "3D views"),
+    "note": ("note or log line", "notes and log lines"),
 }
 _lock = threading.Lock()
 

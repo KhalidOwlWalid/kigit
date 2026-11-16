@@ -87,6 +87,21 @@ Each panel can also be hidden for more room, and opened in a new browser tab. Th
 
 Hidden or not is remembered, like the sizes.
 
+## Notebook
+
+**Notebook** in the header is for everything that isn't about one commit: design decisions, research, how a part of the board works, a log of what you did. Notes are plain Markdown files in the project's `reviews/` folder, in folders as deep as you like, so an [Obsidian](https://obsidian.md) vault there works as it is (same files, `[[links]]`, pictures), and they go into git with the project.
+
+The Notebook opens on the right without covering the viewer, so you can keep clicking parts while you write:
+
+- **Your folders and notes**, as a tree, and a search box over all of them. Click a folder to choose where new notes go.
+- **The note**, in the same editor as reviews. It's saved as you type.
+- **Pins:** pin a part, net or footprint in the viewer, then **Pin it here**. Unlike a review note, a note isn't tied to a commit: a pin remembers where it was pinned, so clicking it later shows it in the comparison on screen, or opens the one it came from. ✕ unpins.
+- **Notes about what's pinned:** pin something in the viewer and the Notebook lists every note that pins it (on the PCB or the schematic: footprint C2 and part C2 are the same thing) or mentions it by name. The **Notebook** button shows how many.
+- ++n++ anywhere (outside a text box): a new note about what's pinned, pinned already.
+- :material-calendar-today: **Today's log**: one line, added to `Logs.md` in the folder you're in, under today's date (`## 16th November 2026`), with the time, what's pinned and the commit you're on.
+
+kigit keeps the pins as one comment at the end of the note, which Obsidian and GitHub don't show; everything else in the file is yours, and opening a note doesn't change it. On the [Reviews page](reviews.md#the-reviews-page), each top folder is a tab and the folders inside it are rows of sub-tabs, as deep as they go.
+
 ## Your activity
 
 The :material-calendar-month: button next to the bell shows your year in kigit as a heatmap, like GitHub's contribution graph: one square a day, brighter for busier days (hover one for what you did). Below it: your current and longest streak (days in a row), active days, your busiest day, and how many of each you did:

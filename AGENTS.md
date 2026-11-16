@@ -480,6 +480,22 @@ at once. localStorage settings are per origin, so per port.
   `KIGIT_KICAD_CLI` to a missing file and fake `kigit.render`.
   GUI tests point `KIGIT_LOG_DIR` at a temp folder (conftest), so they
   never write the real sessions or build times.
+- Notebook (`notebook.py` + `notebook_panel.py`): your notes are any
+  Markdown in `reviews/` that isn't kigit's (the same set the Reviews site
+  shows; folders with only non-Markdown files, like images/, are left out).
+  Pins: `<!-- kigit-pins [...] -->` at the end of the file (`PINS`), read
+  off and written back; nothing else in the file is touched, and a note is
+  only written when its text or pins change. `about(anchor)`: pinned
+  (`same_component`: footprint = part by reference, nets and buses by name)
+  then mentioned (whole word). `log()`: `- HH:MM line (pin · at abc1234)`
+  under `## 16th November 2026` in the folder's `Logs.md`. The panel is a
+  seamless right-hand dialog (the viewer still takes clicks), autosaves
+  0.8 s after typing stops, and N (`kigit_quick_note`) makes a note about
+  what's pinned. A pin is shown in the comparison on screen
+  (`focus_if_shown`), else its `seen` comparison is opened. Reviews site:
+  a page per folder at any depth (`notes/<path>/`, obj = its path),
+  `_subtabs` (a row per level), `_sidebar` a `<details>` tree; note pages
+  show their pins.
 - Activity (`activity.py`): `activity.record(kind)` (compare, review,
   discussion, reply, 3d) counts per day in `<app data>/kigit/activity.json`
   (`{"days": {date: {kind: n}}}`, atomic write, never raises); called from

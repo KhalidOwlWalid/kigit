@@ -39,6 +39,7 @@ from . import activity, buildtime, kigit, logs, mentions, notices, review, rewri
 from .discussions import Discussions
 from .folder_picker import FolderPicker
 from .md_editor import Editors
+from .notebook_panel import NotebookPanel
 from .panels import Panels
 from .resize import Resizer
 from . import board3d, review_doc  # noqa: F401  (register the /board3d and /reviews-doc pages)
@@ -327,6 +328,11 @@ def build(start_folder: str):
         dock_btn = ui.button("3D", icon="view_in_ar", on_click=lambda: dock_toggle()).props("flat dense").tooltip(
             "Show the board in 3D beside the comparison (New, Old or both)").mark("dock-button")
         dock_btn.set_visibility(False)
+        with ui.button("Notebook", icon="edit_note", on_click=lambda: notes.show()).props("flat dense").mark(
+                "notebook-button"):
+            notes_badge = ui.badge("", color="amber-8").props("floating rounded").mark("notebook-badge")
+            notes_tip = ui.tooltip("Your notes (N: a new note about what's pinned)")
+        notes_badge.set_visibility(False)
         ui.button("Reviews", icon="menu_book", on_click=lambda: open_reviews_doc()).props("flat dense").tooltip(
             "All of this project's written reviews as one page, in a new tab").mark("reviews-doc")
         ui.button("Compare folders", icon="difference", on_click=lambda: compare_folders()).props(
@@ -745,6 +751,20 @@ body.kigit-dragging iframe { pointer-events: none; }  /* else the frames swallow
 </script>""")
 
     # ---------------------------------------------------------------- review
+    def focus_if_shown(anchor) -> bool:
+        """Shows an anchor in the comparison on screen; False if there's none
+        (the viewer says if it isn't in that comparison)."""
+        if not frame.visible or "/diffs/" not in (frame.props.get("src") or ""):
+            return False
+        ui.run_javascript(focus_script(frame.id, anchor))
+        return True
+
+    def notes_counted(n: int) -> None:
+        notes_badge.set_text(str(n))
+        notes_badge.set_visibility(n > 0)
+        notes_tip.text = (f"{n} note{'s' if n != 1 else ''} about what's pinned; your notes (N: a new one)" if n
+                          else "Your notes (N: a new note about what's pinned)")
+
     def focus(anchor) -> None:
         if not frame.visible:
             notify("Open the comparison first", type="warning")
@@ -841,6 +861,9 @@ body.kigit-dragging iframe { pointer-events: none; }  /* else the frames swallow
                         discussions=disc, panels=panels, editors=editors, open_in_tab=lambda rid: ui.navigate.to(
                             f"/reviews-doc/{project_key(Path(state['board']).parent)}/reviews/{rid}", new_tab=True))
     panels.finish()
+    notes = NotebookPanel(project=lambda: disc.project, editors=editors, pinned=lambda: panel.pinned,
+                          head=lambda: disc.head, focus=focus_if_shown, compare=compare_and_show,
+                          counted=notes_counted)
 
     # ------------------------------------------------- rewritten commits
     async def check_strays() -> None:
@@ -921,7 +944,10 @@ body.kigit-dragging iframe { pointer-events: none; }  /* else the frames swallow
         logs.log.info("open reviews page for %s", Path(state["board"]).parent)
         ui.navigate.to(f"/reviews-doc/{project_key(Path(state['board']).parent)}", new_tab=True)
     ui.add_body_html(BRIDGE_JS)
-    ui.on("kigit_pinned", lambda e: panel.set_pinned(review.Anchor.from_dict(e.args)))
+    def on_pinned(e) -> None:
+        panel.set_pinned(review.Anchor.from_dict(e.args))
+        notes.set_pinned()
+    ui.on("kigit_pinned", on_pinned)
     ui.on("kigit_focused", on_focused)
 
     def show_message(icon: str, text: str, more: str = "", tone: str = "text-gray-400") -> None:

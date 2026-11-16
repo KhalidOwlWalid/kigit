@@ -1391,6 +1391,55 @@ async def test_activity_heatmap(user: User, monkeypatch, tmp_path: Path) -> None
     assert "1 on " in marked(user, "activity-heatmap").content
 
 
+async def test_notebook(user: User, monkeypatch, tmp_path: Path) -> None:
+    """Your notes in reviews/: the ones about what's pinned (counted on the
+    header button), pins, saving as you type, N for a quick note, the log."""
+    from kigit_gui import notebook
+
+    project = make_fixture_repo(tmp_path / "repo")
+    vault = project / "reviews" / "Notes" / "Power"
+    vault.mkdir(parents=True)
+    (vault / "Decoupling.md").write_text("# Decoupling\n\nC1 sits next to U1.\n")
+    await open_at(user, monkeypatch, str(project))
+    await user.should_see("Pick two commits on the left", retries=50)
+    rows = commit_table(user).rows
+    seen = {"old": rows[2]["hash"], "new": rows[1]["hash"], "side": "new"}
+    emit(user, "kigit_pinned", {"tab": "pcb", "kind": "footprint", "name": "C1", "seen": seen})
+    badge = marked(user, "notebook-badge")
+    assert badge.visible and badge.text == "1"  # Decoupling.md mentions C1
+
+    user.find(marker="notebook-button").click()
+    await user.should_see(marker="notebook-about-note")
+    user.find(marker="notebook-about-note").click()  # open it
+    await user.should_see(marker="notebook-text")
+    user.find(marker="notebook-pin").click()  # pin C1 to it
+    assert [a.name for a in notebook.read(vault / "Decoupling.md").pins] == ["C1"]
+    with user.client:
+        marked(user, "notebook-text").value = "# Decoupling\n\nC1 sits next to U1. 100n is enough."
+    for _ in range(30):  # saved by itself, shortly after typing stops
+        if "100n" in (vault / "Decoupling.md").read_text():
+            break
+        await asyncio.sleep(0.1)
+    assert "100n is enough" in (vault / "Decoupling.md").read_text()
+    assert (vault / "Decoupling.md").read_text().startswith("# Decoupling\n")
+
+    emit(user, "kigit_quick_note", None)  # N
+    await user.should_see("About C1")
+    quick = vault / "About C1.md"  # in the folder of the note you were in
+    assert quick.exists() and [a.name for a in notebook.read(quick).pins] == ["C1"]
+
+    user.find(marker="notebook-log").click()
+    await user.should_see(marker="notebook-log-line")
+    user.find(marker="notebook-log-line").type("Checked the decoupling")
+    user.find(marker="notebook-log-add").click()
+    for _ in range(30):
+        if (vault / "Logs.md").exists():
+            break
+        await asyncio.sleep(0.1)
+    text = (vault / "Logs.md").read_text()
+    assert text.startswith("## ") and "Checked the decoupling (Footprint C1" in text
+
+
 def review_anchor(name: str, seen: dict):
     from kigit_gui.review import Anchor
     return Anchor.from_dict({"tab": "pcb", "kind": "footprint", "name": name, "seen": seen})

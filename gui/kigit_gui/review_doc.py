@@ -71,6 +71,7 @@ class Doc:
     props: dict[str, str | list[str]]
     tags: list[str]
     edited: str
+    pins: list = field(default_factory=list)  # what it's pinned to (notebook.py)
 
 
 @dataclass
@@ -217,7 +218,9 @@ def _front(text: str) -> tuple[dict[str, str | list[str]], str]:
 
 
 def load_doc(path: Path) -> Doc:
-    text = path.read_text(encoding="utf-8")
+    from . import notebook
+    note = notebook.read(path)  # its text without kigit's pins comment, and the pins
+    text = note.text
     props, body = _front(text)
     title = props.get("title") if isinstance(props.get("title"), str) else ""
     heading = re.match(r"^\s*#\s+(.+?)\s*#*\s*$", body.lstrip("\n").split("\n", 1)[0])
@@ -229,7 +232,7 @@ def load_doc(path: Path) -> Doc:
     tags = [t.lstrip("#") for t in tags if t.strip("#")]
     tags += [t for t in _INLINE_TAG.findall(_FENCE.sub("", body)) if t not in tags]
     edited = datetime.fromtimestamp(path.stat().st_mtime).strftime("%Y-%m-%d %H:%M")
-    return Doc(path, title or path.stem, body, props, tags, edited)
+    return Doc(path, title or path.stem, body, props, tags, edited, note.pins)
 
 
 def own_notes(folder: Path, reviews: set[Path]) -> list[Path]:
@@ -386,13 +389,18 @@ def build(project_dir: str | Path, name: str = "", files_url: str = "", base: st
                             + [f"{m.author} {_plain(m.text)}" for m in t.messages])
             add(Page(f"discussions/{t.id}", t.title, "discussions", "thread", t.opened, text, [t.status], t,
                      _THREAD_LOOK[t.status][0]))
-    for f in folders:
-        add(Page(f"notes/{f[2:]}/", f[2:], f, "folder"))
+    # A page for every folder, as deep as they go: obj is its path in reviews/.
+    nested = sorted({p.as_posix() for d in docs for p in d.path.relative_to(root).parents if p.as_posix() != "."},
+                    key=str.lower)
+    for f in nested:
+        top = f.split("/", 1)[0]
+        add(Page(f"notes/{f}/", f.rsplit("/", 1)[-1], f"f:{top}", "folder", obj=f,
+                 group=f.rsplit("/", 1)[0] if "/" in f else ""))
     if any(_tab_of(d, root) == "notes" for d in docs):
-        add(Page("notes/", "Notes", "notes", "folder"))
+        add(Page("notes/", "Notes", "notes", "folder", obj=""))
     for d in docs:
         rel = d.path.relative_to(root)
-        group = rel.parent.as_posix() if len(rel.parts) > 2 else ""
+        group = rel.parent.as_posix() if len(rel.parts) > 1 else ""
         add(Page(_doc_url(d, root), d.title, _tab_of(d, root), "note", d.edited, _plain(d.body), d.tags, d,
                  group))
     tags = sorted({t for p in book.pages.values() if p.kind in ("review", "note") for t in p.tags})
@@ -607,6 +615,7 @@ def _doc_page(book: Book, d: Doc) -> tuple[str, list]:
             f'<div class="crumb"><span class="ico">{_ICON_FILE}</span><code>{esc(rel)}</code>'
             f'<span class="dot">·</span>edited {esc(d.edited)}</div>'
             f'<h1 class="title">{esc(d.title)}</h1>'
+            + (f'<div class="noterow pins">{"".join(_one_anchor(a) for a in d.pins)}</div>' if d.pins else "")
             + (f'<div class="noterow">{tags}</div>' if tags else "")
             + (f'<table class="props">{rows}</table>' if rows else "")
             + f'<div class="md">{body}</div></section>'), toc
@@ -677,17 +686,62 @@ def _home(book: Book) -> str:
     return "\n".join(out)
 
 
-def _folder(book: Book, tab: str) -> str:
-    pages = [p for p in book.pages.values() if p.kind == "note" and p.tab == tab]
-    groups: dict[str, list[Page]] = {}
-    for p in pages:
-        groups.setdefault(p.group, []).append(p)
+def _children(book: Book, folder: str) -> list[Page]:
+    """The folders right inside `folder` ("" for reviews/ itself)."""
+    return [p for p in book.pages.values() if p.kind == "folder" and p.obj and p.group == folder
+            and (folder or "/" not in p.obj)]
+
+
+def _folder(book: Book, folder: str) -> str:
+    """A folder's page: its folders, then its notes."""
     out = []
-    for g in sorted(groups, key=lambda g: (g != "", g.lower())):
-        if g:
-            out.append(f'<h2 class="section" id="g-{_slug(g)}">{esc(g)}/</h2>')
-        out.append(_card_list(book, groups[g]))
+    subs = _children(book, folder)
+    if subs:
+        out.append('<h2 class="section" id="folders">Folders</h2><div class="cards">' + "".join(
+            f'<a class="card" href="{book.href(p.url)}"><span class="ct">📁 {esc(p.title)}</span>'
+            f'<span class="cm">{_count(book, p.obj)}</span></a>' for p in subs) + "</div>")
+    notes = [p for p in book.pages.values() if p.kind == "note" and p.group == folder]
+    if notes:
+        out.append(f'<h2 class="section" id="notes">Notes</h2>{_card_list(book, notes)}')
     return "\n".join(out) or '<p class="empty">No notes here.</p>'
+
+
+def _count(book: Book, folder: str) -> str:
+    n = sum(1 for p in book.pages.values() if p.kind == "note" and (p.group == folder or
+                                                                     p.group.startswith(folder + "/")))
+    return f"{n} note{'s' if n != 1 else ''}"
+
+
+def _folder_of(p: Page) -> str | None:
+    """The folder a notes page is in (or is), relative to reviews/."""
+    if p.kind == "folder":
+        return p.obj
+    if p.kind == "note":
+        return p.group
+    return None
+
+
+def _subtabs(book: Book, cur: Page) -> str:
+    """Folders in folders as rows of tabs under the main ones: one row per
+    level down to where you are, then the folders inside it."""
+    folder = _folder_of(cur)
+    if not folder:
+        return ""
+    parts = folder.split("/")
+    rows = []
+    for depth in range(1, len(parts) + 1):
+        parent = "/".join(parts[:depth])
+        kids = _children(book, parent)
+        if not kids:
+            continue
+        here = "/".join(parts[:depth + 1]) if depth < len(parts) else None
+        whole = book.pages.get(f"notes/{parent}/")
+        items = [f'<a class="subl{" cur" if here is None and cur.kind == "folder" else ""}" '
+                 f'href="{book.href(whole.url)}">All of {esc(parts[depth - 1])}</a>'] if whole else []
+        items += [f'<a class="subl{" cur" if k.obj == here else ""}" href="{book.href(k.url)}">📁 {esc(k.title)}</a>'
+                  for k in kids]
+        rows.append(f'<nav class="subtabs" aria-label="Folders in {esc(parent)}">{"".join(items)}</nav>')
+    return "".join(rows)
 
 
 def _tags_page(book: Book, tag: str | None) -> str:
@@ -754,17 +808,24 @@ def _sidebar(book: Book, cur: Page) -> str:
         out.append(link(book.pages["tags"], "All tags"))
         out += [link(p) for p in pages if p.kind == "tag"]
     else:
-        index = next((p for p in pages if p.kind == "folder"), None)
+        # The tab's folder as a tree: folders open along the way to this page.
+        top = cur.tab[2:] if cur.tab.startswith("f:") else ""
+        here = _folder_of(cur) or ""
+
+        def tree(folder: str) -> list[str]:
+            items = [link(p) for p in pages if p.kind == "note" and p.group == folder]
+            for sub in _children(book, folder):
+                is_open = here == sub.obj or here.startswith(sub.obj + "/")
+                on = " cur" if cur.url == sub.url else ""
+                items.append(f'<details class="nf"{" open" if is_open else ""}><summary>'
+                             f'<a class="nl{on}" href="{book.href(sub.url)}">📁 {esc(sub.title)}</a></summary>'
+                             f'<div class="nfi">{"".join(tree(sub.obj))}</div></details>')
+            return items
+
+        index = book.pages.get(f"notes/{top}/") if top else book.pages.get("notes/")
         if index:
             out.append(link(index, "Overview"))
-        groups: dict[str, list[Page]] = {}
-        for p in pages:
-            if p.kind == "note":
-                groups.setdefault(p.group, []).append(p)
-        for g in sorted(groups, key=lambda g: (g != "", g.lower())):
-            if g:
-                out.append(f'<div class="group">{esc(g.split("/", 1)[-1] if "/" in g else g)}/</div>')
-            out += [link(p) for p in groups[g]]
+        out += tree(top)
     return "\n".join(out)
 
 
@@ -836,7 +897,7 @@ def render(project_dir: str | Path, page: str = "", name: str = "", files_url: s
         body, toc = _mentioned_in(book, f"thread:{p.obj.id}")
         body = _thread_page(book, p.obj) + body
     elif p.kind == "folder":
-        body = f'<h1 class="title">{esc(p.title)}</h1>' + _folder(book, p.tab)
+        body = f'<h1 class="title">{esc(p.title)}</h1>' + _folder(book, p.obj or "")
     elif p.kind == "note":
         body, toc = _doc_page(book, p.obj)
     elif p.kind == "tags":
@@ -853,7 +914,7 @@ def render(project_dir: str | Path, page: str = "", name: str = "", files_url: s
                        ("HOME", book.href("")), ("TABS", tabs), ("SIDE", _sidebar(book, p)),
                        ("CRUMBS", _crumbs(book, p) if p.kind != "home" else ""), ("BODY", body),
                        ("PREVNEXT", _prev_next(book, p)), ("TOC", _toc_html(toc)), ("LOGO", _LOGO),
-                       ("SEARCH", book.href("search.json")), ("BASE", book.base), ("KIND", p.kind)):
+                       ("SUBTABS", _subtabs(book, p)), ("SEARCH", book.href("search.json")), ("BASE", book.base), ("KIND", p.kind)):
         out = out.replace(f"%%{key}%%", value)
     return out
 
@@ -953,7 +1014,7 @@ _PAGE = """<!doctype html>
   }
 }
 * { box-sizing: border-box; }
-html { scroll-padding-top: 120px; }
+html { scroll-padding-top: calc(var(--head-h, 98px) + 20px); }
 body { margin: 0; background: var(--bg); color: var(--text);
   font: 15.5px/1.65 system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
   -webkit-font-smoothing: antialiased; }
@@ -995,10 +1056,22 @@ a { color: var(--link); text-underline-offset: 2px; text-decoration-thickness: 1
   border-bottom: 2px solid transparent; }
 .tabl:hover { color: var(--text); }
 .tabl.cur { color: var(--text); border-bottom-color: var(--accent); font-weight: 600; }
+.subtabs { display: flex; gap: 4px; padding: 6px 16px; max-width: 1500px; margin: 0 auto; overflow-x: auto;
+  border-top: 1px solid var(--line); }
+.subl { padding: 3px 11px; border-radius: 999px; color: var(--muted); text-decoration: none; font-size: 13px;
+  white-space: nowrap; border: 1px solid transparent; }
+.subl:hover { color: var(--text); background: var(--card2); }
+.subl.cur { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
+details.nf > summary { list-style: none; cursor: pointer; }
+details.nf > summary::-webkit-details-marker { display: none; }
+details.nf > summary .nl::before { content: "▸ "; color: var(--faint); }
+details.nf[open] > summary .nl::before { content: "▾ "; }
+.nfi { padding-left: 12px; border-left: 1px solid var(--line); margin-left: 12px; }
 
 /* ----------------------------------------------------------------- layout */
 .layout { display: grid; grid-template-columns: 270px minmax(0, 1fr) 220px; gap: 0; max-width: 1500px; margin: 0 auto; }
-.side, .toc { position: sticky; top: 98px; align-self: start; max-height: calc(100vh - 98px); overflow: auto;
+.side, .toc { position: sticky; top: var(--head-h, 98px); align-self: start;
+  max-height: calc(100vh - var(--head-h, 98px)); overflow: auto;
   padding: 22px 12px 40px; }
 .side .group { font-size: 11px; font-weight: 650; letter-spacing: .08em; text-transform: uppercase; color: var(--faint);
   margin: 16px 10px 6px; }
@@ -1208,6 +1281,7 @@ a[target=_blank]::after { content: "↗"; font-size: .75em; margin-left: 2px; co
     <button class="iconbtn" id="theme" type="button" title="Switch between light and dark">Theme</button>
   </div>
   <nav class="tabs" aria-label="Sections">%%TABS%%</nav>
+  %%SUBTABS%%
 </header>
 <div class="layout">
   <aside class="side" aria-label="Pages in this section">%%SIDE%%</aside>
@@ -1292,6 +1366,11 @@ a[target=_blank]::after { content: "↗"; font-size: .75em; margin-left: 2px; co
       a.target = "_blank"; a.rel = "noopener";
     }
   });
+  // The header's height (more with rows of folder tabs): where the side columns stick.
+  const head = document.querySelector(".top");
+  const setHead = () => document.documentElement.style.setProperty("--head-h", head.offsetHeight + "px");
+  setHead();
+  addEventListener("resize", setHead);
   // "On this page": mark the part in view.
   const tocLinks = new Map([...document.querySelectorAll(".toc-list a")].map((a) => [a.getAttribute("href").slice(1), a]));
   if (tocLinks.size) {

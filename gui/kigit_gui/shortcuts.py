@@ -20,6 +20,8 @@ class Shortcut:
 GROUPS: list[tuple[str, str, list[Shortcut]]] = [
     ("kigit", "keyboard", [
         Shortcut(("?",), "Show this list", ("gui/kigit_gui/app.py", 'emitEvent("kigit_shortcuts")')),
+        Shortcut(("N",), "A new note about what's pinned in the viewer (the Notebook)",
+                 ("gui/kigit_gui/notebook_panel.py", 'emitEvent("kigit_quick_note")')),
         Shortcut(("Enter",), "In the folder box: open that folder",
                  ("gui/kigit_gui/app.py", 'folder_input.on("keydown.enter"')),
         Shortcut(("Right-click a commit",), "Copy its review's link or file path, or its hash",
