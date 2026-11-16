@@ -4,6 +4,8 @@ All notable changes to kigit, newest first. The format follows [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-11-16
+
 ### Added
 
 - **Your activity**: a button next to the bell shows a year of what you did in kigit (comparisons, reviews, discussions, replies, 3D views) as a GitHub-style heatmap, with streaks and your busiest day. Kept in the app folder (`activity.json`); `kigit uninstall --purge` deletes it, and says so.
@@ -144,7 +146,8 @@ The first release.
 - The GUI could freeze on Windows when stopped with Ctrl+C.
 - Build fixes for GitHub Actions (CMake policy minimum, doctest warnings on MSVC).
 
-[Unreleased]: https://github.com/KhalidOwlWalid/kigit/compare/v0.2.1...HEAD
+[Unreleased]: https://github.com/KhalidOwlWalid/kigit/compare/v0.2.2...HEAD
+[0.2.2]: https://github.com/KhalidOwlWalid/kigit/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/KhalidOwlWalid/kigit/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/KhalidOwlWalid/kigit/compare/v0.1.2...v0.2.0
 [0.1.2]: https://github.com/KhalidOwlWalid/kigit/compare/v0.1.1...v0.1.2
