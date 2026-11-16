@@ -14,6 +14,10 @@ All notable changes to kigit, newest first. The format follows [Keep a Changelog
 
 - Your activity is kept in the project (`reviews/activity/<you>/<computer>.json`) instead of the app folder, so it goes with the project through git and your laptops add up; one file per computer, so they never conflict. The heatmap can show you or everyone. (Activity counted by 0.2.2 in the app folder isn't moved.)
 
+### Fixed
+
+- A picture added in kigit to a note in a folder (`Design Notes/...`) showed "No page" on the Reviews page: kigit keeps added files in `reviews/assets/`, and the page now looks there when a picture isn't next to the note.
+
 ## [0.2.2] - 2026-11-16
 
 ### Added

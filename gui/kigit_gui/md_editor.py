@@ -299,7 +299,8 @@ def rewrite_assets(text: str, key: str) -> str:
     """Markdown with pictures pointing at the GUI's file routes, for preview:
     assets/ (what kigit stores), and Obsidian embeds (![[picture.png]] or
     ![[picture.png|300]], found by name anywhere in reviews/)."""
-    text = re.sub(r"\]\(\s*assets/", f"](/review-files/{key}/", text)
+    # assets/x.png, or ../assets/x.png from a note in a folder (Obsidian's way).
+    text = re.sub(r"\]\(\s*(?:\.\./)*assets/", f"](/review-files/{key}/", text)
     if "![[" not in text:
         return text
     from urllib.parse import quote

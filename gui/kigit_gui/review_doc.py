@@ -141,14 +141,20 @@ class Site:
             alt, src = m.group(1), m.group(2)
             if re.match(r"^[a-z][a-z0-9+.-]*:|^/|^#", src, re.IGNORECASE):
                 return m.group(0)  # a web address or data URL: as it is
-            url = self.image(base / src)
+            path = urllib.parse.unquote(src)
+            # Next to the note; else from reviews/ (where kigit keeps added
+            # files: a note in a folder links them as "assets/x.png").
+            url = self.image(base / path) or (self.image(self.root / path) if base != self.root else None)
             return f"![{alt}]({url})" if url else m.group(0)
 
         def link(m: re.Match) -> str:
             label, href, title = m.group(1), m.group(2), m.group(3) or ""
             if re.match(r"^[a-z][a-z0-9+.-]*:|^/|^#", href, re.IGNORECASE):
                 return m.group(0)  # a web address, mailto:, or a place on the page
-            target = self.inside(base / urllib.parse.unquote(href.split("#", 1)[0]))
+            rel = urllib.parse.unquote(href.split("#", 1)[0])
+            target = self.inside(base / rel)
+            if (target is None or not target.is_file()) and base != self.root:
+                target = self.inside(self.root / rel)  # from reviews/, like an added file's link
             thread = re.search(r"(?:^|/)threads/([0-9a-f]{8})\.md$", href.split("#", 1)[0])
             if thread:  # a discussion link: relative to reviews/, wherever it's written
                 target = self.root / "threads" / f"{thread.group(1)}.md"

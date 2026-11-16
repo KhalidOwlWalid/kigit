@@ -289,3 +289,17 @@ def test_pictures_open_full_size(tmp_path: Path) -> None:
     assert 'id="kigit-lightbox"' in r and 'e.target.closest("main .md img")' in r
     assert "main .md img { cursor: zoom-in; }" in r
     assert 'closest(".kigit-md-view img")' in lightbox.html(".kigit-md-view")
+
+
+def test_added_pictures_show_in_notes_in_folders(tmp_path: Path) -> None:
+    """A picture added in kigit's editor is linked as assets/x.png (relative
+    to reviews/), even from a note in a folder: the page finds it there."""
+    from kigit_gui.md_editor import rewrite_assets
+    from kigit_gui.review_panel import project_key
+
+    rel = review.save_file(tmp_path, PNG, "shot.png", "image/png")
+    own(tmp_path, "Design Notes/Power.md", f"# Power\n\n![shot.png]({rel})\n\n[the picture]({rel})\n")
+    p = page(tmp_path, "notes/Design Notes/Power", files_url="/F/")
+    assert f'src="/F/{rel}"' in p and f'href="/F/{rel}"' in p and "No page" not in p
+    key = project_key(tmp_path)
+    assert f"](/review-files/{key}/" in rewrite_assets(f"![x](../{rel})", key)  # Obsidian's ../assets/x.png
