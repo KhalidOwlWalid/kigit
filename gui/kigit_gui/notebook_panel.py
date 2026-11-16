@@ -35,8 +35,9 @@ class NotebookPanel:
     def __init__(self, project: Callable[[], Path | None], editors: Editors,
                  pinned: Callable[[], Anchor | None], head: Callable[[], str],
                  focus: Callable[[Anchor], bool], compare: Callable[[str, str, Anchor], Awaitable[None]],
-                 counted: Callable[[int], None]) -> None:
+                 counted: Callable[[int], None], standalone: bool = False) -> None:
         self.project_cb, self.editors, self.pinned_cb, self.head = project, editors, pinned, head
+        self.standalone = standalone  # in a tab of its own (/notebook/{key}), not beside the viewer
         self.focus_cb, self.compare_cb, self.counted = focus, compare, counted
         self.folder: Path | None = None   # where new notes and the log go
         self.note: notebook.Note | None = None
@@ -61,10 +62,56 @@ document.addEventListener("keydown", (e) => {
 });
 </script>""")
         ui.on("kigit_quick_note", lambda: self.quick_note())
+        # Between kigit's tab and a Notebook in a tab of its own (same browser):
+        # kigit's tab says what's pinned; the Notebook's asks it to show a pin.
+        ui.add_body_html("""<script>
+window.kigitNotebook = new BroadcastChannel("kigit-notebook");
+window.kigitNotebook.onmessage = (e) => emitEvent("kigit_nb_message", e.data);
+</script>""")
+        ui.on("kigit_nb_message", self._message)
+        self.remote_pinned: Anchor | None = None  # in a tab of its own: what kigit's tab has pinned
+        self.client = ui.context.client  # its page (messages go out from here, whatever's open)
 
     @property
     def project(self) -> Path | None:
         return self.project_cb()
+
+    @property
+    def key(self) -> str:
+        return project_key(self.project) if self.project else ""
+
+    def _post(self, message: dict) -> None:
+        import json
+        self.client.run_javascript(f"window.kigitNotebook && window.kigitNotebook.postMessage({json.dumps(message)})")
+
+    def _message(self, e) -> None:
+        m = e.args if isinstance(e.args, dict) else {}
+        if not self.project or m.get("key") != self.key:
+            return  # another project's
+        kind = m.get("type")
+        if self.standalone and kind == "pinned":
+            self.remote_pinned = Anchor.from_dict(m.get("anchor"))
+            self.set_pinned()
+        elif not self.standalone and kind == "go":
+            a = Anchor.from_dict(m.get("anchor"))
+            if a:
+                self.go_to(a)
+        elif not self.standalone and kind == "hello":
+            self.tell_pinned()
+
+    def tell_pinned(self) -> None:
+        """kigit's tab: what's pinned, for a Notebook in its own tab."""
+        if not self.standalone and self.project:
+            a = self.pinned_cb()
+            self._post({"type": "pinned", "key": self.key, "anchor": a.to_dict() if a else None})
+
+    def open_in_tab(self) -> None:
+        """The Notebook in a tab of its own; this panel closes (one copy of a note open at a time)."""
+        if not self.project:
+            return
+        self._save()
+        ui.navigate.to(f"/notebook/{self.key}", new_tab=True)
+        self.close()
 
     # --------------------------------------------------------------- window
     def show(self) -> None:
@@ -100,14 +147,31 @@ document.addEventListener("keydown", (e) => {
                 "New note (N anywhere: a note about what's pinned)").mark("notebook-new")
             ui.button(icon="create_new_folder", on_click=self.new_folder).props("flat dense round size=sm").tooltip(
                 "New folder").mark("notebook-new-folder")
-            ui.button(icon="close", on_click=self.close).props("flat dense round size=sm")
+            if not self.standalone:
+                ui.button(icon="open_in_new", on_click=self.open_in_tab).props("flat dense round size=sm").tooltip(
+                    "Open the Notebook in a tab of its own (pins still come from here)").mark("notebook-tab")
+                ui.button(icon="close", on_click=self.close).props("flat dense round size=sm")
+        if self.standalone:
+            # Wide: folders and notes on the left, the note on the right.
+            with ui.row().classes("w-full flex-grow no-wrap gap-4 min-h-0"):
+                with ui.column().classes("gap-2 min-h-0 h-full").style("width: 34%; min-width: 18rem"):
+                    self.about_view()
+                    self._search_box()
+                    with ui.scroll_area().classes("w-full flex-grow rounded bg-[#11151a]"):
+                        self.list_view()
+                with ui.column().classes("flex-grow min-w-0 h-full gap-2"):
+                    self.note_view()
+            return
         self.about_view()
-        ui.input(placeholder="Search your notes", value=self.query,
-                 on_change=lambda e: self._search(e.value or "")).props(
-            "dark dense outlined clearable debounce=250").classes("w-full").mark("notebook-search")
+        self._search_box()
         with ui.scroll_area().classes("w-full rounded bg-[#11151a]").style("height: 30%; min-height: 8rem"):
             self.list_view()
         self.note_view()
+
+    def _search_box(self) -> None:
+        ui.input(placeholder="Search your notes", value=self.query,
+                 on_change=lambda e: self._search(e.value or "")).props(
+            "dark dense outlined clearable debounce=250").classes("w-full").mark("notebook-search")
 
     def _where(self) -> str:
         if not self.project:
@@ -118,9 +182,12 @@ document.addEventListener("keydown", (e) => {
         return f"reviews/{rel}" if rel else "reviews/"
 
     # ------------------------------------------------- notes about the pinned
+    def _pinned(self) -> Anchor | None:
+        return self.remote_pinned if self.standalone else self.pinned_cb()
+
     @ui.refreshable_method
     def about_view(self) -> None:
-        pinned = self.pinned_cb()
+        pinned = self._pinned()
         if not pinned or not self.project:
             return
         found = notebook.about(self.project, pinned)
@@ -142,11 +209,13 @@ document.addEventListener("keydown", (e) => {
                     ui.label(self._rel(n.path.parent)).classes("text-xs text-gray-500 truncate")
 
     def set_pinned(self, _anchor: Anchor | None = None) -> None:
-        """The viewer's pin changed: the notes about it, and the header's count."""
-        pinned = self.pinned_cb()
+        """The viewer's pin changed: the notes about it, the header's count,
+        and a Notebook in its own tab."""
+        pinned = self._pinned()
         n = len(notebook.about(self.project, pinned)) if pinned and self.project else 0
         self.counted(n)
-        if self.dialog is not None and not self.dialog.is_deleted and self.dialog.value:
+        self.tell_pinned()
+        if self.standalone or (self.dialog is not None and not self.dialog.is_deleted and self.dialog.value):
             self.about_view.refresh()
 
     # ---------------------------------------------------------------- tree
@@ -235,10 +304,10 @@ document.addEventListener("keydown", (e) => {
         self.folder = path.parent
         self.saved = ""
         logs.log.info("notebook: opened %s", path)
-        if self.dialog is None or self.dialog.is_deleted or not self.dialog.value:
-            self.show()
-        else:
+        if self.standalone or not (self.dialog is None or self.dialog.is_deleted or not self.dialog.value):
             self.view.refresh()
+        else:
+            self.show()
 
     @ui.refreshable_method
     def note_view(self) -> None:
@@ -309,7 +378,7 @@ document.addEventListener("keydown", (e) => {
 
     # ---------------------------------------------------------------- pins
     def pin_selected(self) -> None:
-        pinned = self.pinned_cb()
+        pinned = self._pinned()
         if self.note is None or pinned is None:
             ui.notify("Click a part, net or footprint in the viewer first")
             return
@@ -331,7 +400,12 @@ document.addEventListener("keydown", (e) => {
             self.set_pinned()
 
     def go_to(self, a: Anchor) -> None:
-        """Show a pin: in the comparison on screen, else the one it came from."""
+        """Show a pin: in the comparison on screen, else the one it came from.
+        In a tab of its own: kigit's tab shows it."""
+        if self.standalone:
+            self._post({"type": "go", "key": self.key, "anchor": a.to_dict()})
+            ui.notify(f"Showing {chip_text(a)} in kigit's tab")
+            return
         if self.focus_cb(a):
             return
         if a.seen:
@@ -355,7 +429,7 @@ document.addEventListener("keydown", (e) => {
 
     def quick_note(self) -> None:
         """N: a new note about what's pinned (or a plain one)."""
-        self.new_note(about=self.pinned_cb())
+        self.new_note(about=self._pinned())
 
     async def _ask_name(self, title: str, value: str) -> str | None:
         with self.host, ui.dialog() as dialog, ui.card().classes("bg-[#161a20] gap-2 w-[26rem]"):
@@ -475,7 +549,7 @@ document.addEventListener("keydown", (e) => {
         if not self.project:
             return
         folder = self.folder or notebook.root(self.project)
-        pinned = self.pinned_cb()
+        pinned = self._pinned()
         with self.host, ui.dialog() as dialog, ui.card().classes("bg-[#161a20] gap-2 w-[30rem]"):
             ui.label("Today's log").classes("text-sm font-semibold")
             ui.label(f"Added to {self._rel(folder / notebook.LOG) or notebook.LOG}, under today's date"
@@ -498,3 +572,42 @@ document.addEventListener("keydown", (e) => {
         if self.note is not None and self.note.path == path:
             self.note = notebook.read(path)
         self.view.refresh()
+
+
+# ------------------------------------------------------------- its own tab
+# (The page, /notebook/{key}, is registered in app.py with kigit's others.)
+def notebook_page(key: str) -> None:
+    """The Notebook in a browser tab of its own. Pins come from kigit's tab
+    (the same project, in the same browser), through a BroadcastChannel."""
+    import subprocess
+
+    from . import lightbox
+    from .review_panel import _PAGE_JS, _projects
+
+    ui.dark_mode(True)
+    ui.query(".nicegui-content").classes("p-0 gap-0")
+    project = _projects.get(key)
+    if project is None:
+        ui.label("This Notebook's project isn't open in kigit: open it there, then use the Notebook's "
+                 "open-in-new-tab button.").classes("p-6 text-gray-400")
+        return
+    ui.page_title(f"Notebook · {project.name}")
+
+    def head() -> str:
+        try:
+            r = subprocess.run(["git", "-C", str(project), "rev-parse", "HEAD"], capture_output=True, text=True,
+                               timeout=5)
+            return r.stdout.strip() if r.returncode == 0 else ""
+        except (OSError, subprocess.TimeoutExpired):
+            return ""
+
+    async def no_compare(old: str, new: str, anchor: Anchor) -> None:
+        return None
+
+    ui.add_body_html(_PAGE_JS)  # rendered Markdown's look, links opening outside
+    ui.add_body_html(lightbox.html(".kigit-md-view"))
+    with ui.column().classes("w-full p-4 gap-2 bg-[#161a20]").style("height: 100vh"):
+        panel = NotebookPanel(project=lambda: project, editors=Editors(), pinned=lambda: None, head=head,
+                              focus=lambda a: False, compare=no_compare, counted=lambda n: None, standalone=True)
+        panel.view()
+    panel._post({"type": "hello", "key": key})  # kigit's tab: say what's pinned

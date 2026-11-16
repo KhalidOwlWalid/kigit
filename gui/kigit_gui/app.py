@@ -39,7 +39,7 @@ from . import activity, buildtime, kigit, lightbox, logs, mentions, notices, owl
 from .discussions import Discussions
 from .folder_picker import FolderPicker
 from .md_editor import Editors
-from .notebook_panel import NotebookPanel
+from .notebook_panel import NotebookPanel, notebook_page
 from .panels import Panels
 from .resize import Resizer
 from . import board3d, review_doc  # noqa: F401  (register the /board3d and /reviews-doc pages)
@@ -1834,6 +1834,12 @@ body.kigit-dragging iframe { pointer-events: none; }  /* else the frames swallow
 
 # Anything that goes wrong inside the GUI ends up in the session log, with its traceback.
 app.on_exception(lambda e: logs.log.error("unhandled error in the GUI", exc_info=e))
+
+
+@ui.page("/notebook/{key}")
+def _notebook(key: str) -> None:
+    """The Notebook in a tab of its own (its button, in the Notebook)."""
+    notebook_page(key)
 
 
 @ui.page("/")

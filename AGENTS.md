@@ -494,6 +494,13 @@ at once. localStorage settings are per origin, so per port.
   after a warning from `contents` and `unsaved_in_git`); only your notes
   and folders (`_inside`), never reviews/ itself or kigit's files. Its
   dialogs go in `NotebookPanel.host`, not inside the row that opened them.
+  Its own tab: `/notebook/{key}` (`notebook_page`, registered in app.py
+  so the test harness sees it), `standalone=True`, a wide two-column view.
+  Tabs talk through a `BroadcastChannel("kigit-notebook")` in the browser,
+  messages carrying the project key: kigit's tab posts `pinned` (on every
+  pin change, `tell_pinned`), the Notebook's posts `hello` (on load) and
+  `go` (show a pin; kigit's tab runs `go_to`). Messages go out through the
+  panel's own client (`self.client.run_javascript`), not the current slot.
   The panel is a seamless right-hand dialog (the viewer still takes clicks), autosaves
   0.8 s after typing stops, and N (`kigit_quick_note`) makes a note about
   what's pinned. A pin is shown in the comparison on screen

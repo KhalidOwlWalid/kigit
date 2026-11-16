@@ -1509,6 +1509,39 @@ async def test_notebook_browse_rename_delete(user: User, monkeypatch, tmp_path: 
     assert not systems.exists() and (project / "reviews" / "Owl").exists()
 
 
+async def test_notebook_in_its_own_tab(user: User, monkeypatch, tmp_path: Path) -> None:
+    """The Notebook opens in a tab of its own (/notebook/{key}): wide, and
+    what's pinned in kigit's tab (told through the browser) comes with it."""
+    from kigit_gui.notebook_panel import NotebookPanel
+    from kigit_gui.review_panel import project_key
+
+    project = make_fixture_repo(tmp_path / "repo")
+    (project / "reviews" / "Notes").mkdir(parents=True)
+    (project / "reviews" / "Notes" / "Decoupling.md").write_text("# Decoupling\n\nC1 next to U1.\n")
+    await open_at(user, monkeypatch, str(project))
+    await user.should_see("Pick two commits on the left", retries=50)
+    opened = []
+    monkeypatch.setattr(ui.navigate, "to", lambda url, new_tab=False: opened.append((url, new_tab)))
+    user.find(marker="notebook-button").click()
+    await user.should_see(marker="notebook-tab")
+    user.find(marker="notebook-tab").click()
+    key = project_key(project)
+    assert opened == [(f"/notebook/{key}", True)]
+
+    await user.open(f"/notebook/{key}")
+    await user.should_see("Notebook")
+    await user.should_see(marker="notebook-folder")
+    nb = NotebookPanel.current
+    assert nb.standalone and nb.key == key
+    # kigit's tab says C1 is pinned: the notes about it show here.
+    emit(user, "kigit_nb_message", {"type": "pinned", "key": key,
+                                    "anchor": {"tab": "pcb", "kind": "footprint", "name": "C1"}})
+    await user.should_see(marker="notebook-about-note")
+    emit(user, "kigit_nb_message", {"type": "pinned", "key": "another-project",
+                                    "anchor": {"tab": "pcb", "kind": "footprint", "name": "R9"}})
+    assert nb.remote_pinned.name == "C1"  # another project's: not ours
+
+
 def review_anchor(name: str, seen: dict):
     from kigit_gui.review import Anchor
     return Anchor.from_dict({"tab": "pcb", "kind": "footprint", "name": name, "seen": seen})
