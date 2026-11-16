@@ -1369,6 +1369,28 @@ async def test_mentions_in_the_chat_and_the_bell(user: User, monkeypatch, tmp_pa
     assert "USB-C recessed" in titles and other.id
 
 
+async def test_activity_heatmap(user: User, monkeypatch, tmp_path: Path) -> None:
+    """What you do is counted per day (a comparison here) and shown as a
+    year's heatmap behind the header's button."""
+    from kigit_gui import activity
+
+    monkeypatch.setattr(activity, "path", lambda: tmp_path / "activity.json")
+    await open_at(user, monkeypatch, PROJECT)
+    await user.should_see("Pick two commits on the left", retries=50)
+    rows = commit_table(user).rows
+    await select(user, [rows[1], rows[2]])
+    user.find(marker="compare-button").click()
+    for _ in range(100):
+        if activity.load():
+            break
+        await asyncio.sleep(0.1)
+    assert list(activity.load().values()) == [{"compare": 1}]
+    user.find(marker="activity-button").click()
+    await user.should_see("1 in the last year")
+    await user.should_see("1 comparison")
+    assert "1 on " in marked(user, "activity-heatmap").content
+
+
 def review_anchor(name: str, seen: dict):
     from kigit_gui.review import Anchor
     return Anchor.from_dict({"tab": "pcb", "kind": "footprint", "name": name, "seen": seen})

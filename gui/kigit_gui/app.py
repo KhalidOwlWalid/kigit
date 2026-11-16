@@ -35,7 +35,7 @@ from pathlib import Path
 
 from nicegui import app, background_tasks, ui
 
-from . import buildtime, kigit, logs, mentions, notices, review, rewritten, sessions, shortcuts, threads
+from . import activity, buildtime, kigit, logs, mentions, notices, review, rewritten, sessions, shortcuts, threads
 from .discussions import Discussions
 from .folder_picker import FolderPicker
 from .md_editor import Editors
@@ -231,6 +231,43 @@ _LEVEL_LOOK = {"error": ("error", "red-4"), "warning": ("warning", "amber-5"), "
                "mention": ("alternate_email", "purple-3")}
 
 
+def show_activity() -> None:
+    """Your year in kigit as a heatmap, like GitHub's contribution graph."""
+    days = activity.load()
+    st = activity.stats(days)
+    with ui.dialog() as dialog, ui.card().classes("bg-[#161a20] gap-3").style("width: 94vw; max-width: 58rem"):
+        with ui.row().classes("w-full items-baseline gap-3"):
+            ui.icon("calendar_view_month").classes("text-amber-500 self-center")
+            ui.label("Your kigit activity").classes("text-base font-semibold")
+            ui.label(f"{st['total']} in the last year" if st["total"] else "Nothing yet this year").classes(
+                "text-sm text-gray-400").mark("activity-total")
+            ui.space()
+            ui.button(icon="close", on_click=dialog.close).props("flat dense round size=sm")
+        ui.html(activity.CSS + activity.heatmap_svg(days)).classes("w-full").mark("activity-heatmap")
+        with ui.row().classes("w-full items-center gap-1 text-xs text-gray-500 justify-end"):
+            ui.label("Less")
+            for lv in range(5):
+                ui.html(f'<svg width="11" height="11"><rect width="11" height="11" rx="2" class="l{lv}" '
+                        f'style="fill:{["#1c2128", "#5a4519", "#8a6720", "#c08f2c", "#e8b84d"][lv]}"/></svg>')
+            ui.label("More")
+        busiest = st["busiest"]
+        with ui.row().classes("w-full gap-2 no-wrap"):
+            for value, label in ((f"{st['current']} day{'s' if st['current'] != 1 else ''}", "current streak"),
+                                 (f"{st['longest']} day{'s' if st['longest'] != 1 else ''}", "longest streak"),
+                                 (str(st["active_days"]), "active days"),
+                                 (f"{busiest[1]} on {busiest[0]}" if busiest else "-", "busiest day")):
+                with ui.column().classes("flex-1 gap-0 rounded-lg bg-[#1c2128] px-3 py-2"):
+                    ui.label(value).classes("text-lg font-semibold")
+                    ui.label(label).classes("text-xs text-gray-400")
+        with ui.row().classes("w-full gap-x-6 gap-y-1 text-sm").mark("activity-kinds"):
+            for kind, (one, many) in activity.KINDS.items():
+                n = st["by_kind"].get(kind, 0)
+                ui.label(f"{n} {one if n == 1 else many}").classes("text-gray-300" if n else "text-gray-600")
+        ui.html("Kept on this computer, in kigit's app folder (<code>activity.json</code>): yours, not the "
+                "project's. <code>kigit uninstall --purge</code> deletes it.").classes("text-xs text-gray-500")
+    dialog.open()
+
+
 def show_notices() -> None:
     """The notification centre: this session's warnings and errors, newest first."""
     notices.mark_read()
@@ -306,6 +343,8 @@ def build(start_folder: str):
             bell_badge = ui.badge("!", color="red").props("floating rounded").mark("notices-badge")
             bell_tip = ui.tooltip("Notifications")
         bell_badge.set_visibility(False)
+        ui.button(icon="calendar_view_month", on_click=lambda: show_activity()).props("flat dense round").tooltip(
+            "Your activity: a year of kigit, day by day").mark("activity-button")
         ui.button(icon="receipt_long", on_click=show_log).props("flat dense round").tooltip("Session log").mark("log-button")
 
     # ----------------------------------------------------------- commit list
@@ -1429,6 +1468,7 @@ body.kigit-dragging iframe { pointer-events: none; }  /* else the frames swallow
         no_comparison()
         landing.set_visibility(False)
         frame.props(f'src="{board3d_src([(names[r["hash"]], r["short"], r.get("subject", "")) for r in rows])}"')
+        activity.record("3d")
         placeholder.set_visibility(False)
         no_git_button.set_visibility(False)
         frame.set_visibility(True)
@@ -1558,6 +1598,7 @@ body.kigit-dragging iframe { pointer-events: none; }  /* else the frames swallow
             ui.run_javascript(f"window.kigitPopout && !window.kigitPopout.closed && "
                               f"(window.kigitPopout.location.href = {json.dumps(src)})")
             return
+        activity.record("3d")
         # dock=1: the page leaves out its own "new tab" button (the dock's bar has one).
         dock_frame.props(f'src="{src}&dock=1"')
         dock_frame.set_visibility(True)
@@ -1599,6 +1640,7 @@ body.kigit-dragging iframe { pointer-events: none; }  /* else the frames swallow
             button.props(remove="loading")
         status.text = f"{short_rev(a)} ↔ {short_rev(b)} · {time.monotonic() - started:.1f} s"
         logs.log.info("compared %s .. %s in %.2f s", a, b, time.monotonic() - started)
+        activity.record("compare")
         show_page(name)
         # Older first: lower in the list (LOCAL, at the top, is the newest).
         order = {r["hash"]: i for i, r in enumerate(table.rows)}

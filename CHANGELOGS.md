@@ -4,14 +4,15 @@ All notable changes to kigit, newest first. The format follows [Keep a Changelog
 
 ## [Unreleased]
 
+### Added
+
+- **Your activity**: a button next to the bell shows a year of what you did in kigit (comparisons, reviews, discussions, replies, 3D views) as a GitHub-style heatmap, with streaks and your busiest day. Kept in the app folder (`activity.json`); `kigit uninstall --purge` deletes it, and says so.
+- **Mentions**: a discussion shows where it's linked from ("Author B mentioned this in ..."), among its messages; the Reviews page has a "Mentioned in" list on discussions and reviews. When someone else links to a discussion you're in, the bell shows an @ (pulled mentions too). Worked out from the links, so nothing is written into the linked discussion.
+
 ### Fixed
 
 - KiCad 8 works: the 3D view uses only the export options KiCad 8 has (it has no pads, solder mask or silkscreen in 3D, and kigit says so), and the landing page's board pictures are a 2D drawing (KiCad 8 has no 3D render). KiCad 9 and 10 work as before. A board saved by a newer KiCad than the one installed gets a clear message instead of KiCad's error, and KiCad 7 or older a "needs KiCad 8" one.
 - On Windows with several KiCads installed, kigit picked by name ("8.0" before "10.0"); it now picks the newest.
-
-### Added
-
-- **Mentions**: a discussion shows where it's linked from ("Author B mentioned this in ..."), among its messages; the Reviews page has a "Mentioned in" list on discussions and reviews. When someone else links to a discussion you're in, the bell shows an @ (pulled mentions too). Worked out from the links, so nothing is written into the linked discussion.
 
 ## [0.2.1] - 2026-11-16
 

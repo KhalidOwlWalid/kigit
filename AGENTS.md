@@ -480,6 +480,14 @@ at once. localStorage settings are per origin, so per port.
   `KIGIT_KICAD_CLI` to a missing file and fake `kigit.render`.
   GUI tests point `KIGIT_LOG_DIR` at a temp folder (conftest), so they
   never write the real sessions or build times.
+- Activity (`activity.py`): `activity.record(kind)` (compare, review,
+  discussion, reply, 3d) counts per day in `<app data>/kigit/activity.json`
+  (`{"days": {date: {kind: n}}}`, atomic write, never raises); called from
+  run_diff, the 3D views, ReviewPanel.write and Discussions (send,
+  request). `show_activity` (the header's calendar button) draws
+  `heatmap_svg` (53 week columns, Sunday on top, `<title>` tooltips, 5
+  levels scaled to the busiest day) and `stats` (total, by kind, current
+  streak counting from yesterday if today's empty, longest, busiest).
 - Shortcuts (`shortcuts.py`): the header's keyboard button and "?"
   (outside text boxes, `kigit_shortcuts`) show `GROUPS`. Each shortcut
   names where it's handled (`where`: file, code); `test_shortcuts` fails

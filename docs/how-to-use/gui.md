@@ -87,6 +87,18 @@ Each panel can also be hidden for more room, and opened in a new browser tab. Th
 
 Hidden or not is remembered, like the sizes.
 
+## Your activity
+
+The :material-calendar-month: button next to the bell shows your year in kigit as a heatmap, like GitHub's contribution graph: one square a day, brighter for busier days (hover one for what you did). Below it: your current and longest streak (days in a row), active days, your busiest day, and how many of each you did:
+
+- comparisons,
+- reviews written,
+- discussions opened,
+- discussion replies (and marking done, accepting, reopening),
+- 3D views.
+
+It's counted on this computer, in the [app folder](../app-folder.md) (`activity.json`), not in your projects: it's yours, and it isn't shared through git. `kigit uninstall --purge` deletes it.
+
 ## Notifications
 
 The :material-bell: bell in the header keeps this session's warnings and errors, so you can read them after their pop-up is gone. It shows a red **!** while any are unread.

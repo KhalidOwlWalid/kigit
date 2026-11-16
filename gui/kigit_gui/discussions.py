@@ -14,7 +14,7 @@ from typing import Awaitable, Callable
 
 from nicegui import background_tasks, ui
 
-from . import logs, mentions, notices, review, threads
+from . import activity, logs, mentions, notices, review, threads
 from .review import Anchor
 from .md_editor import Editors, rewrite_assets
 from .review_panel import chip_text, project_key
@@ -434,6 +434,7 @@ class Discussions:
             ui.notify(f"Couldn't add to the discussion: {e}", type="warning")
             return
         logs.log.info("discussion %s: %s by %s", self.thread_id, kind, self.me)
+        activity.record("reply")
         self.reply = ""
         self.thread_view.refresh()
         self.changed()
@@ -469,6 +470,7 @@ class Discussions:
         self.check_links(got[1], "Your request")
         t = threads.start(self.project, got[0], got[1], commit, self.me, self.head, anchor)
         logs.log.info("discussion %s opened by %s on %s", t.id, self.me, commit[:7])
+        activity.record("discussion")
         ui.notify(f"Asked for attention: {t.title}", type="positive")
         self.changed()
         return t

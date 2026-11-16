@@ -24,7 +24,7 @@ from fastapi import Request
 from fastapi.responses import FileResponse, JSONResponse, Response
 from nicegui import app, ui
 
-from . import logs, review
+from . import activity, logs, review
 from .md_editor import Editors, rewrite_assets
 from .review import Anchor, Note, Review
 
@@ -288,6 +288,7 @@ class ReviewPanel:
             self._warn(f"Couldn't write the review: {e}")
             return
         self.dirty = False
+        activity.record("review")
         logs.log.info("wrote review %s", self.path)
         ui.notify(f"Written to {review.FOLDER}/{self.path.name}", type="positive")
         self.path_label.text = self._path_text()

@@ -33,6 +33,8 @@ const char* app_item(const std::string& name) {
     if (name == "thumbnails") return "the board pictures on the landing page";
     if (name == "3d-build-times.json") return "3D build times (for the progress bar)";
     if (name == "gui-env") return "the GUI's Python; downloaded again if you reinstall";
+    if (name == "activity.json") return "YOUR ACTIVITY HISTORY (the heatmap: a year of what you did in kigit)";
+    if (name == "mentions-seen.json") return "which mentions of your discussions you've seen";
     if (name == "example") return "THE EXAMPLE PROJECT, with any reviews, notes or discussions you added to it";
     return "";
 }
