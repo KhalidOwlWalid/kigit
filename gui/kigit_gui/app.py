@@ -35,7 +35,7 @@ from pathlib import Path
 
 from nicegui import app, background_tasks, ui
 
-from . import activity, buildtime, kigit, logs, mentions, notices, review, rewritten, sessions, shortcuts, threads
+from . import activity, buildtime, kigit, logs, mentions, notices, owl, review, rewritten, sessions, shortcuts, threads
 from .discussions import Discussions
 from .folder_picker import FolderPicker
 from .md_editor import Editors
@@ -325,12 +325,14 @@ def build(start_folder: str):
     state: dict = {"board": None, "history": None, "strays": []}
     resizer = Resizer()
     panels = Panels()
+    owl.add()  # (off unless you find its door)
     editors = Editors()  # Markdown editors: reviews and discussions
 
     # ---------------------------------------------------------------- header
     with ui.header().classes("items-center gap-3 py-2 px-4 bg-[#161a20] border-b border-[#29303a] no-wrap"):
         ui.label("kigit").classes("text-lg font-bold text-[#e8b84d] cursor-pointer").on(
             "click", lambda: show_landing()).tooltip("Home: recent projects").mark("home")
+        owl.door()  # hoo?
         folder_input = ui.input(value=start_folder, placeholder="KiCad project folder").props(
             "dense dark outlined").classes("w-[30rem] shrink min-w-[12rem]")
         folder_input.mark("folder-input")

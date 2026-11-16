@@ -508,6 +508,18 @@ at once. localStorage settings are per origin, so per port.
   header's calendar button, You / Everyone) draws `heatmap_svg` (53 week
   columns, Sunday on top, `<title>` tooltips, 5 levels scaled to the
   busiest day) and `stats` (total, by kind, streaks, busiest day).
+- The owl (`owl.py`, an easter egg; keep it out of the docs and the
+  shortcuts list): a snowy owl in SVG, all JS/CSS in the page, off by
+  default. Its door is a small owl face in the header, between the kigit
+  logo and the folder box (`owl.door()`, `#kigit-owl-door`, title "hoo?";
+  the page script listens on the document, since the header is drawn
+  after it runs). On/off in localStorage `kigit.owl`. Perched it blinks,
+  tilts/turns its head, follows the mouse with its pupils, ruffles, hops;
+  every 30-70 s it flies to a perch: the bottom edge, the right half of the
+  header, or a panel's top edge lower down. Shaking the mouse over it (4
+  direction changes within 0.9 s, worked out from pointermove, as it takes
+  no pointer events) startles it and it flies at least 300 px away.
+  `pointer-events: none` throughout. `window.kigitOwl()` reports its state.
 - Shortcuts (`shortcuts.py`): the header's keyboard button and "?"
   (outside text boxes, `kigit_shortcuts`) show `GROUPS`. Each shortcut
   names where it's handled (`where`: file, code); `test_shortcuts` fails

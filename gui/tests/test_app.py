@@ -1441,6 +1441,23 @@ async def test_notebook(user: User, monkeypatch, tmp_path: Path) -> None:
     assert text.startswith("## ") and "Checked the decoupling (Footprint C1" in text
 
 
+async def test_the_owl_and_its_door(user: User, monkeypatch) -> None:
+    """The owl lives in the page (no server work): its door is in the header,
+    it's off unless you opened it before (kigit.owl in the browser), and it
+    never takes a click."""
+    from kigit_gui import owl, shortcuts
+
+    await open_at(user, monkeypatch, PROJECT)
+    await user.should_see("Pick two commits on the left", retries=50)
+    door = marked(user, "owl-door")  # in the header, by the kigit logo
+    assert 'id="kigit-owl-door"' in door.content and 'title="hoo?"' in door.content
+    assert door.parent_slot.parent is marked(user, "home").parent_slot.parent
+    assert "startle()" in owl.PAGE  # shake it off
+    assert 'localStorage.getItem("kigit.owl") === "1"' in owl.PAGE  # off unless turned on
+    assert "pointer-events: none" in owl.PAGE.split("#kigit-owl {", 1)[1].split("}", 1)[0]
+    assert "kigit-owl" not in str(shortcuts.GROUPS)  # a secret: not in the shortcuts list
+
+
 def review_anchor(name: str, seen: dict):
     from kigit_gui.review import Anchor
     return Anchor.from_dict({"tab": "pcb", "kind": "footprint", "name": name, "seen": seen})
