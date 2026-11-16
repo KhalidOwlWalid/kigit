@@ -414,7 +414,7 @@ async def test_review_a_commit(user: User, monkeypatch, tmp_path: Path) -> None:
     assert docs["short"] in page and v2["short"] in page  # its parent .. it
 
     # Nothing is written until there's something to keep.
-    assert not (project / "reviews").exists()
+    assert not list((project / "reviews").glob("*.md"))  # no review written (activity/ is there: you compared)
     user.find(marker="review-summary").type("Rev B feedback.")
     # What the viewer reports when C1 is pinned (pcb.js tellPinned).
     seen = {"old": docs["hash"], "new": v2["hash"], "side": "new"}
@@ -427,7 +427,7 @@ async def test_review_a_commit(user: User, monkeypatch, tmp_path: Path) -> None:
     # Nothing is written until Write.
     await user.should_see("Unsaved changes")
     await asyncio.sleep(0.3)
-    assert not (project / "reviews").exists()
+    assert not list((project / "reviews").glob("*.md"))  # no review written (activity/ is there: you compared)
     await user.should_see("Not written yet")  # the note
     user.find(marker="review-write").click()
     await user.should_see("Written to reviews/")
@@ -591,7 +591,7 @@ async def test_unwritten_review_is_kept_as_a_draft(user: User, monkeypatch, tmp_
     user.find(marker="review-summary").type("Half a thought")
     await review(moved)
     await user.should_see("unwritten draft: " + v2["short"])
-    assert not (project / "reviews").exists()
+    assert not list((project / "reviews").glob("*.md"))  # no review written (activity/ is there: you compared)
     await review(v2)
     await user.should_see("Unsaved changes")
     await user.should_see("Half a thought")  # shown as rendered text
@@ -1370,12 +1370,12 @@ async def test_mentions_in_the_chat_and_the_bell(user: User, monkeypatch, tmp_pa
 
 
 async def test_activity_heatmap(user: User, monkeypatch, tmp_path: Path) -> None:
-    """What you do is counted per day (a comparison here) and shown as a
-    year's heatmap behind the header's button."""
+    """What you do is counted per day in the project (a comparison here) and
+    shown as a year's heatmap behind the header's button."""
     from kigit_gui import activity
 
-    monkeypatch.setattr(activity, "path", lambda: tmp_path / "activity.json")
-    await open_at(user, monkeypatch, PROJECT)
+    project = make_fixture_repo(tmp_path / "repo")
+    await open_at(user, monkeypatch, str(project))
     await user.should_see("Pick two commits on the left", retries=50)
     rows = commit_table(user).rows
     await select(user, [rows[1], rows[2]])
@@ -1385,6 +1385,7 @@ async def test_activity_heatmap(user: User, monkeypatch, tmp_path: Path) -> None
             break
         await asyncio.sleep(0.1)
     assert list(activity.load().values()) == [{"compare": 1}]
+    assert activity.path().is_relative_to(project / "reviews" / "activity")  # in the project, for git
     user.find(marker="activity-button").click()
     await user.should_see("1 in the last year")
     await user.should_see("1 comparison")

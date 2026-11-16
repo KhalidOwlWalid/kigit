@@ -12,8 +12,11 @@ TODAY = date(2026, 11, 16)  # a Monday
 
 
 @pytest.fixture(autouse=True)
-def own_file(tmp_path: Path, monkeypatch) -> None:
-    monkeypatch.setattr(activity, "path", lambda: tmp_path / "app" / "activity.json")
+def project(tmp_path: Path, monkeypatch) -> Path:
+    monkeypatch.setattr(activity, "machine", lambda: "laptop-1")
+    activity.use(tmp_path, "Author A")
+    yield tmp_path
+    activity.use(None, "")
 
 
 def test_record_and_load() -> None:
@@ -24,6 +27,30 @@ def test_record_and_load() -> None:
     activity.record("nonsense", TODAY)  # not a kind: ignored
     activity.record("3d", TODAY - timedelta(days=1))
     assert activity.load() == {"2026-11-16": {"compare": 2, "review": 1}, "2026-11-15": {"3d": 1}}
+
+
+def test_kept_in_the_project_per_person_and_computer(tmp_path: Path, monkeypatch) -> None:
+    """Each computer writes its own file in reviews/activity/<person>/, so
+    laptops never conflict in git; they add up."""
+    activity.record("compare", TODAY)
+    assert activity.path() == tmp_path / "reviews" / "activity" / "Author-A" / "laptop-1.json"
+    monkeypatch.setattr(activity, "machine", lambda: "work-laptop")
+    activity.record("compare", TODAY)
+    activity.record("review", TODAY)
+    assert sorted(p.name for p in (tmp_path / "reviews" / "activity" / "Author-A").iterdir()) == \
+        ["laptop-1.json", "work-laptop.json"]
+    assert activity.load() == {"2026-11-16": {"compare": 2, "review": 1}}  # both laptops
+    activity.use(tmp_path, "Author B")
+    activity.record("reply", TODAY)
+    assert activity.load() == {"2026-11-16": {"reply": 1}}  # just Author B's
+    assert activity.load(person="*") == {"2026-11-16": {"compare": 2, "review": 1, "reply": 1}}  # everyone
+    assert activity.people(tmp_path) == ["Author-A", "Author-B"]
+
+
+def test_nothing_without_a_project() -> None:
+    activity.use(None, "Author A")
+    activity.record("compare", TODAY)
+    assert activity.path() is None and activity.load() == {}
 
 
 def test_unreadable_file_is_an_empty_year(tmp_path: Path) -> None:

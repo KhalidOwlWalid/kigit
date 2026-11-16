@@ -104,7 +104,7 @@ kigit keeps the pins as one comment at the end of the note, which Obsidian and G
 
 ## Your activity
 
-The :material-calendar-month: button next to the bell shows your year in kigit as a heatmap, like GitHub's contribution graph: one square a day, brighter for busier days (hover one for what you did). Below it: your current and longest streak (days in a row), active days, your busiest day, and how many of each you did:
+The :material-calendar-month: button next to the bell shows your year in this project as a heatmap, like GitHub's contribution graph: one square a day, brighter for busier days (hover one for what you did). Below it: your current and longest streak (days in a row), active days, your busiest day, and how many of each you did:
 
 - comparisons,
 - reviews written,
@@ -112,7 +112,7 @@ The :material-calendar-month: button next to the bell shows your year in kigit a
 - discussion replies (and marking done, accepting, reopening),
 - 3D views.
 
-It's counted on this computer, in the [app folder](../app-folder.md) (`activity.json`), not in your projects: it's yours, and it isn't shared through git. `kigit uninstall --purge` deletes it.
+It's kept in the project, in `reviews/activity/<you>/<this computer>.json`, so commit it and it goes with the project: on another laptop, your activity there is added to it. Each computer writes only its own file, so two laptops never get a git conflict over it. **You / Everyone** switches between yours and everyone's in the project.
 
 ## Notifications
 

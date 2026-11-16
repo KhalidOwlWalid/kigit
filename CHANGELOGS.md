@@ -8,6 +8,10 @@ All notable changes to kigit, newest first. The format follows [Keep a Changelog
 
 - **Notebook**: your own notes, as Markdown in `reviews/` (an Obsidian vault works as it is), in folders as deep as you like. A panel beside the viewer: the folder tree, search, the note (saved as you type), pins to parts not tied to a commit, the notes about whatever's pinned (counted on its button), N for a quick note about it, and Today's log (a line under today's date in `Logs.md`). On the Reviews page, nested folders are rows of sub-tabs.
 
+### Changed
+
+- Your activity is kept in the project (`reviews/activity/<you>/<computer>.json`) instead of the app folder, so it goes with the project through git and your laptops add up; one file per computer, so they never conflict. The heatmap can show you or everyone. (Activity counted by 0.2.2 in the app folder isn't moved.)
+
 ## [0.2.2] - 2026-11-16
 
 ### Added

@@ -496,14 +496,18 @@ at once. localStorage settings are per origin, so per port.
   a page per folder at any depth (`notes/<path>/`, obj = its path),
   `_subtabs` (a row per level), `_sidebar` a `<details>` tree; note pages
   show their pins.
-- Activity (`activity.py`): `activity.record(kind)` (compare, review,
-  discussion, reply, 3d) counts per day in `<app data>/kigit/activity.json`
-  (`{"days": {date: {kind: n}}}`, atomic write, never raises); called from
-  run_diff, the 3D views, ReviewPanel.write and Discussions (send,
-  request). `show_activity` (the header's calendar button) draws
-  `heatmap_svg` (53 week columns, Sunday on top, `<title>` tooltips, 5
-  levels scaled to the busiest day) and `stats` (total, by kind, current
-  streak counting from yesterday if today's empty, longest, busiest).
+- Activity (`activity.py`): kept in the project, for git:
+  `reviews/activity/<person>/<computer>.json` (`{"days": {date: {kind:
+  n}}}`; person = git user.name, computer = host name, both slugged), so
+  each computer writes only its own file (no merge conflicts) and
+  `load()` adds up a person's files (`person="*"`: everyone).
+  `activity.use(project, person)` is set when a project opens (no project:
+  nothing counted). `record(kind)` (compare, review, discussion, reply, 3d,
+  note): atomic write, never raises; called from run_diff, the 3D views,
+  ReviewPanel.write, Discussions and the Notebook. `show_activity` (the
+  header's calendar button, You / Everyone) draws `heatmap_svg` (53 week
+  columns, Sunday on top, `<title>` tooltips, 5 levels scaled to the
+  busiest day) and `stats` (total, by kind, streaks, busiest day).
 - Shortcuts (`shortcuts.py`): the header's keyboard button and "?"
   (outside text boxes, `kigit_shortcuts`) show `GROUPS`. Each shortcut
   names where it's handled (`where`: file, code); `test_shortcuts` fails

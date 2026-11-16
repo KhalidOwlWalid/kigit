@@ -33,7 +33,6 @@ In the GUI, the :material-receipt-text: log button shows the log's full path and
 | `log/` | A log for every run, named after when it started (`kigit_2026-11-15_14-03-12_1234.log`, `kigit-gui_...`). Old logs are kept. | the command line and the GUI |
 | `sessions.json` | Your [recent projects](how-to-use/gui.md#landing-page): each project opened and the last two commits compared there | the GUI |
 | `thumbnails/` | The board pictures on the landing page, one per project | the GUI (with KiCad) |
-| `activity.json` | Your [activity](how-to-use/gui.md#your-activity) for the heatmap: what you did in kigit, counted per day | the GUI |
 | `mentions-seen.json` | Which [mentions](how-to-use/reviews.md#mentions) of your discussions you've been told about, per project (for the bell) | the GUI |
 | `3d-build-times.json` | How long each board's [3D model](how-to-use/3d-view.md#making-the-model) took to make, for the progress bar | the GUI |
 | `gui-env/` | The GUI's Python and packages, set up the first time you run `kigit gui` | the installed kigit |
@@ -48,12 +47,13 @@ In the GUI, the :material-receipt-text: log button shows the log's full path and
 
 ## Deleting it
 
-`kigit uninstall --purge` deletes it (after listing what's in it and asking). Everything in the app folder can go. Deleting it forgets your recent projects, their pictures, your activity history, the 3D build times and the logs; `gui-env/` is set up again the next time you start the GUI (that takes about a minute, as on the first start). Your projects and their [reviews](how-to-use/reviews.md) aren't in it. One thing to keep in mind: the [example project](example.md), if you made it from the GUI, lives in here (`example/`), so anything you wrote in it goes too; copy it somewhere else first to keep it.
+`kigit uninstall --purge` deletes it (after listing what's in it and asking). Everything in the app folder can go. Deleting it forgets your recent projects, their pictures, the 3D build times and the logs; `gui-env/` is set up again the next time you start the GUI (that takes about a minute, as on the first start). Your projects and their [reviews](how-to-use/reviews.md) aren't in it. One thing to keep in mind: the [example project](example.md), if you made it from the GUI, lives in here (`example/`), so anything you wrote in it goes too; copy it somewhere else first to keep it.
 
 ## What isn't in it
 
 | What | Where |
 | --- | --- |
+| Your [activity](how-to-use/gui.md#your-activity) (the heatmap) | `reviews/activity/<you>/<computer>.json` in each project |
 | Comparison pages made by the command line | `.kigit/` next to the board (or wherever `-o` says) |
 | [Reviews](how-to-use/reviews.md) | `reviews/` next to the board, in your project |
 | The GUI's comparison pages and 3D models | a temporary folder (`kigit-gui-...` in your system's temp folder), for that session |

@@ -233,39 +233,52 @@ _LEVEL_LOOK = {"error": ("error", "red-4"), "warning": ("warning", "amber-5"), "
 
 
 def show_activity() -> None:
-    """Your year in kigit as a heatmap, like GitHub's contribution graph."""
-    days = activity.load()
-    st = activity.stats(days)
+    """Your year in this project as a heatmap, like GitHub's contribution
+    graph; or everyone's."""
+    if activity.path() is None:
+        ui.notify("Open a project first: activity is kept in each project", type="warning")
+        return
+    who = {"v": None}  # None: you; "*": everyone
+
     with ui.dialog() as dialog, ui.card().classes("bg-[#161a20] gap-3").style("width: 94vw; max-width: 58rem"):
-        with ui.row().classes("w-full items-baseline gap-3"):
-            ui.icon("calendar_view_month").classes("text-amber-500 self-center")
-            ui.label("Your kigit activity").classes("text-base font-semibold")
-            ui.label(f"{st['total']} in the last year" if st["total"] else "Nothing yet this year").classes(
-                "text-sm text-gray-400").mark("activity-total")
-            ui.space()
-            ui.button(icon="close", on_click=dialog.close).props("flat dense round size=sm")
-        ui.html(activity.CSS + activity.heatmap_svg(days)).classes("w-full").mark("activity-heatmap")
-        with ui.row().classes("w-full items-center gap-1 text-xs text-gray-500 justify-end"):
-            ui.label("Less")
-            for lv in range(5):
-                ui.html(f'<svg width="11" height="11"><rect width="11" height="11" rx="2" class="l{lv}" '
-                        f'style="fill:{["#1c2128", "#5a4519", "#8a6720", "#c08f2c", "#e8b84d"][lv]}"/></svg>')
-            ui.label("More")
-        busiest = st["busiest"]
-        with ui.row().classes("w-full gap-2 no-wrap"):
-            for value, label in ((f"{st['current']} day{'s' if st['current'] != 1 else ''}", "current streak"),
-                                 (f"{st['longest']} day{'s' if st['longest'] != 1 else ''}", "longest streak"),
-                                 (str(st["active_days"]), "active days"),
-                                 (f"{busiest[1]} on {busiest[0]}" if busiest else "-", "busiest day")):
-                with ui.column().classes("flex-1 gap-0 rounded-lg bg-[#1c2128] px-3 py-2"):
-                    ui.label(value).classes("text-lg font-semibold")
-                    ui.label(label).classes("text-xs text-gray-400")
-        with ui.row().classes("w-full gap-x-6 gap-y-1 text-sm").mark("activity-kinds"):
-            for kind, (one, many) in activity.KINDS.items():
-                n = st["by_kind"].get(kind, 0)
-                ui.label(f"{n} {one if n == 1 else many}").classes("text-gray-300" if n else "text-gray-600")
-        ui.html("Kept on this computer, in kigit's app folder (<code>activity.json</code>): yours, not the "
-                "project's. <code>kigit uninstall --purge</code> deletes it.").classes("text-xs text-gray-500")
+        @ui.refreshable
+        def body() -> None:
+            days = activity.load(person=who["v"])
+            st = activity.stats(days)
+            with ui.row().classes("w-full items-center gap-3"):
+                ui.icon("calendar_view_month").classes("text-amber-500")
+                ui.label("Your kigit activity" if who["v"] is None else "Everyone's kigit activity").classes(
+                    "text-base font-semibold")
+                ui.label(f"{st['total']} in the last year" if st["total"] else "Nothing yet this year").classes(
+                    "text-sm text-gray-400").mark("activity-total")
+                ui.space()
+                ui.toggle({"me": "You", "all": "Everyone"}, value="me" if who["v"] is None else "all",
+                          on_change=lambda e: (who.update(v=None if e.value == "me" else "*"), body.refresh())).props(
+                    "dense no-caps size=sm toggle-color=amber-8 text-color=grey-5").mark("activity-who")
+                ui.button(icon="close", on_click=dialog.close).props("flat dense round size=sm")
+            ui.html(activity.CSS + activity.heatmap_svg(days)).classes("w-full").mark("activity-heatmap")
+            with ui.row().classes("w-full items-center gap-1 text-xs text-gray-500 justify-end"):
+                ui.label("Less")
+                for lv in range(5):
+                    ui.html(f'<svg width="11" height="11"><rect width="11" height="11" rx="2" '
+                            f'style="fill:{["#1c2128", "#5a4519", "#8a6720", "#c08f2c", "#e8b84d"][lv]}"/></svg>')
+                ui.label("More")
+            busiest = st["busiest"]
+            with ui.row().classes("w-full gap-2 no-wrap"):
+                for value, label in ((f"{st['current']} day{'s' if st['current'] != 1 else ''}", "current streak"),
+                                     (f"{st['longest']} day{'s' if st['longest'] != 1 else ''}", "longest streak"),
+                                     (str(st["active_days"]), "active days"),
+                                     (f"{busiest[1]} on {busiest[0]}" if busiest else "-", "busiest day")):
+                    with ui.column().classes("flex-1 gap-0 rounded-lg bg-[#1c2128] px-3 py-2"):
+                        ui.label(value).classes("text-lg font-semibold")
+                        ui.label(label).classes("text-xs text-gray-400")
+            with ui.row().classes("w-full gap-x-6 gap-y-1 text-sm").mark("activity-kinds"):
+                for kind, (one, many) in activity.KINDS.items():
+                    n = st["by_kind"].get(kind, 0)
+                    ui.label(f"{n} {one if n == 1 else many}").classes("text-gray-300" if n else "text-gray-600")
+            ui.html("In this project: <code>reviews/activity/</code>, one file per person and computer, so it "
+                    "goes with the project through git and your laptops add up.").classes("text-xs text-gray-500")
+        body()
     dialog.open()
 
 
@@ -1101,6 +1114,7 @@ body.kigit-dragging iframe { pointer-events: none; }  /* else the frames swallow
         logs.log.info("loaded %s: %d of %d commits listed", project.board, len(h.commits), h.total)
         sessions.opened(project.dir, project.board, project.name)
         disc.set_project(Path(project.board).parent, h.user, h.head)
+        activity.use(Path(project.board).parent, disc.me)  # counted in this project, as you
         background_tasks.create(take_snapshots([project.board]))
         commits_drawer.show()
         state["board"], state["history"], state["name"] = project.board, h, project.name

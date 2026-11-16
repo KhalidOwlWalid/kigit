@@ -1,10 +1,11 @@
 """Your activity in kigit, for the header's heatmap (like GitHub's
-contribution graph): how many comparisons, reviews, discussions, replies
-and 3D views you did each day.
+contribution graph): how many comparisons, reviews, discussions, replies,
+3D views and notes you did each day, in this project.
 
-Kept in `<app data>/kigit/activity.json` as counts per day and kind, so it's
-yours, not the project's, and small (a year is a few kB). `kigit uninstall
---purge` deletes it with the rest of the app folder.
+Kept in the project, so it goes with it through git: one file per person and
+computer, `reviews/activity/<person>/<computer>.json` (counts per day and
+kind). Each computer only ever writes its own file, so two laptops never
+conflict; the heatmap adds up all of a person's files (or everyone's).
 """
 
 from __future__ import annotations
@@ -12,11 +13,13 @@ from __future__ import annotations
 import html
 import json
 import os
+import re
+import socket
 import threading
 from datetime import date, timedelta
 from pathlib import Path
 
-from . import logs
+from . import logs, review
 
 # The kinds, in the order the breakdown lists them: (singular, plural).
 KINDS = {
@@ -27,32 +30,79 @@ KINDS = {
     "3d": ("3D view", "3D views"),
     "note": ("note or log line", "notes and log lines"),
 }
+FOLDER = "activity"
 _lock = threading.Lock()
+_project: Path | None = None
+_person = ""
 
 
-def path() -> Path:
-    return logs.default_dir().parent / "activity.json"
+def _slug(s: str) -> str:
+    return re.sub(r"[^A-Za-z0-9._-]+", "-", s).strip("-.") or "someone"
 
 
-def load() -> dict[str, dict[str, int]]:
-    """{"YYYY-MM-DD": {kind: count}}; empty if there's none (or it's unreadable)."""
+def use(project_dir: str | Path | None, person: str) -> None:
+    """The project activity is counted in, and whose (git user.name)."""
+    global _project, _person
+    _project, _person = (Path(project_dir) if project_dir else None), person
+
+
+def folder(project_dir: str | Path) -> Path:
+    return review.folder(project_dir) / FOLDER
+
+
+def machine() -> str:
+    return _slug(socket.gethostname())
+
+
+def path() -> Path | None:
+    """This person's file on this computer, in the open project."""
+    if _project is None:
+        return None
+    return folder(_project) / _slug(_person) / f"{machine()}.json"
+
+
+def _read(p: Path) -> dict[str, dict[str, int]]:
     try:
-        data = json.loads(path().read_text(encoding="utf-8")).get("days", {})
+        data = json.loads(p.read_text(encoding="utf-8")).get("days", {})
     except (OSError, ValueError, AttributeError):
         return {}
     return {d: {k: int(n) for k, n in v.items() if isinstance(n, int)} for d, v in data.items() if isinstance(v, dict)}
 
 
+def people(project_dir: str | Path) -> list[str]:
+    """Everyone with activity in the project (their folder names)."""
+    d = folder(project_dir)
+    return sorted(p.name for p in d.iterdir() if p.is_dir()) if d.is_dir() else []
+
+
+def load(project_dir: str | Path | None = None, person: str | None = None) -> dict[str, dict[str, int]]:
+    """{"YYYY-MM-DD": {kind: count}}: a person's days (you, by default) added
+    up over their computers; person="*" for everyone."""
+    project_dir = project_dir if project_dir is not None else _project
+    if project_dir is None:
+        return {}
+    who = _slug(_person if person is None else person)
+    files = folder(project_dir).glob("*/*.json") if person == "*" else (folder(project_dir) / who).glob("*.json")
+    out: dict[str, dict[str, int]] = {}
+    for f in sorted(files):
+        for d, counts in _read(f).items():
+            day = out.setdefault(d, {})
+            for k, n in counts.items():
+                day[k] = day.get(k, 0) + n
+    return out
+
+
 def record(kind: str, when: date | None = None) -> None:
-    """Counts one `kind` for today. Never fails the thing being counted."""
-    if kind not in KINDS:
+    """Counts one `kind` for today, in this computer's file. Never fails the
+    thing being counted (and does nothing with no project open)."""
+    p = path()
+    if kind not in KINDS or p is None:
         return
     day = (when or date.today()).isoformat()
     with _lock:
-        days = load()
+        days = _read(p)
         days.setdefault(day, {})
         days[day][kind] = days[day].get(kind, 0) + 1
-        p = path()
         try:
             p.parent.mkdir(parents=True, exist_ok=True)
             tmp = p.with_suffix(".tmp")
