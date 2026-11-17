@@ -491,6 +491,16 @@ at once. localStorage settings are per origin, so per port.
   stats (S, `?stats=1`): the 3D view's, copied in (`redraw` goes through
   `stats.draw()`), plus `diff` (`window.kigit3dDiffLoad`: changed parts,
   ghosts, strip meshes, load ms split into data / models / build).
+  Hover (`hover`): each part's world box is taken before merging (`picks`:
+  unchanged, changed, ghosts, pad outlines); pointermove (once per frame,
+  not while a button is held) tests the ray against the boxes (slab test),
+  takes the smallest box among those the ray is in at once, and drops parts
+  on the board's far side. Value and footprint come from
+  `schematic.new/old.symbols`, changes from `footprints[]`. A white
+  `Box3Helper` outlines it. `window.kigit3dPick(x, y)` gives the reference
+  (for checks). `test_board3d_diff` runs `node --check` on the page's
+  script (skipped without Node): a bad escape in the Python string only
+  shows in a browser otherwise.
 - Landing page: `open_folder(folder, startup=True)` (from `index()`)
   shows it instead of an error when the start folder has no project with a
   board (none at all, or only a .kicad_pro, like this repo's fixtures); an

@@ -87,10 +87,11 @@ While comparing two commits, press **3D** in the header to dock the board in 3D 
 </figure>
 
 - **Parts**: added in green, changed in amber, moved in blue with a ghost where it was, removed as a red ghost (taken from the older board's model). A part without a 3D model, like a test point, gets an outline around its pads instead.
+- **Hover a part** to see what it is: its reference, value and footprint, whether it was added, changed, moved or removed, and what changed (a field's old and new value, moved, pads, graphics). The part gets a white box around it. Ghosts tell you they're an old place. Parts on the far side of the board don't answer through it.
 - **Copper**: added, removed and changed tracks, arcs and vias as coloured strips on the copper (top or bottom; inner layers drawn fainter on top).
 - The legend in the corner counts them. **Changes** (++c++) hides or shows the marks, **Fade others** (++u++) fades the parts that didn't change, and Mask, Silk and Parts (++m++, ++k++, ++p++) work as in the 3D view.
 - It uses the same models as the 3D view, so a board already made there isn't made again. The tab waits while KiCad makes them.
-- The bottom corner says which **graphics chip** draws the page: a dedicated GPU (fine), built-in laptop graphics (big boards may lag), or none, where your CPU draws everything and it will be slow. With weak graphics, kigit draws at a lower resolution to keep it moving.
+- The bottom corner says which **graphics chip** draws the page: a dedicated GPU (fine), built-in graphics (the GPU inside the processor, sharing its memory and power: fine for most boards, big ones may lag), or none, where your CPU draws everything in software and it will be slow. It's the chip your *browser* uses: laptops with a dedicated GPU often run the browser on the built-in one to save battery. To change that on Windows, go to Settings → System → Display → Graphics, add your browser and pick High performance (or use the NVIDIA Control Panel). On Linux, start the browser with `prime-run` or `DRI_PRIME=1`. `chrome://gpu` shows which chip is in use. With weak graphics, kigit draws at a lower resolution to keep it moving.
 - ++s++ shows the same [render stats](#if-it-feels-slow) as the 3D view, plus what the diff added (changed parts kept apart, ghosts, strips) and how long it took to load (data, models, building the scene).
 - Zones, silkscreen and the schematic aren't marked in 3D: the 2D comparison shows those.
 

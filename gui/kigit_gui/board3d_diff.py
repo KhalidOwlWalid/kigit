@@ -165,6 +165,11 @@ button.on { color: var(--accent); border-color: rgba(232,184,77,.45); }
 #stats .note { color: var(--faint); font-family: system-ui, sans-serif; max-width: 320px; }
 #stats button { padding: 2px 8px; border-color: var(--line); }
 body.stats-on #hint { display: none; }
+#tip { position: absolute; display: none; pointer-events: none; z-index: 5; max-width: 340px; padding: 7px 10px;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 8px; font-size: 12px; line-height: 1.45;
+  box-shadow: 0 6px 18px rgba(0,0,0,.4); overflow-wrap: anywhere; }
+#tip b { font-size: 13px; } #tip .st { margin-left: 6px; font-size: 11px; font-weight: 600; }
+#tip .sub { color: var(--muted); } #tip .lib { color: var(--faint); word-break: break-all; }
 #loading { position: absolute; inset: 0; display: grid; place-items: center; background: var(--bg); color: var(--muted); }
 #loading.err { color: var(--rem); }
 @media (max-width: 860px) { #info { max-width: calc(100% - 24px); } #tools { top: auto; bottom: 52px; right: 12px; max-width: none; }
@@ -187,13 +192,14 @@ body.stats-on #hint { display: none; }
   <button id="parts" class="on" title="The parts' 3D models (P)">Parts</button>
 </div>
 <div id="gpu" class="bar" title="Which graphics chip draws this page, as the browser reports it">Checking the graphics...</div>
-<div id="hint" class="bar">Drag to rotate · right-drag to pan · scroll to zoom</div>
+<div id="hint" class="bar">Hover a part to see what it is · drag to rotate · right-drag to pan · scroll to zoom</div>
 <div id="stats" class="bar" aria-live="off">
   <div class="head"><b>Render stats · 3D diff</b><span><button id="statsReset" title="Start measuring again">Reset</button>
     <button id="statsCopy" title="Copy the numbers as JSON">Copy</button></span></div>
   <table id="statsTable"></table>
   <div class="note">Drag or zoom for a few seconds, then read p50 / p95. S hides this.</div>
 </div>
+<div id="tip"></div>
 <div id="loading">Loading the boards...</div>
 <script type="module">
 import * as THREE from "three";
@@ -225,7 +231,7 @@ short = short.slice(0, 90);
 const gpu = document.getElementById("gpu");
 gpu.className = "bar " + tier;
 gpu.textContent = tier === "good" ? `✓ Graphics: ${short}`
-  : tier === "meh" ? `⚠ Built-in graphics (${short}): big boards may lag; the CPU and GPU share the work`
+  : tier === "meh" ? `⚠ Built-in graphics (${short}): fine for most boards, big ones may lag. If your laptop also has a dedicated GPU, set your browser to use it (Windows: Settings → Display → Graphics → High performance)`
   : `⚠ No graphics chip in use (${short || "unknown"}): your CPU draws all of this, so it'll be slow`;
 window.kigit3dDiffGpu = { chip, tier };
 
@@ -367,6 +373,7 @@ const btn = (id) => document.getElementById(id);
 function toggle(name) {
   const b = btn(name), on = !b.classList.contains("on"); b.classList.toggle("on", on);
   if (name === "fade") fadeOthers(on); else groups[name].forEach((o) => (o.visible = on));
+  hover.hide();
   redraw();
 }
 for (const n of Object.keys(groups)) btn(n).addEventListener("click", () => toggle(n));
@@ -486,6 +493,102 @@ stats = (() => {
 })();
 if (new URLSearchParams(location.search).has("stats")) stats.toggle(true);
 
+// ------------------------------------------------------------------ hover
+const hover = (() => {
+  const tip = document.getElementById("tip"), ray = new THREE.Raycaster(), ndc = new THREE.Vector2();
+  const outline = new THREE.Box3Helper(new THREE.Box3(), 0xffffff);
+  outline.visible = false; outline.material.depthTest = false; outline.material.transparent = true; outline.renderOrder = 10;
+  scene.add(outline);
+  window.kigit3dOutline = outline;  // for scripted checks
+  let picks = [], board = null, about = new Map(), fpOf = new Map(), current = null, queued = null;
+  const LABEL = { same: ["unchanged", "var(--muted)"], add: ["added", "var(--add)"], chg: ["changed", "var(--chg)"],
+    mov: ["moved", "var(--mov)"], rem: ["removed", "var(--rem)"], was: ["old place", "var(--mov)"] };
+  const shown = (o) => { for (let x = o; x; x = x.parent) if (!x.visible) return false; return true; };
+  // Where the ray goes in and out of a box (slab test), or null.
+  function span(r, b) {
+    let t0 = -Infinity, t1 = Infinity;
+    for (const a of ["x", "y", "z"]) {
+      const o = r.origin[a], d = r.direction[a];
+      if (Math.abs(d) < 1e-12) { if (o < b.min[a] || o > b.max[a]) return null; continue; }
+      let u = (b.min[a] - o) / d, v = (b.max[a] - o) / d; if (u > v) [u, v] = [v, u];
+      t0 = Math.max(t0, u); t1 = Math.min(t1, v); if (t0 > t1) return null;
+    }
+    return t1 < 0 ? null : [Math.max(t0, 0), t1];
+  }
+  const volume = (b) => { const s = b.getSize(new THREE.Vector3()); return s.x * s.y * s.z; };
+  function at(x, y) {  // the part under a point on the page
+    const rect = renderer.domElement.getBoundingClientRect();
+    ndc.set(((x - rect.left) / rect.width) * 2 - 1, -((y - rect.top) / rect.height) * 2 + 1);
+    ray.setFromCamera(ndc, camera);
+    const hits = [];
+    for (const p of picks) { if (!shown(p.obj)) continue; const t = span(ray.ray, p.box); if (t) hits.push({ p, t }); }
+    if (!hits.length) return null;
+    hits.sort((a, b) => a.t[0] - b.t[0]);
+    // A part seen through the board (from the other side) is hidden by it.
+    const through = board && span(ray.ray, board);
+    // Of the boxes the ray is in at once, the smallest: a small part beside a
+    // tall one is inside the tall one's box from most angles.
+    const first = hits[0], near = hits.filter((h) => h.t[0] <= first.t[1]);
+    const best = near.reduce((a, b) => (volume(b.p.box) < volume(a.p.box) ? b : a));
+    if (through && through[0] < best.t[0]) {
+      const onTop = best.p.box.getCenter(new THREE.Vector3()).y > (board.min.y + board.max.y) / 2;
+      if (onTop ? camera.position.y < board.min.y : camera.position.y > board.max.y) return null;
+    }
+    return best.p;
+  }
+  const esc = (t) => String(t ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+  function describe(p) {
+    const a = about.get(p.ref) || {}, f = fpOf.get(p.ref), [label, color] = LABEL[p.kind];
+    const lines = [];
+    if (f && p.kind !== "same") {
+      // Library paths ("Lib:Name", ".../x.step") by their last part: the whole
+      // thing doesn't fit in a tooltip.
+      const brief = (v) => { v = String(v ?? ""); const t = v.split(/[:/\\\\]/).pop(); return esc(v.length > 40 && t ? t : v) || "–"; };
+      for (const [name, before, after] of f.fields || []) lines.push(`${esc(name)}: ${brief(before)} → ${brief(after)}`);
+      if (f.moved && p.kind !== "was") lines.push("moved");
+      if (f.pads) lines.push("pads changed");
+      if (f.gAdd || f.gRem) lines.push(`graphics +${f.gAdd} −${f.gRem}`);
+    }
+    if (p.kind === "was") lines.unshift("where it was before it moved");
+    const unique = [...new Set(lines)], MAX = 6;
+    if (unique.length > MAX) unique.splice(MAX - 1, unique.length, `+${unique.length - MAX + 1} more (the 2D comparison has them all)`);
+    const lib = a.footprint || f?.lib || "";
+    return `<b>${esc(p.ref)}</b>${a.value ? ` <span class="sub">${esc(a.value)}</span>` : ""}` +
+      `<span class="st" style="color:${color}">${label}</span>` +
+      (lib ? `<div class="lib">${esc(lib)}</div>` : "") + unique.map((l) => `<div>${l}</div>`).join("");
+  }
+  function show(p, x, y) {
+    if (p !== current) {
+      current = p;
+      // White, with a little room around the part: in its own colour, a
+      // 1 px line right on the part's edge disappears into it.
+      if (p) { tip.innerHTML = describe(p); outline.box.copy(p.box).expandByScalar(0.0004); }
+      outline.visible = !!p; tip.style.display = p ? "block" : "none";
+      renderer.domElement.style.cursor = p ? "pointer" : "";
+      redraw();
+    }
+    if (!p) return;
+    const w = tip.offsetWidth, h = tip.offsetHeight;
+    tip.style.left = Math.min(x + 14, innerWidth - w - 8) + "px";
+    tip.style.top = (y + 16 + h > innerHeight ? y - h - 12 : y + 16) + "px";
+  }
+  const hide = () => show(null);
+  renderer.domElement.addEventListener("pointermove", (e) => {
+    if (e.buttons) { hide(); return; }  // turning the board
+    if (queued) { queued = [e.clientX, e.clientY]; return; }
+    queued = [e.clientX, e.clientY];
+    requestAnimationFrame(() => { const [x, y] = queued; queued = null; show(at(x, y), x, y); });
+  });
+  renderer.domElement.addEventListener("pointerleave", hide);
+  renderer.domElement.addEventListener("wheel", hide, { passive: true });
+  return {
+    setup(list, boardBox, info, fps) { picks = list; board = boardBox; about = info; fpOf = fps; },
+    hide,
+    at: (x, y) => at(x, y)?.ref ?? null,  // for scripted checks
+  };
+})();
+window.kigit3dPick = hover.at;
+
 // ------------------------------------------------------------------- load
 (async () => {
   const t0 = performance.now();
@@ -515,20 +618,26 @@ if (new URLSearchParams(location.search).has("stats")) stats.toggle(true);
   // Parts: the changed ones apart and tinted; the rest merged (and faded, to make the changes stand out).
   const changed = [], same = [];
   for (const n of partNodes) (status.has(n.name) && status.get(n.name) !== "rem" ? changed : same).push(n);
+  // Hovering: each part's box, made before merging (merged parts aren't
+  // objects any more). Testing a ray against boxes stays cheap on big boards.
+  const picks = [];  // {ref, kind, box, obj}
+  const pick = (ref, kind, node, obj) => picks.push({ ref, kind, box: new THREE.Box3().setFromObject(node), obj });
   const sameGroup = mergeByMaterial(same);
   sameGroup.traverse((o) => { if (o.isMesh) for (const m of [].concat(o.material)) if (!fadeMats.includes(m)) {
     m.userData.opacity = m.opacity; m.userData.wasTransparent = m.transparent; fadeMats.push(m); } });
   model.add(sameGroup); groups.parts.push(sameGroup);
+  for (const n of same) if (status.get(n.name) !== "rem") pick(n.name, "same", n, sameGroup);
   const counts = { add: 0, chg: 0, mov: 0, rem: 0 }, made = { ghosts: 0, strips: 0 };
   for (const n of changed) { const s = status.get(n.name); counts[s]++;
-    const g = inWorld(n, tint(COLORS[s], 0.55)); model.add(g); groups.parts.push(g); groups.changes.push(g); }
+    const g = inWorld(n, tint(COLORS[s], 0.55)); model.add(g); groups.parts.push(g); groups.changes.push(g); pick(n.name, s, n, g); }
   // From the older board: removed parts, and where moved ones were, as ghosts.
   if (old) {
     old.updateMatrixWorld(true); fixMaterials(old);
     for (const n of rootOf(old).children.filter(isPart)) { const s = status.get(n.name);
       if (s !== "rem" && s !== "mov") continue;
       if (s === "rem") counts.rem++;
-      const g = inWorld(n, ghost(s === "rem" ? COLORS.rem : COLORS.mov)); model.add(g); groups.changes.push(g); made.ghosts++; }
+      const g = inWorld(n, ghost(s === "rem" ? COLORS.rem : COLORS.mov)); model.add(g); groups.changes.push(g); made.ghosts++;
+      pick(n.name, s === "rem" ? "rem" : "was", n, g); }
   }
   // Parts without a 3D model (a test point, say): an outline around their
   // pads instead, in their colour (removed ones from the old pads).
@@ -554,6 +663,8 @@ if (new URLSearchParams(location.search).has("stats")) stats.toggle(true);
       depthWrite: false, polygonOffset: true, polygonOffsetFactor: -6, polygonOffsetUnits: -8 });
     const m = new THREE.Mesh(strips(outline, y), mat); model.add(m); groups.changes.push(m); made.strips++;
     if (s === "rem") counts.rem++;
+    const h = 0.0006;  // a thin box over the pads, for hovering
+    picks.push({ ref, kind: s, obj: m, box: new THREE.Box3(new THREE.Vector3(x0 / 1000, y - h, y0 / 1000), new THREE.Vector3(x1 / 1000, y + h, y1 / 1000)) });
   }
   window.kigit3dDiffOutlined = [...pads.keys()];
   // Copper: what changed, as strips on the top and bottom copper (inner layers on top, fainter).
@@ -576,6 +687,13 @@ if (new URLSearchParams(location.search).has("stats")) stats.toggle(true);
       const m = new THREE.Mesh(strips(list, y), mat); model.add(m); groups.changes.push(m); made.strips++; }
   }
   scene.add(model);
+  // What each part is: value and footprint from the schematic (the old one
+  // for removed parts), what changed from the PCB comparison.
+  const about = new Map();
+  for (const side of ["old", "new"]) for (const sym of diff.schematic?.[side]?.symbols || [])
+    about.set(sym.ref, { value: sym.value, footprint: sym.footprint });
+  const fpOf = new Map(fps.map((f) => [f.ref, f]));
+  hover.setup(picks, bb, about, fpOf);
   let meshesAfter = 0;
   model.traverse((o) => { if (o.isMesh) meshesAfter++; });
   const tBuilt = performance.now(), ms = (a, b) => Math.round(b - a);
