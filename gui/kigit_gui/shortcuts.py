@@ -73,6 +73,12 @@ GROUPS: list[tuple[str, str, list[Shortcut]]] = [
         Shortcut(("S",), "Render stats", ("gui/kigit_gui/board3d.py", 'k === "s"')),
         Shortcut(("L",), "Side by side: link or unlink the views", ("gui/kigit_gui/board3d.py", 'e.key.toLowerCase() === "l"')),
     ]),
+    ("3D diff (beta)", "difference", [
+        Shortcut(("C",), "Changes on or off", ("gui/kigit_gui/board3d_diff.py", 'k === "c"')),
+        Shortcut(("U",), "Fade the parts that didn't change", ("gui/kigit_gui/board3d_diff.py", 'k === "u"')),
+        Shortcut(("T", "B", "3", "F"), "Top, bottom, angled, fit", ("gui/kigit_gui/board3d_diff.py", 'k === "t"')),
+        Shortcut(("M", "K", "P"), "Mask, silkscreen, parts", ("gui/kigit_gui/board3d_diff.py", 'k === "m"')),
+    ]),
     ("Reviews page", "menu_book", [
         Shortcut(("/",), "Search", ("gui/kigit_gui/review_doc.py", 'e.key === "/"')),
         Shortcut(("Esc",), "Clear the search", ("gui/kigit_gui/review_doc.py", 'e.key === "Escape"')),

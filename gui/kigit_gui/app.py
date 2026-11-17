@@ -42,7 +42,7 @@ from .md_editor import Editors
 from .notebook_panel import NotebookPanel, notebook_page
 from .panels import Panels
 from .resize import Resizer
-from . import board3d, review_doc  # noqa: F401  (register the /board3d and /reviews-doc pages)
+from . import board3d, board3d_diff, review_doc  # noqa: F401  (register the /board3d and /reviews-doc pages)
 from .review_panel import BRIDGE_JS, ReviewPanel, focus_script, project_key
 
 LOCAL = "LOCAL"
@@ -349,6 +349,13 @@ def build(start_folder: str):
         dock_btn = ui.button("3D", icon="view_in_ar", on_click=lambda: dock_toggle()).props("flat dense").tooltip(
             "Show the board in 3D beside the comparison (New, Old or both)").mark("dock-button")
         dock_btn.set_visibility(False)
+        # The 3D diff: separate from the 3D view above, and new (beta).
+        with ui.button("3D diff", icon="difference").props(
+                "flat dense no-caps").mark("diff3d-button") as diff3d_btn:
+            ui.badge("beta", color="purple-4").props("outline").classes("ml-1 text-[10px]")
+            ui.tooltip("New and not fully tested: the comparison's changes on the board in 3D (added, changed, "
+                       "moved and removed parts; tracks), in a new tab")
+        diff3d_btn.set_visibility(False)
         with ui.button("Notebook", icon="edit_note", on_click=lambda: notes.show()).props("flat dense").mark(
                 "notebook-button"):
             notes_badge = ui.badge("", color="amber-8").props("floating rounded").mark("notebook-badge")
@@ -1533,6 +1540,7 @@ body.kigit-dragging iframe { pointer-events: none; }  /* else the frames swallow
         """No comparison on screen any more: no dock."""
         state["pair"] = None
         dock_btn.set_visibility(False)
+        diff3d_btn.set_visibility(False)
         dock_close()
 
     def set_popped(on: bool) -> None:
@@ -1658,6 +1666,47 @@ body.kigit-dragging iframe { pointer-events: none; }  /* else the frames swallow
         dock_frame.props(f'src="{src}&dock=1"')
         dock_frame.set_visibility(True)
 
+    # Its tab is opened in the click (a tab opened later is a blocked pop-up),
+    # blank until the job's page is known.
+    diff3d_btn.on("click", lambda: open_3d_diff(), js_handler="""() => {
+        window.kigitDiffTab = window.open("about:blank", "_blank");
+        emit();
+    }""")
+
+    async def open_3d_diff() -> None:
+        """The 3D diff (beta) of the comparison on screen, in a new tab: it
+        waits there while KiCad makes both boards' models (the 3D view's,
+        reused if they're made already) and kigit the comparison data."""
+        pair = state.get("pair")
+        if not pair:
+            return
+        old, new = pair
+        board = state["board"] or ""
+        names = {r: board3d_name(board, r) for r in (old, new)}
+        data = hashlib.sha1(f"3ddiff|{board}|{names[old]}|{names[new]}".encode()).hexdigest()[:12] + ".json"
+        todo = [r for r, n in names.items() if not (CACHE / n).exists()]
+        timed = new[len(kigit.DISK):] if new.startswith(kigit.DISK) else board
+        name = Path(new[len(kigit.DISK):]).stem if new.startswith(kigit.DISK) else (state.get("name") or Path(board).stem)
+        job = board3d_diff.Job(f"{name} · {short_rev(old)} → {short_rev(new)}", names[new], names[old], data,
+                               expected=buildtime.estimate(timed, len(todo)) if todo else 1.0)
+        key = board3d_diff.new_job(job)
+        logs.log.info("3d diff %s..%s (job %s)", short_rev(old), short_rev(new), key)
+        url = f"/board3d-diff/{key}"
+        ui.run_javascript(f"""(() => {{ const w = window.kigitDiffTab;
+            if (w && !w.closed) w.location.href = {json.dumps(url)}; else window.open({json.dumps(url)}, "_blank");
+            window.kigitDiffTab = null; }})()""")
+        try:
+            failed = await build_models(names)
+            if failed:
+                job.error = "; ".join(f"{short_rev(r)}: {e}" for r, e in failed)
+                return
+            await kigit.diff_json(board, old, new, CACHE / data)
+            job.done = True
+            activity.record("3d")
+        except (kigit.KigitError, OSError) as e:
+            job.error = str(e)
+            logs.log.warning("3d diff failed: %s", e)
+
     async def compare_manually() -> None:
         a, b = (old_rev.value or "").strip(), (new_rev.value or "").strip()
         if not a or not b:
@@ -1703,6 +1752,7 @@ body.kigit-dragging iframe { pointer-events: none; }  /* else the frames swallow
             a, b = b, a
         state["pair"] = (a, b)
         state["files_pair"] = False
+        diff3d_btn.set_visibility(True)
         sessions.compared(board, sessions.Compared(a, b, short_rev(a), short_rev(b), subject_of(b)))
         dock_btn.set_visibility(True)
         if dock.visible:
@@ -1840,6 +1890,7 @@ body.kigit-dragging iframe { pointer-events: none; }  /* else the frames swallow
         state["pair"] = (kigit.DISK + old_board, kigit.DISK + new_board)
         state["files_pair"] = True
         dock_btn.set_visibility(True)
+        diff3d_btn.set_visibility(True)
         if dock.visible:
             background_tasks.create(dock_load())
 

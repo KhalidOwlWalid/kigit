@@ -77,6 +77,24 @@ While comparing two commits, press **3D** in the header to dock the board in 3D 
   <figcaption>In another tab: only the dock's bar stays, at the bottom.</figcaption>
 </figure>
 
+## 3D diff (beta)
+
+**3D diff** <small>beta</small> in the header (next to **3D**, while a comparison shows) opens what changed between the two boards in 3D, in a tab of its own. It's new and not fully tested: the 3D view above is unchanged, and is still the quick, reliable one.
+
+<figure markdown="span">
+  ![The 3D diff of two commits of the example project](../img/gui/3d-diff.png)
+  <figcaption>The 3D diff, from the top: added parts and tracks in green, changed in amber, a moved part in blue (its old place as a faint ghost), removed copper and a removed test point in red.</figcaption>
+</figure>
+
+- **Parts**: added in green, changed in amber, moved in blue with a ghost where it was, removed as a red ghost (taken from the older board's model). A part without a 3D model, like a test point, gets an outline around its pads instead.
+- **Copper**: added, removed and changed tracks, arcs and vias as coloured strips on the copper (top or bottom; inner layers drawn fainter on top).
+- The legend in the corner counts them. **Changes** (++c++) hides or shows the marks, **Fade others** (++u++) fades the parts that didn't change, and Mask, Silk and Parts (++m++, ++k++, ++p++) work as in the 3D view.
+- It uses the same models as the 3D view, so a board already made there isn't made again. The tab waits while KiCad makes them.
+- The bottom corner says which **graphics chip** draws the page: a dedicated GPU (fine), built-in laptop graphics (big boards may lag), or none, where your CPU draws everything and it will be slow. With weak graphics, kigit draws at a lower resolution to keep it moving.
+- Zones, silkscreen and the schematic aren't marked in 3D: the 2D comparison shows those.
+
+It works for [Compare folders](../examples/without-git.md) too. If no tab opens, allow pop-ups for the kigit page.
+
 ## If it feels slow
 
 Press ++s++ in the 3D view for render stats: how long after your input a frame is drawn, how long each redraw takes (CPU, and GPU where the browser can time it), the gaps between frames while you drag, dropped frames, draw calls and triangles, each as p50 / p95. **Copy** puts them on the clipboard as JSON, handy for a bug report.

@@ -6,6 +6,7 @@ All notable changes to kigit, newest first. The format follows [Keep a Changelog
 
 ### Added
 
+- **3D diff (beta)**: a new header button beside **3D**, while a comparison shows. It opens the comparison in 3D in its own tab: parts added (green), changed (amber), moved (blue, with a ghost of the old place) and removed (a red ghost), and added, removed and changed tracks and vias as coloured strips. It says which graphics chip draws it and warns when that's built-in laptop graphics or none (the CPU draws it all). Separate from the 3D view, which is unchanged.
 - **3D for Compare folders**: the 3D dock works without git too, showing each folder's board as it is on disk (New, Old or Both). `kigit --3d --disk BOARD.kicad_pcb` does the same from the command line.
 
 ## [0.2.3] - 2026-11-16

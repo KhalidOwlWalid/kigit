@@ -79,7 +79,7 @@ Other folders:
   `buildtime.py` (3D build time estimates for the progress bar),
   `sessions.py` (recent projects for the landing page),
   `shortcuts.py` (every shortcut, for the header's list),
-  `board3d.py` (the 3D view page),
+  `board3d.py` (the 3D view page), `board3d_diff.py` (the 3D diff, beta),
   `resize.py` (drag handles for the drawers), `panels.py` (hiding drawers
   to a rail), `md_editor.py` (the GitHub-style Markdown editor: Write /
   Preview, toolbar formatting done in page JS via `execCommand` so undo
@@ -465,6 +465,26 @@ at once. localStorage settings are per origin, so per port.
   has the counts. Per-part objects are gone, so anything per part (picking,
   highlighting) would need a part id per vertex. Headless
   Chrome renders big models in software and slowly.
+- 3D diff (beta, `board3d_diff.py`): separate from the 3D view, which
+  stays as it is. The header's "3D diff" button (`diff3d_btn`, a "beta"
+  badge; shown with `dock_btn`) opens a blank tab in its click
+  (`window.kigitDiffTab`; a later `window.open` is a blocked pop-up), then
+  `open_3d_diff` makes a `Job` (`board3d_diff.jobs`, in memory) and points
+  the tab at `/board3d-diff/{key}`: a waiting page polling
+  `/board3d-diff/{key}/status` while `build_models` makes both models (the
+  3D view's cache names, so shared) and `kigit.diff_json` writes
+  `kigit --json` for the pair (`--files` for `disk:` pairs) into CACHE.
+  The page: the new model, unchanged parts merged by material (and faded),
+  changed parts tinted by `footprints[].st` (1 added, 2 removed, 3 or
+  `moved` moved, else changed), removed and moved parts' old places as
+  ghosts from the old model, parts without a model outlined from their
+  pads, and tracks/arcs/vias with `s` 1/2/5 (and 3/4) as flat strips just
+  above/below the board (SVG `d` paths, arcs flattened). KiCad's glb is in
+  the board's own coordinates: x = X/1000, z = Y/1000 (checked on blinky
+  and CM5), so no alignment is needed. GPU: `WEBGL_debug_renderer_info`'s
+  renderer, classed good / built-in ("meh") / none (SwiftShader, llvmpipe,
+  Basic Render); none or built-in drops the pixel ratio to 1 (none also
+  drops antialiasing). `window.kigit3dDiff` has the counts.
 - Landing page: `open_folder(folder, startup=True)` (from `index()`)
   shows it instead of an error when the start folder has no project with a
   board (none at all, or only a .kicad_pro, like this repo's fixtures); an

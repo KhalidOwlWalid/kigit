@@ -876,6 +876,54 @@ async def test_3d_dock_beside_a_comparison(user: User, monkeypatch) -> None:
     assert not dock_button.visible and not marked(user, "dock-grip").visible
 
 
+async def test_3d_diff_beta(user: User, monkeypatch) -> None:
+    """The 3D diff (beta) is its own button, shown while comparing: it makes
+    both boards' models and the comparison data, then its page shows them."""
+    from kigit_gui import board3d_diff, kigit
+
+    calls, data = [], []
+
+    async def fake_board3d(project: str, rev: str, out: Path) -> list[str]:
+        calls.append(rev)
+        out.write_bytes(b"glTF")
+        return []
+
+    async def fake_diff_json(project: str, old: str, new: str, out: Path) -> None:
+        data.append((old, new))
+        out.write_text('{"footprints": [], "items": []}')
+
+    monkeypatch.setattr(kigit, "board3d", fake_board3d)
+    monkeypatch.setattr(kigit, "diff_json", fake_diff_json)
+    await open_at(user, monkeypatch, PROJECT)
+    await user.should_see("Pick two commits on the left", retries=50)
+    rows = commit_table(user).rows
+    old, new = rows[3], rows[1]
+    button = marked(user, "diff3d-button")
+    assert not button.visible
+    await select(user, [new, old])
+    user.find(marker="compare-button").click()
+    await user.should_see(marker="viewer", retries=100)
+    for _ in range(100):
+        if button.visible:
+            break
+        await asyncio.sleep(0.1)
+    assert button.visible
+    before = set(board3d_diff.jobs)
+    user.find(marker="diff3d-button").click()
+    for _ in range(100):
+        new_jobs = [board3d_diff.jobs[k] for k in set(board3d_diff.jobs) - before]
+        if new_jobs and new_jobs[0].done:
+            break
+        await asyncio.sleep(0.1)
+    job = new_jobs[0]
+    assert job.done and not job.error
+    assert sorted(calls) == sorted([old["hash"], new["hash"]]) and data == [(old["hash"], new["hash"])]
+    assert new["short"] in job.title and old["short"] in job.title
+    page = board3d_diff.page(job)
+    assert "beta" in page and f"/diffs/{job.new_glb}" in page and f"/diffs/{job.diff_json}" in page
+    assert "UNMASKED_RENDERER_WEBGL" in page  # the graphics check
+
+
 async def test_3d_build_shows_progress(user: User, monkeypatch, tmp_path: Path) -> None:
     """kicad-cli reports no progress: the GUI shows time against the board's
     last build, and remembers this one."""

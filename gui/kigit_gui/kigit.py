@@ -230,6 +230,15 @@ async def diff_html(project: str, old: str, new: str, out_file: Path, silkscreen
     return [line.removeprefix("warning: ") for line in err.splitlines() if line.startswith("warning:")]
 
 
+async def diff_json(project: str, old: str, new: str, out_file: Path) -> None:
+    """The comparison as kigit's JSON (what changed, where) for old..new, or
+    two boards on disk ("disk:<board>", Compare folders). For the 3D diff."""
+    if old.startswith(DISK) and new.startswith(DISK):
+        await _run("-n", "-q", "--json", "-o", str(out_file), "--files", old[len(DISK):], new[len(DISK):])
+    else:
+        await _run("-C", project, "-n", "-q", "--json", "-o", str(out_file), f"{old}..{new}")
+
+
 async def diff_files_html(old_board: str, new_board: str, out_file: Path, silkscreen: bool = False,
                           source: bool = False) -> list[str]:
     """Writes the diff viewer page for two board files, no git involved (each
