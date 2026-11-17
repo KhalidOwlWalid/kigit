@@ -17,6 +17,7 @@ USAGE
     kigit gui [PROJECT_DIR] [--port N]                       (desktop app; kigit gui --help)
     kigit [OPTIONS] --files OLD.kicad_pcb NEW.kicad_pcb      (no git needed)
     kigit --3d [REV] [-o BOARD.glb]                          (3D board, via kicad-cli)
+    kigit --3d --disk BOARD.kicad_pcb [-o BOARD.glb]         (3D board of a file, no git)
     kigit example [DIR]                                      (an example project to try kigit on)
     kigit uninstall [--yes] [--purge]                        (remove this installed kigit)
 
@@ -103,6 +104,9 @@ LOGGING
                         folder, or at $KIGIT_KICAD_CLI). With the board's 3D
                         models, tracks, pads, zones, silkscreen and solder mask.
                         Prints the file's path. Used by the GUI's 3D view.
+        --disk          With --3d: the board file as it is on disk, no git
+                        (kigit --3d --disk BOARD.kicad_pcb). Its folder's 3D
+                        model files come along. Used for Compare folders.
         --render        Write a picture of the board as it is on disk (top
                         view, made by kicad-cli's 3D render) to the -o
                         file (.png). Used by the GUI's recent projects.
@@ -166,6 +170,8 @@ std::optional<int> parse_options(int argc, char** argv, Options& o) {
             o.render_mode = true;
         } else if (a == "--3d") {
             o.board3d_mode = true;
+        } else if (a == "--disk") {
+            o.disk_mode = true;
         } else if (a == "--rewritten") {
             o.rewritten_mode = true;
             for (; i + 1 < argc && argv[i + 1][0] != '-'; ++i) {
@@ -231,6 +237,10 @@ std::optional<int> parse_options(int argc, char** argv, Options& o) {
         }
     }
     if (o.render_mode) return std::nullopt; // the board on disk: no revisions
+    if (o.disk_mode && (!o.board3d_mode || !o.revs.empty())) {
+        std::cerr << "kigit: --disk goes with --3d and a board file, not revisions: kigit --3d --disk BOARD.kicad_pcb\n";
+        return 2;
+    }
     if (o.board3d_mode) {
         if (o.files_mode || o.revs.size() > 1) {
             std::cerr << "kigit: --3d shows one revision of the project's board (see --help)\n";

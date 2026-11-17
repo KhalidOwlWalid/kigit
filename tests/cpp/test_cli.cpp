@@ -175,6 +175,41 @@ TEST_CASE("--3d and --render with KiCad 8 (or an older kicad-cli)") {
 }
 #endif
 
+#ifndef _WIN32
+TEST_CASE("--3d --disk: a board file on disk, no git") {
+    TempDir tmp;
+    fs::path folder = tmp / "copy";  // not a git repository
+    fs::create_directories(folder / "3d");
+    fs::copy_file(fixture("v2/demo.kicad_pcb"), folder / "demo.kicad_pcb");
+    fs::copy_file(fixture("demo.kicad_pro"), folder / "demo.kicad_pro");
+    std::ofstream(folder / "3d" / "part.step") << "ISO-10303-21;";
+    fs::path bin = tmp / "cli";
+    fs::create_directories(bin);
+    // A stand-in kicad-cli that also notes which files it was given next to the board.
+    fs::path cli = bin / "kicad-cli";
+    std::ofstream(cli) << "#!/bin/sh\n"
+                          "if [ \"$1\" = version ]; then echo 10.0.0; exit 0; fi\n"
+                          "out=''; prev=''; last=''\n"
+                          "for a in \"$@\"; do [ \"$prev\" = --output ] && out=\"$a\"; prev=\"$a\"; last=\"$a\"; done\n"
+                          "ls -R \"$(dirname \"$last\")\" > \"" << (bin / "seen.txt").string() << "\"\n"
+                          "echo placeholder > \"$out\"\n";
+    fs::permissions(cli, fs::perms::owner_all);
+    kigit::platform::set_env("KIGIT_KICAD_CLI", cli.string());
+    std::string glb = (tmp / "b.glb").string();
+    RunResult made = run_kigit("--3d --disk " + quote((folder / "demo.kicad_pcb").string()) + " -o " + quote(glb));
+    INFO("stderr: " << made.err);
+    CHECK(made.code == 0);
+    CHECK(fs::exists(glb));
+    std::string seen = read_text(bin / "seen.txt");
+    CHECK(seen.find("demo.kicad_pro") != std::string::npos);  // its project file came along
+    CHECK(seen.find("part.step") != std::string::npos);       // and its folder's 3D models
+    CHECK(run_kigit("--3d --disk " + quote((tmp / "nope.kicad_pcb").string())).code == 1);
+    kigit::platform::set_env("KIGIT_KICAD_CLI", "");
+    CHECK(run_kigit("--disk " + quote((folder / "demo.kicad_pcb").string())).code == 2);  // only with --3d
+    CHECK(run_kigit("--3d --disk HEAD " + quote((folder / "demo.kicad_pcb").string())).code == 2);  // no revisions
+}
+#endif
+
 TEST_CASE("--3d: one revision, made by kicad-cli") {
     TempDir tmp;
     make_fixture_repo(tmp.path());

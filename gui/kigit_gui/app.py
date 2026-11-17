@@ -110,6 +110,8 @@ def board3d_name(board: str, rev: str) -> str:
     """The cached 3D model's file name. A commit never changes; the working
     tree is named by the board file's time and size, so an edit makes a new
     one. Other names (HEAD~1, a branch) can move, so they're never reused."""
+    if rev.startswith(kigit.DISK):  # a board file on disk: like the working tree, by its time and size
+        board, rev = rev[len(kigit.DISK):], LOCAL
     if rev != LOCAL and not is_hash(rev):
         rev = f"{rev}|{time.time_ns()}"
     if rev == LOCAL:
@@ -126,6 +128,9 @@ def is_hash(rev: str) -> bool:
 
 
 def short_rev(rev: str) -> str:
+    if rev.startswith(kigit.DISK):  # a board on disk (Compare folders): its folder's name
+        board = Path(rev[len(kigit.DISK):])
+        return board.parent.name or board.name
     return rev[:7] if len(rev) == 40 else rev
 
 
@@ -1409,8 +1414,10 @@ body.kigit-dragging iframe { pointer-events: none; }  /* else the frames swallow
         --3d, all at once. Returns the ones that failed. bar/label: where to
         show progress (kicad-cli reports none: it's time against the board's
         last build)."""
-        board = state["board"]
+        board = state["board"] or ""
         todo = [r for r, n in names.items() if not (CACHE / n).exists()]
+        if todo and todo[0].startswith(kigit.DISK):
+            board = todo[0][len(kigit.DISK):]  # Compare folders: time it against that board
         if not todo:
             return []
         started = time.monotonic()
@@ -1463,7 +1470,10 @@ body.kigit-dragging iframe { pointer-events: none; }  /* else the frames swallow
     def board3d_src(items: list[tuple[str, str, str]]) -> str:
         """The 3D page for (file name, commit label, subject) items: one board,
         or several side by side."""
-        name = state.get("name") or Path(state["board"]).stem
+        if state.get("files_pair"):  # Compare folders: the board file's name (subject is its path)
+            name = Path(items[0][2]).stem if items else "board"
+        else:
+            name = state.get("name") or Path(state["board"]).stem
         if len(items) == 1:
             n, label, subject = items[0]
             return f"/board3d/{n}?" + urllib.parse.urlencode({"title": f"{name} · {label}", "subtitle": subject})
@@ -1471,6 +1481,8 @@ body.kigit-dragging iframe { pointer-events: none; }  /* else the frames swallow
             [p for n, label, subject in items for p in (("b", n), ("t", f"{name} · {label}"), ("s", subject))])
 
     def subject_of(rev: str) -> str:
+        if rev.startswith(kigit.DISK):
+            return rev[len(kigit.DISK):]  # the board file
         return next((r.get("subject", "") for r in table.rows if r["hash"] == rev), "")
 
     async def view_3d() -> None:
@@ -1616,7 +1628,7 @@ body.kigit-dragging iframe { pointer-events: none; }  /* else the frames swallow
         side = dock_side.value
         revs = list(pair) if side == "both" else [pair[0] if side == "old" else pair[1]]
         token = state["dock_token"] = state.get("dock_token", 0) + 1
-        board = state["board"]
+        board = state["board"] or ""
         names = {r: board3d_name(board, r) for r in revs}
         state["dock_src"] = ""
         if any(not (CACHE / n).exists() for n in names.values()):
@@ -1690,6 +1702,7 @@ body.kigit-dragging iframe { pointer-events: none; }  /* else the frames swallow
         if a in order and b in order and order[a] < order[b]:
             a, b = b, a
         state["pair"] = (a, b)
+        state["files_pair"] = False
         sessions.compared(board, sessions.Compared(a, b, short_rev(a), short_rev(b), subject_of(b)))
         dock_btn.set_visibility(True)
         if dock.visible:
@@ -1822,8 +1835,13 @@ body.kigit-dragging iframe { pointer-events: none; }  /* else the frames swallow
         status.text = f"{label(old_board)} ↔ {label(new_board)} (no git) · {time.monotonic() - started:.1f} s"
         logs.log.info("compared files in %.2f s", time.monotonic() - started)
         show_page(name)
-        no_comparison()  # two folders: no git, so no 3D dock
         panel.close()
+        # The 3D dock works here too: each folder's board as it is on disk.
+        state["pair"] = (kigit.DISK + old_board, kigit.DISK + new_board)
+        state["files_pair"] = True
+        dock_btn.set_visibility(True)
+        if dock.visible:
+            background_tasks.create(dock_load())
 
     # Pop-up dialogs live here, whichever button opens them.
     dialog_host = ui.element("div")

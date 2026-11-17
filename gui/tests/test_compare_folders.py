@@ -64,6 +64,50 @@ async def test_compare_two_folders(user: User, monkeypatch, tmp_path: Path) -> N
     await user.should_see("(no git)")
 
 
+async def test_folders_in_3d(user: User, monkeypatch, tmp_path: Path) -> None:
+    """Compare folders has the 3D dock too: each folder's board as it is on
+    disk (kigit --3d --disk), new, old or both."""
+    from kigit_gui import kigit
+    from test_app import marked
+
+    made = []
+
+    async def fake_board3d(project: str, rev: str, out: Path):
+        made.append(rev)
+        out.write_bytes(b"glTF")
+        return kigit.Made3d([], [])
+
+    monkeypatch.setattr(kigit, "board3d", fake_board3d)
+    before, after = copies(tmp_path)
+    await open_at(user, monkeypatch, PROJECT)
+    await user.should_see("Pick two commits on the left", retries=50)
+    user.find(marker="compare-folders").click()
+    await user.should_see("Compare two KiCad project folders")
+    await fill(user, "old", str(before))
+    await fill(user, "new", str(after))
+    await compare_when_ready(user)
+    await user.should_see("(no git)", retries=100)
+    dock_button = marked(user, "dock-button")
+    assert dock_button.visible  # no git, but still a 3D view
+    user.find(marker="dock-button").click()
+    frame = marked(user, "dock-viewer")
+    for _ in range(50):
+        if "/board3d/" in (frame.props.get("src") or ""):
+            break
+        await asyncio.sleep(0.1)
+    assert made == [f"disk:{after / 'demo.kicad_pcb'}"]  # New: the after folder's board
+    assert "after" in frame.props["src"]  # named after its folder
+    with user.client:
+        marked(user, "dock-side").value = "both"
+    for _ in range(50):
+        if "/board3d-grid" in (frame.props.get("src") or ""):
+            break
+        await asyncio.sleep(0.1)
+    src = frame.props["src"]
+    assert sorted(made) == sorted([f"disk:{after / 'demo.kicad_pcb'}", f"disk:{before / 'demo.kicad_pcb'}"])
+    assert src.index("before") < src.index("after")  # old first
+
+
 async def test_folder_without_a_board_is_flagged(user: User, monkeypatch, tmp_path: Path) -> None:
     (tmp_path / "empty").mkdir()
     await open_at(user, monkeypatch, PROJECT)

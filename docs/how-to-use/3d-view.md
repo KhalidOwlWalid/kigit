@@ -61,7 +61,7 @@ Their models are made at the same time.
 
 ## Beside a comparison
 
-While comparing two commits, press **3D** in the header to dock the board in 3D next to the diff, so you can look at both. **New**, **Old** or **Both** (side by side, views linked) picks which.
+While comparing two commits, press **3D** in the header to dock the board in 3D next to the diff, so you can look at both. **New**, **Old** or **Both** (side by side, views linked) picks which. It works for [Compare folders](../examples/without-git.md) too, with no git: each folder's board as it is on disk.
 
 <figure markdown="span">
   ![A comparison with the 3D dock](../img/gui/3d-dock.png)

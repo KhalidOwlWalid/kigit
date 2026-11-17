@@ -200,10 +200,17 @@ class Made3d:
 MISSING_MODEL = "missing 3D model: "
 
 
+DISK = "disk:"  # a "revision" that's a board file on disk (Compare folders: no git)
+
+
 async def board3d(project: str, rev: str, out_file: Path) -> Made3d:
-    """Writes the board at rev (a hash, or LOCAL) as a 3D model (.glb) to
-    out_file; KiCad's kicad-cli makes it."""
-    _, err = await _run("-C", project, "-q", "--3d", rev, "-o", str(out_file))
+    """Writes the board at rev (a hash, or LOCAL; or "disk:<board file>" for
+    a board on disk, no git) as a 3D model (.glb) to out_file; KiCad's
+    kicad-cli makes it."""
+    if rev.startswith(DISK):
+        _, err = await _run("-q", "--3d", "--disk", rev[len(DISK):], "-o", str(out_file))
+    else:
+        _, err = await _run("-C", project, "-q", "--3d", rev, "-o", str(out_file))
     lines = err.splitlines()
     missing = [tuple(line.removeprefix(MISSING_MODEL).split("\t", 1) + [""])[:2]
                for line in lines if line.startswith(MISSING_MODEL)]

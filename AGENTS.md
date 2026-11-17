@@ -205,6 +205,13 @@ at once. localStorage settings are per origin, so per port.
   kicad-cli doesn't define older versions' variables, KiCad 10's library has
   only STEP, and `--subst-models` doesn't help when the .wrl is missing.
   "Could not add 3D model" lines are counted into one warning.
+  `--3d --disk BOARD` (no git; Compare folders): `checkout_disk` copies the
+  board (model paths modernized), its .kicad_pro and the model files in
+  its folder (not hidden or `_restore_backup*` folders) into a scratch
+  folder in the same layout. The GUI gives such boards as revisions
+  `disk:<board path>` (`kigit.DISK`): `short_rev` names them by folder,
+  `board3d_name` keys them by the file's time and size, and
+  `run_files_diff` sets `state["pair"]` to them (`files_pair`).
   KiCad versions (`kicad_major`, from `kicad-cli version`): 9+ get
   `--include-pads/-silkscreen/-soldermask`; 8 doesn't have them (glb with
   tracks and zones only, plus a warning); an unknown version that turns

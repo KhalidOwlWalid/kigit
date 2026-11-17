@@ -127,6 +127,39 @@ fs::path checkout(const GitBoard& g, git::Revision& rev, const fs::path& dir, in
     return dir / rel;
 }
 
+// A board file as it is on disk (no git): it, its project file and the 3D
+// model files in its folder (not hidden ones), copied in the same layout, so
+// ${KIPRJMOD} model paths work.
+fs::path checkout_disk(const fs::path& board, const fs::path& dir, int major) {
+    std::optional<std::string> text = read_disk(board);
+    if (!text) throw std::runtime_error(board.string() + " can't be read");
+    const fs::path home = board.parent_path();
+    int moved = 0;
+    write_file(dir / board.filename(), modernize_model_paths(*text, major, &moved));
+    if (moved) spdlog::info("3d: {} library model path(s) updated for KiCad {}", moved, major);
+    fs::path pro = fs::path(board).replace_extension(".kicad_pro");
+    if (auto p = read_disk(pro)) write_file(dir / pro.filename(), *p);
+    int models = 0;
+    std::error_code ec;
+    for (auto it = fs::recursive_directory_iterator(home, fs::directory_options::skip_permission_denied, ec);
+         it != fs::recursive_directory_iterator(); it.increment(ec)) {
+        if (ec) break;
+        const std::string name = it->path().filename().string();
+        if (it->is_directory(ec) && (name.starts_with(".") || name.starts_with("_restore_backup"))) {
+            it.disable_recursion_pending();
+            continue;
+        }
+        if (!it->is_regular_file(ec) || !is_model_file(it->path().string())) continue;
+        fs::path rel = fs::relative(it->path(), home, ec);
+        if (ec) continue;
+        fs::create_directories((dir / rel).parent_path());
+        fs::copy_file(it->path(), dir / rel, fs::copy_options::overwrite_existing, ec);
+        if (!ec) ++models;
+    }
+    spdlog::info("3d: {} from disk with {} model file(s) from its folder", board.string(), models);
+    return dir / board.filename();
+}
+
 } // namespace
 
 int run_board3d(const Options& o, const fs::path& project) {
@@ -136,24 +169,37 @@ int run_board3d(const Options& o, const fs::path& project) {
                                  "Install KiCad, or set KIGIT_KICAD_CLI to the path of kicad-cli.");
     if (o.output == "-") throw std::runtime_error("--3d writes a .glb file: give it a file name with -o");
 
-    GitBoard g = git_board(project, o.board_args);
-    git::Revision rev = git::resolve(g.root, o.revs[0]);
-    fs::path out = o.output.empty() ? g.path.parent_path() / ".kigit" /
-                                          (g.path.stem().string() + "-" + rev.short_hash + ".glb")
-                                    : fs::path(expand_home(o.output));
-
-    // Always a copy (also of the working tree), so model paths can be fixed
-    // without touching the project.
-    if (rev.local && !fs::exists(g.path)) throw std::runtime_error(g.path.string() + " doesn't exist");
-    fs::path tmp = fs::temp_directory_path() /
-                   ("kigit-3d-" + std::to_string(platform::process_id()) + "-" + rev.short_hash);
-    fs::remove_all(tmp);
     const int major = kicad_major(*cli);
     if (major > 0 && major < 8)
         throw std::runtime_error("the 3D view needs KiCad 8 or newer; " + cli->string() + " is KiCad " +
                                  std::to_string(major) + " (it can't export a 3D model kigit can show).\n"
                                  "Install a newer KiCad, or set KIGIT_KICAD_CLI to its kicad-cli.");
-    fs::path input = checkout(g, rev, tmp, major);
+    // Always a copy (also of the working tree, or a file with --disk), so
+    // model paths can be fixed without touching the project.
+    fs::path out, tmp, input;
+    std::string label;
+    if (o.disk_mode) {
+        fs::path board = o.board_args.empty() ? find_board(project) : board_from_arg(o.board_args[0], project);
+        if (!fs::exists(board)) throw std::runtime_error(board.string() + " doesn't exist");
+        label = board.parent_path().filename().string();
+        out = o.output.empty() ? board.parent_path() / ".kigit" / (board.stem().string() + "-disk.glb")
+                               : fs::path(expand_home(o.output));
+        tmp = fs::temp_directory_path() / ("kigit-3d-" + std::to_string(platform::process_id()) + "-disk");
+        fs::remove_all(tmp);
+        input = checkout_disk(board, tmp, major);
+    } else {
+        GitBoard g = git_board(project, o.board_args);
+        git::Revision rev = git::resolve(g.root, o.revs[0]);
+        label = rev.short_hash;
+        out = o.output.empty() ? g.path.parent_path() / ".kigit" /
+                                     (g.path.stem().string() + "-" + rev.short_hash + ".glb")
+                               : fs::path(expand_home(o.output));
+        if (rev.local && !fs::exists(g.path)) throw std::runtime_error(g.path.string() + " doesn't exist");
+        tmp = fs::temp_directory_path() /
+              ("kigit-3d-" + std::to_string(platform::process_id()) + "-" + rev.short_hash);
+        fs::remove_all(tmp);
+        input = checkout(g, rev, tmp, major);
+    }
     check_readable(read_disk(input).value_or(""), major, *cli);
 
     if (out.has_parent_path()) fs::create_directories(out.parent_path());
@@ -222,7 +268,7 @@ int run_board3d(const Options& o, const fs::path& project) {
              " no 3D model: KiCad couldn't find the file (the log lists them)");
         for (const auto& [ref, path] : missing) std::fprintf(stderr, "missing 3D model: %s\t%s\n", ref.c_str(), path.c_str());
     }
-    if (!o.quiet) std::fprintf(stderr, "3D board of %s written\n", rev.short_hash.c_str());
+    if (!o.quiet) std::fprintf(stderr, "3D board of %s written\n", label.c_str());
     std::printf("%s\n", out.string().c_str());
     return 0;
 }

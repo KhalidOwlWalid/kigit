@@ -11,6 +11,6 @@ The schematic next to each board is compared too. The viewer labels the two side
 
 ## In the GUI
 
-Press **Compare folders** in the header and pick each copy's folder. kigit finds the board in each (and the schematic next to it), and the viewer opens as usual.
+Press **Compare folders** in the header and pick each copy's folder. kigit finds the board in each (and the schematic next to it), and the viewer opens as usual. **3D** in the header shows the boards in 3D beside it, as for commits: **New**, **Old** or **Both** (KiCad makes each from the board file in that folder, with the 3D models in the folder).
 
 Opening a project that isn't in git offers the same thing, with that project already filled in.
