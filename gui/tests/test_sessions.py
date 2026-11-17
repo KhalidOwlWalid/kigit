@@ -19,7 +19,7 @@ def test_opened_and_compared(tmp_path: Path) -> None:
     a, b = tmp_path / "a", tmp_path / "b"
     for d in (a, b):
         d.mkdir()
-        (d / "x.kicad_pcb").write_text("")
+        (d / "x.kicad_pcb").write_text("", encoding="utf-8")
     sessions.opened(str(a), str(a / "x.kicad_pcb"), "alpha")
     sessions.opened(str(b), str(b / "x.kicad_pcb"), "beta")
     assert [s.name for s in sessions.load()] == ["beta", "alpha"]  # newest first
@@ -37,9 +37,9 @@ def test_gone_folders_and_broken_files(tmp_path: Path, fresh: Path) -> None:
     sessions.opened(str(tmp_path / "gone"), str(tmp_path / "gone" / "x.kicad_pcb"), "gone")
     assert not sessions.load()[0].exists
     data = json.loads(fresh.read_text(encoding="utf-8"))
-    fresh.write_text(json.dumps(data + [{"no": "dir"}, "junk"]))
+    fresh.write_text(json.dumps(data + [{"no": "dir"}, "junk"]), encoding="utf-8")
     assert len(sessions.load()) == 1  # broken entries are skipped
-    fresh.write_text("{not json")
+    fresh.write_text("{not json", encoding="utf-8")
     assert sessions.load() == []
 
 
@@ -63,7 +63,7 @@ def test_snapshot_paths(tmp_path: Path) -> None:
     import time
 
     board = tmp_path / "x.kicad_pcb"
-    board.write_text("")
+    board.write_text("", encoding="utf-8")
     assert sessions.thumb_key(str(board)) == sessions.thumb_key(str(tmp_path / "." / "x.kicad_pcb"))  # same file
     assert not sessions.thumb_fresh(str(board))  # none yet
     sessions.thumb(str(board)).parent.mkdir(parents=True)
@@ -84,7 +84,7 @@ def test_render_keeps_the_picture_kigit_made(tmp_path, monkeypatch) -> None:
     png, svg = tmp_path / "k.png", tmp_path / "k.svg"
 
     async def fake_run(*args):
-        svg.write_text("<svg/>")
+        svg.write_text("<svg/>", encoding="utf-8")
         return f"{svg}\n", ""
 
     png.write_bytes(b"old")

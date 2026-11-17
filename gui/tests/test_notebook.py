@@ -17,10 +17,10 @@ def vault(tmp_path: Path) -> Path:
     (r / "OwlPCB_Notes" / "images").mkdir()
     (r / "OwlPCB_Notes" / "images" / "shot.png").write_bytes(b"png")
     (r / "OwlPCB_Notes" / ".obsidian").mkdir()
-    (r / "OwlPCB_Notes" / ".obsidian" / "app.md").write_text("x")
-    (r / "OwlPCB_Notes" / "Logs.md").write_text("## 12th October 2026\n- Worked on [[USB-UART]]\n")
+    (r / "OwlPCB_Notes" / ".obsidian" / "app.md").write_text("x", encoding="utf-8")
+    (r / "OwlPCB_Notes" / "Logs.md").write_text("## 12th October 2026\n- Worked on [[USB-UART]]\n", encoding="utf-8")
     (r / "OwlPCB_Notes" / "System Implementation" / "USB-UART.md").write_text(
-        "# USB-UART\n\nThe CH340 needs C2 close to its VCC pin.\n")
+        "# USB-UART\n\nThe CH340 needs C2 close to its VCC pin.\n", encoding="utf-8")
     review.save(tmp_path, Review(commit="a" * 40, subject="x", summary="y"))
     threads.start(tmp_path, "T", "x", "a" * 40, "A", "a" * 40)
     return r
@@ -41,18 +41,18 @@ def test_tree_is_the_vault(tmp_path: Path) -> None:
 def test_pins_round_trip_and_leave_your_text_alone(tmp_path: Path) -> None:
     r = vault(tmp_path)
     path = r / "OwlPCB_Notes" / "System Implementation" / "USB-UART.md"
-    before = path.read_text()
+    before = path.read_text(encoding="utf-8")
     n = notebook.read(path)
     assert n.title == "USB-UART" and n.pins == []
     n.pins = [C2]
     notebook.write(n)
-    text = path.read_text()
+    text = path.read_text(encoding="utf-8")
     assert text.startswith(before.rstrip("\n")) and text.rstrip().endswith("-->") and "kigit-pins" in text
     again = notebook.read(path)
     assert again.text.rstrip() == before.rstrip() and [a.name for a in again.pins] == ["C2"]
     again.pins = []
     notebook.write(again)
-    assert path.read_text() == before  # no pins: no comment
+    assert path.read_text(encoding="utf-8") == before  # no pins: no comment
 
 
 def test_new_rename_and_folders(tmp_path: Path) -> None:
@@ -85,12 +85,12 @@ def test_log(tmp_path: Path) -> None:
     when = datetime(2026, 11, 16, 9, 5)
     notebook.log(folder, "Swapped the crystal", when, C2, "b" * 40)
     notebook.log(folder, "Checked the load caps", when.replace(hour=10, minute=0))
-    text = (folder / "Logs.md").read_text()
+    text = (folder / "Logs.md").read_text(encoding="utf-8")
     assert text.startswith("## 12th October 2026\n- Worked on [[USB-UART]]\n")  # yours, untouched
     assert "## 16th November 2026\n- 09:05 Swapped the crystal (Footprint C2 · at bbbbbbb)\n" \
            "- 10:00 Checked the load caps\n" in text
     notebook.log(r, "First line", datetime(2026, 11, 1))
-    assert (r / "Logs.md").read_text() == "## 1st November 2026\n- 00:00 First line\n"
+    assert (r / "Logs.md").read_text(encoding="utf-8") == "## 1st November 2026\n- 00:00 First line\n"
     assert notebook.log_heading(datetime(2026, 11, 22)) == "## 22nd November 2026"
     assert notebook.log_heading(datetime(2026, 11, 13)) == "## 13th November 2026"
 

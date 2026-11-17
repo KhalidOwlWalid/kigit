@@ -55,7 +55,7 @@ def test_nothing_without_a_project() -> None:
 
 def test_unreadable_file_is_an_empty_year(tmp_path: Path) -> None:
     activity.path().parent.mkdir(parents=True)
-    activity.path().write_text("{not json")
+    activity.path().write_text("{not json", encoding="utf-8")
     assert activity.load() == {}
     activity.record("compare", TODAY)  # and it starts again
     assert activity.load() == {"2026-11-16": {"compare": 1}}

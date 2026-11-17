@@ -154,6 +154,17 @@ button.on { color: var(--accent); border-color: rgba(232,184,77,.45); }
 #gpu { left: 12px; bottom: 12px; font-size: 12px; padding: 6px 10px; max-width: min(40rem, 70vw); }
 #gpu.good { color: #7fd99a; } #gpu.meh { color: var(--accent); } #gpu.bad { color: var(--rem); }
 #hint { right: 12px; bottom: 12px; color: var(--faint); font-size: 12px; padding: 5px 10px; }
+#stats { right: 12px; bottom: 12px; display: none; flex-direction: column; align-items: stretch; gap: 6px; padding: 10px 12px;
+  font: 12px/1.45 ui-monospace, Menlo, Consolas, monospace; min-width: 300px; }
+#stats.on { display: flex; }
+#stats table { border-collapse: collapse; }
+#stats th { text-align: left; font-weight: 400; color: var(--muted); padding: 0 12px 0 0; white-space: nowrap; }
+#stats td { text-align: right; padding: 0 0 0 10px; font-variant-numeric: tabular-nums; }
+#stats .bad { color: #f07178; } #stats .ok { color: #7fd99a; }
+#stats .head { display: flex; justify-content: space-between; align-items: center; color: var(--text); }
+#stats .note { color: var(--faint); font-family: system-ui, sans-serif; max-width: 320px; }
+#stats button { padding: 2px 8px; border-color: var(--line); }
+body.stats-on #hint { display: none; }
 #loading { position: absolute; inset: 0; display: grid; place-items: center; background: var(--bg); color: var(--muted); }
 #loading.err { color: var(--rem); }
 @media (max-width: 860px) { #info { max-width: calc(100% - 24px); } #tools { top: auto; bottom: 52px; right: 12px; max-width: none; }
@@ -177,6 +188,12 @@ button.on { color: var(--accent); border-color: rgba(232,184,77,.45); }
 </div>
 <div id="gpu" class="bar" title="Which graphics chip draws this page, as the browser reports it">Checking the graphics...</div>
 <div id="hint" class="bar">Drag to rotate · right-drag to pan · scroll to zoom</div>
+<div id="stats" class="bar" aria-live="off">
+  <div class="head"><b>Render stats · 3D diff</b><span><button id="statsReset" title="Start measuring again">Reset</button>
+    <button id="statsCopy" title="Copy the numbers as JSON">Copy</button></span></div>
+  <table id="statsTable"></table>
+  <div class="note">Drag or zoom for a few seconds, then read p50 / p95. S hides this.</div>
+</div>
 <div id="loading">Loading the boards...</div>
 <script type="module">
 import * as THREE from "three";
@@ -236,8 +253,9 @@ scene.add(sun, under);
 const camera = new THREE.PerspectiveCamera(35, 1, 0.0001, 100);
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true; controls.dampingFactor = 0.12; controls.screenSpacePanning = true;
-let pending = false;
-function redraw() { if (pending) return; pending = true; requestAnimationFrame(() => { pending = false; if (controls.update()) redraw(); renderer.render(scene, camera); }); }
+let pending = false, stats = null, model = null;  // stats: set up below, once the page has loaded
+function redraw() { if (pending) return; pending = true; requestAnimationFrame(() => { pending = false; if (controls.update()) redraw();
+  stats ? stats.draw() : renderer.render(scene, camera); }); }
 controls.addEventListener("change", redraw);
 function resize() { renderer.setSize(innerWidth, innerHeight); camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); redraw(); }
 addEventListener("resize", resize); resize();
@@ -355,21 +373,135 @@ for (const n of Object.keys(groups)) btn(n).addEventListener("click", () => togg
 addEventListener("keydown", (e) => { if (e.ctrlKey || e.metaKey || e.altKey) return; const k = e.key.toLowerCase();
   if (k === "t") view("top"); else if (k === "b") view("bottom"); else if (k === "3") view("iso"); else if (k === "f") view("fit");
   else if (k === "c") toggle("changes"); else if (k === "u") toggle("fade"); else if (k === "m") toggle("mask");
-  else if (k === "k") toggle("silk"); else if (k === "p") toggle("parts"); });
+  else if (k === "k") toggle("silk"); else if (k === "p") toggle("parts"); else if (k === "s") stats.toggle(); });
 let fadeMats = [];
 function fadeOthers(on) { for (const m of fadeMats) { m.transparent = on || m.userData.wasTransparent; m.opacity = on ? 0.22 : m.userData.opacity; m.depthWrite = !on; m.needsUpdate = true; } }
 
+// Render stats (?stats=1 or S): how long each redraw takes and how long
+// after your input it's drawn. Nothing is measured while it's hidden.
+stats = (() => {
+  const box = document.getElementById("stats"), table = document.getElementById("statsTable");
+  const gl = renderer.getContext();
+  const timer = gl.getExtension("EXT_disjoint_timer_query_webgl2"); // GPU time; not in every browser
+  const KEEP = 600; // samples kept per series
+  let on = false, s, inputAt = 0, lastDraw = 0, queries = [], longTasks = 0, longMs = 0;
+  let held = false, lastInput = -1e9; // a drag in progress; the last input's time
+  const reset = () => {
+    s = { input: [], cpu: [], gpu: [], gap: [] };
+    inputAt = 0; lastDraw = 0; longTasks = 0; longMs = 0;
+  };
+  reset();
+  const add = (list, v) => { list.push(v); if (list.length > KEEP) list.shift(); };
+  const pct = (list, q) => {
+    if (!list.length) return null;
+    const a = [...list].sort((x, y) => x - y);
+    return a[Math.min(a.length - 1, Math.floor(q * a.length))];
+  };
+  // Input: the first unanswered drag, wheel or click, until a frame is drawn.
+  const input = (e) => {
+    if (e.type === "pointermove" && !e.buttons) return;
+    lastInput = e.timeStamp;
+    if (on && !inputAt) inputAt = e.timeStamp;
+  };
+  addEventListener("pointerdown", () => (held = true));
+  addEventListener("pointerup", () => (held = false));
+  for (const t of ["pointerdown", "pointermove", "wheel"]) renderer.domElement.addEventListener(t, input, { passive: true });
+  try {
+    new PerformanceObserver((l) => l.getEntries().forEach((e) => { if (on) { longTasks++; longMs += e.duration; } }))
+      .observe({ type: "longtask" });
+  } catch {}
+  function draw() {
+    if (!on) { renderer.render(scene, camera); return; }
+    const t0 = performance.now();
+    let q = null;
+    if (timer && !queries.length) { q = gl.createQuery(); gl.beginQuery(timer.TIME_ELAPSED_EXT, q); }
+    renderer.render(scene, camera);
+    if (q) { gl.endQuery(timer.TIME_ELAPSED_EXT); queries.push(q); }
+    const t1 = performance.now();
+    add(s.cpu, t1 - t0);
+    if (inputAt) { add(s.input, t1 - inputAt); inputAt = 0; }
+    // Time since the last frame, for frames drawn while you drag or zoom
+    // (not the pause before you start).
+    const busy = held || t0 - lastInput < 400;
+    if (lastDraw && busy && lastDraw > lastInput - 400) add(s.gap, t0 - lastDraw);
+    lastDraw = busy ? t0 : 0;
+  }
+  function poll() { // GPU times arrive a frame or two later
+    while (queries.length) {
+      const q = queries[0];
+      if (!gl.getQueryParameter(q, gl.QUERY_RESULT_AVAILABLE)) break;
+      if (!gl.getParameter(timer.GPU_DISJOINT_EXT)) add(s.gpu, gl.getQueryParameter(q, gl.QUERY_RESULT) / 1e6);
+      gl.deleteQuery(q);
+      queries.shift();
+    }
+  }
+  function report() {
+    const row = (list) => ({ p50: pct(list, 0.5), p95: pct(list, 0.95), max: list.length ? Math.max(...list) : null, n: list.length });
+    const info = renderer.info.render, size = renderer.getDrawingBufferSize(new THREE.Vector2());
+    let meshes = 0;
+    model?.traverse((o) => { if (o.isMesh && o.visible) meshes++; });
+    return {
+      input_to_drawn_ms: row(s.input), cpu_ms: row(s.cpu), gpu_ms: timer ? row(s.gpu) : "no GPU timer in this browser",
+      frame_gap_ms: row(s.gap), dropped_frames: s.gap.filter((g) => g > 25).length, long_tasks: longTasks,
+      long_task_ms: Math.round(longMs), draw_calls: info.calls, triangles: info.triangles, meshes,
+      merged: window.kigit3dMerge || null,
+      parts_shown: btn("parts").classList.contains("on"), changes_shown: btn("changes").classList.contains("on"),
+      diff: window.kigit3dDiffLoad || null, pixels: `${size.x}x${size.y}`,
+      pixel_ratio: renderer.getPixelRatio(), gpu: (() => {
+        const d = gl.getExtension("WEBGL_debug_renderer_info");
+        return d ? gl.getParameter(d.UNMASKED_RENDERER_WEBGL) : "unknown";
+      })(),
+    };
+  }
+  const f = (v) => (v == null ? "–" : v.toFixed(1));
+  function show() {
+    if (!on) return;
+    if (timer) poll();
+    const r = report();
+    const line = (name, x, bad) => `<tr><th>${name}</th><td>${f(x.p50)}</td>` +
+      `<td class="${x.p95 == null ? "" : x.p95 > bad ? "bad" : "ok"}">${f(x.p95)}</td><td>${x.n}</td></tr>`;
+    table.innerHTML = `<tr><th></th><td>p50</td><td>p95</td><td>n</td></tr>` +
+      line("input → drawn ms", r.input_to_drawn_ms, 33) + line("CPU / redraw ms", r.cpu_ms, 16) +
+      (timer ? line("GPU / redraw ms", r.gpu_ms, 16) : `<tr><th>GPU / redraw ms</th><td colspan=3>no timer here</td></tr>`) +
+      line("frame gap ms", r.frame_gap_ms, 25) +
+      `<tr><th>dropped frames</th><td colspan=3 class="${r.dropped_frames ? "bad" : ""}">${r.dropped_frames}</td></tr>` +
+      `<tr><th>long tasks</th><td colspan=3>${r.long_tasks} (${r.long_task_ms} ms)</td></tr>` +
+      `<tr><th>draw calls</th><td colspan=3>${r.draw_calls.toLocaleString()}</td></tr>` +
+      `<tr><th>triangles</th><td colspan=3>${r.triangles.toLocaleString()}</td></tr>` +
+      `<tr><th>meshes shown</th><td colspan=3>${r.meshes.toLocaleString()}</td></tr>` +
+      (r.merged ? `<tr><th>merged on load</th><td colspan=3>${r.merged.meshes_before.toLocaleString()} → ${r.merged.meshes_after} meshes, ${r.merged.ms} ms</td></tr>` : "") +
+      (r.diff ? `<tr><th>diff objects</th><td colspan=3>${r.diff.changed_parts} parts, ${r.diff.ghosts} ghosts, ${r.diff.strips} strip meshes</td></tr>` +
+        `<tr><th>loaded in</th><td colspan=3>${r.diff.total_ms} ms (data ${r.diff.data_ms}, models ${r.diff.models_ms}${r.diff.old_model ? ", both" : ", new only"}, build ${r.diff.build_ms})</td></tr>` : "") +
+      `<tr><th>pixels</th><td colspan=3>${r.pixels} @${r.pixel_ratio}</td></tr>`;
+  }
+  setInterval(show, 500);
+  document.getElementById("statsReset").addEventListener("click", () => { reset(); show(); });
+  document.getElementById("statsCopy").addEventListener("click", (e) => {
+    navigator.clipboard?.writeText(JSON.stringify(report(), null, 2)).then(() => (e.target.textContent = "Copied"));
+    setTimeout(() => (e.target.textContent = "Copy"), 1200);
+  });
+  const toggle = (want = !on) => { on = want; box.classList.toggle("on", on); document.body.classList.toggle("stats-on", on); if (on) { reset(); redraw(); show(); } };
+  window.kigit3dStats = report; // for scripted checks
+  return { draw, toggle, get on() { return on; } };
+})();
+if (new URLSearchParams(location.search).has("stats")) stats.toggle(true);
+
 // ------------------------------------------------------------------- load
 (async () => {
+  const t0 = performance.now();
   const diff = await (await fetch(%%DIFF%%)).json();
+  const tData = performance.now();
   const fps = diff.footprints || [];
   const status = new Map();  // ref -> add | rem | chg | mov
   for (const f of fps) status.set(f.ref, f.st === 1 ? "add" : f.st === 2 ? "rem" : (f.st === 3 || f.moved) ? "mov" : "chg");
   const needOld = [...status.values()].some((s) => s === "rem" || s === "mov");
   const [neu, old] = await Promise.all([loadModel(%%NEW%%), needOld ? loadModel(%%OLD%%) : Promise.resolve(null)]);
+  const tModels = performance.now();
+  let meshesBefore = 0;
+  neu.traverse((o) => { if (o.isMesh) meshesBefore++; });
   neu.updateMatrixWorld(true); fixMaterials(neu);
   const root = rootOf(neu), partNodes = root.children.filter(isPart);
-  const model = new THREE.Group();
+  model = new THREE.Group();
   const board = mergeByMaterial(root.children.filter((n) => !isPart(n)));
   for (const mesh of board.children) {  // mask and silkscreen, as in the 3D view
     const m = mesh.material, c = m?.color; if (!m?.transparent || !c) continue;
@@ -387,7 +519,7 @@ function fadeOthers(on) { for (const m of fadeMats) { m.transparent = on || m.us
   sameGroup.traverse((o) => { if (o.isMesh) for (const m of [].concat(o.material)) if (!fadeMats.includes(m)) {
     m.userData.opacity = m.opacity; m.userData.wasTransparent = m.transparent; fadeMats.push(m); } });
   model.add(sameGroup); groups.parts.push(sameGroup);
-  const counts = { add: 0, chg: 0, mov: 0, rem: 0 };
+  const counts = { add: 0, chg: 0, mov: 0, rem: 0 }, made = { ghosts: 0, strips: 0 };
   for (const n of changed) { const s = status.get(n.name); counts[s]++;
     const g = inWorld(n, tint(COLORS[s], 0.55)); model.add(g); groups.parts.push(g); groups.changes.push(g); }
   // From the older board: removed parts, and where moved ones were, as ghosts.
@@ -396,7 +528,7 @@ function fadeOthers(on) { for (const m of fadeMats) { m.transparent = on || m.us
     for (const n of rootOf(old).children.filter(isPart)) { const s = status.get(n.name);
       if (s !== "rem" && s !== "mov") continue;
       if (s === "rem") counts.rem++;
-      const g = inWorld(n, ghost(s === "rem" ? COLORS.rem : COLORS.mov)); model.add(g); groups.changes.push(g); }
+      const g = inWorld(n, ghost(s === "rem" ? COLORS.rem : COLORS.mov)); model.add(g); groups.changes.push(g); made.ghosts++; }
   }
   // Parts without a 3D model (a test point, say): an outline around their
   // pads instead, in their colour (removed ones from the old pads).
@@ -420,7 +552,7 @@ function fadeOthers(on) { for (const m of fadeMats) { m.transparent = on || m.us
     const outline = [edge([x0, y0], [x1, y0]), edge([x1, y0], [x1, y1]), edge([x1, y1], [x0, y1]), edge([x0, y1], [x0, y0])];
     const mat = new THREE.MeshBasicMaterial({ color: COLORS[s], transparent: true, opacity: 0.95, side: THREE.DoubleSide,
       depthWrite: false, polygonOffset: true, polygonOffsetFactor: -6, polygonOffsetUnits: -8 });
-    const m = new THREE.Mesh(strips(outline, y), mat); model.add(m); groups.changes.push(m);
+    const m = new THREE.Mesh(strips(outline, y), mat); model.add(m); groups.changes.push(m); made.strips++;
     if (s === "rem") counts.rem++;
   }
   window.kigit3dDiffOutlined = [...pads.keys()];
@@ -441,9 +573,16 @@ function fadeOthers(on) { for (const m of fadeMats) { m.transparent = on || m.us
     const mat = new THREE.MeshBasicMaterial({ color: COLORS[kind], transparent: true, opacity: kind === "old" ? 0.35 : inner ? 0.5 : 0.9,
       side: THREE.DoubleSide, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -6, polygonOffsetUnits: -8 });
     for (const y of side === "both" ? [top, bottom] : [side === "bottom" ? bottom : top]) {
-      const m = new THREE.Mesh(strips(list, y), mat); model.add(m); groups.changes.push(m); }
+      const m = new THREE.Mesh(strips(list, y), mat); model.add(m); groups.changes.push(m); made.strips++; }
   }
   scene.add(model);
+  let meshesAfter = 0;
+  model.traverse((o) => { if (o.isMesh) meshesAfter++; });
+  const tBuilt = performance.now(), ms = (a, b) => Math.round(b - a);
+  window.kigit3dMerge = { meshes_before: meshesBefore, meshes_after: meshesAfter, ms: ms(tModels, tBuilt) };
+  window.kigit3dDiffLoad = { total_ms: ms(t0, tBuilt), data_ms: ms(t0, tData), models_ms: ms(tData, tModels),
+    build_ms: ms(tModels, tBuilt), old_model: !!old, changed_parts: changed.length,
+    ghosts: made.ghosts, strips: made.strips };
   // The legend: what changed, with its colour.
   const leg = document.getElementById("legend"), add = (c, t) => { if (!t) return; const s = document.createElement("span"); s.style.setProperty("--c", c); s.textContent = t; leg.append(s); };
   const n = (k, one, many) => counts[k] ? `${counts[k]} ${counts[k] === 1 ? one : many}` : "";

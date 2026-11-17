@@ -63,7 +63,7 @@ def test_save_find_and_reload(tmp_path: Path) -> None:
     assert r.id and path == d / f"{r.id}.md"  # given an ID, which is its file name
     assert not list(d.glob("*.tmp"))
     assert r.updated
-    (d / "README.md").write_text("Not a review\n")
+    (d / "README.md").write_text("Not a review\n", encoding="utf-8")
     assert review.all_reviews(tmp_path) == {COMMIT: path}  # index.md and README.md aren't reviews
     back = review.load(path)
     assert back.id == r.id and back.notes[0].anchor == Anchor("pcb", "footprint", "U3")
@@ -108,7 +108,7 @@ def test_notes_from_before_times_were_kept(tmp_path: Path) -> None:
     d = tmp_path / "reviews"
     d.mkdir()
     path = d / "x.md"
-    path.write_text(review.dumps(r))
+    path.write_text(review.dumps(r), encoding="utf-8")
     review.save(tmp_path, r, path)
     n = review.load(path).notes[0]
     assert (n.created, n.edited) == ("", "")
@@ -130,7 +130,7 @@ def test_index_lists_every_review(tmp_path: Path) -> None:
 
 def test_new_ids_are_unique(tmp_path: Path, monkeypatch) -> None:
     (tmp_path / "reviews").mkdir()
-    (tmp_path / "reviews" / "aaaaaaaa.md").write_text("x")
+    (tmp_path / "reviews" / "aaaaaaaa.md").write_text("x", encoding="utf-8")
     ids = iter(["aaaaaaaa", "bbbbbbbb"])
     monkeypatch.setattr(review.secrets, "token_hex", lambda n: next(ids))
     assert review.new_id(tmp_path) == "bbbbbbbb"

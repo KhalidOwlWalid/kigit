@@ -374,6 +374,9 @@ at once. localStorage settings are per origin, so per port.
 - Python: `requires-python = ">=3.10,<3.14"`: NiceGUI's vbuild calls
   `pkgutil.find_loader`, gone in 3.14 (CI's uv picked 3.14 and the GUI
   tests died on import). Lift it when NiceGUI drops vbuild.
+- Always pass `encoding="utf-8"` to `read_text`/`write_text`/`open`, in
+  tests too: Windows defaults to cp1252 and mangles `·`, `→` and the like
+  (CI failed on a notebook log line that way).
 - Tests: NiceGUI's harness fails a test on any error-level log, so
   user-facing failures are logged as warnings. Wait for a button to be
   enabled, or the iframe `src` to change, instead of sleeping.
@@ -484,7 +487,10 @@ at once. localStorage settings are per origin, so per port.
   and CM5), so no alignment is needed. GPU: `WEBGL_debug_renderer_info`'s
   renderer, classed good / built-in ("meh") / none (SwiftShader, llvmpipe,
   Basic Render); none or built-in drops the pixel ratio to 1 (none also
-  drops antialiasing). `window.kigit3dDiff` has the counts.
+  drops antialiasing). `window.kigit3dDiff` has the counts. Render
+  stats (S, `?stats=1`): the 3D view's, copied in (`redraw` goes through
+  `stats.draw()`), plus `diff` (`window.kigit3dDiffLoad`: changed parts,
+  ghosts, strip meshes, load ms split into data / models / build).
 - Landing page: `open_folder(folder, startup=True)` (from `index()`)
   shows it instead of an error when the start folder has no project with a
   board (none at all, or only a .kicad_pro, like this repo's fixtures); an

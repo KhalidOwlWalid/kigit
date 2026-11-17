@@ -117,7 +117,7 @@ async def test_empty_folder_is_flagged(user: User, monkeypatch, tmp_path: Path) 
 async def test_start_in_a_project_without_board_shows_landing(user: User, monkeypatch, tmp_path: Path) -> None:
     """A .kicad_pro without a board (like the kigit repo's test fixtures):
     nothing to open, so kigit gui starts on the landing page."""
-    (tmp_path / "x.kicad_pro").write_text("{}")
+    (tmp_path / "x.kicad_pro").write_text("{}", encoding="utf-8")
     await open_at(user, monkeypatch, str(tmp_path))
     await user.should_see(marker="landing", retries=50)
     user.find(marker="open-button").click()  # opened on purpose: it says why
@@ -127,8 +127,8 @@ async def test_start_in_a_project_without_board_shows_landing(user: User, monkey
 async def test_project_three_levels_down_is_not_found(user: User, monkeypatch, tmp_path: Path) -> None:
     deep = tmp_path / "a" / "b" / "c"
     deep.mkdir(parents=True)
-    (deep / "x.kicad_pro").write_text("{}")
-    (deep / "x.kicad_pcb").write_text("(kicad_pcb)")
+    (deep / "x.kicad_pro").write_text("{}", encoding="utf-8")
+    (deep / "x.kicad_pcb").write_text("(kicad_pcb)", encoding="utf-8")
     await open_at(user, monkeypatch, str(tmp_path))
     await user.should_see(marker="landing", retries=50)
     user.find(marker="open-button").click()
@@ -212,7 +212,7 @@ async def test_landing_cards_show_board_pictures(user: User, monkeypatch, tmp_pa
     # With KiCad 8 there's no 3D render: kigit makes a 2D .svg instead, and
     # that's the picture (the older .png goes).
     svg = sessions.thumb(board).with_suffix(".svg")
-    svg.write_text('<svg xmlns="http://www.w3.org/2000/svg"/>')
+    svg.write_text('<svg xmlns="http://www.w3.org/2000/svg"/>', encoding="utf-8")
     sessions.thumb(board).with_suffix(".png").unlink()
     assert sessions.thumb(board) == svg and sessions.thumb_fresh(board)
     response = await gui_app._session_thumb(svg.name)  # noqa: SLF001
@@ -256,8 +256,8 @@ async def test_try_the_example_project(user: User, monkeypatch, tmp_path: Path) 
 
 async def test_project_without_git_is_flagged(user: User, monkeypatch, tmp_path: Path) -> None:
     (tmp_path / "board").mkdir()
-    (tmp_path / "board" / "x.kicad_pro").write_text("{}")
-    (tmp_path / "board" / "x.kicad_pcb").write_text("(kicad_pcb)")
+    (tmp_path / "board" / "x.kicad_pro").write_text("{}", encoding="utf-8")
+    (tmp_path / "board" / "x.kicad_pcb").write_text("(kicad_pcb)", encoding="utf-8")
     await open_at(user, monkeypatch, str(tmp_path))
     await user.should_see("isn't in a git repository", retries=50)
 
@@ -265,8 +265,8 @@ async def test_project_without_git_is_flagged(user: User, monkeypatch, tmp_path:
 async def test_several_projects_ask_which(user: User, monkeypatch, tmp_path: Path) -> None:
     for name in ("one", "two"):
         (tmp_path / name).mkdir()
-        (tmp_path / name / f"{name}.kicad_pro").write_text("{}")
-        (tmp_path / name / f"{name}.kicad_pcb").write_text("(kicad_pcb)")
+        (tmp_path / name / f"{name}.kicad_pro").write_text("{}", encoding="utf-8")
+        (tmp_path / name / f"{name}.kicad_pcb").write_text("(kicad_pcb)", encoding="utf-8")
     await open_at(user, monkeypatch, str(tmp_path))
     await user.should_see("2 KiCad projects found", retries=50)
 
@@ -890,7 +890,7 @@ async def test_3d_diff_beta(user: User, monkeypatch) -> None:
 
     async def fake_diff_json(project: str, old: str, new: str, out: Path) -> None:
         data.append((old, new))
-        out.write_text('{"footprints": [], "items": []}')
+        out.write_text('{"footprints": [], "items": []}', encoding="utf-8")
 
     monkeypatch.setattr(kigit, "board3d", fake_board3d)
     monkeypatch.setattr(kigit, "diff_json", fake_diff_json)
@@ -922,6 +922,7 @@ async def test_3d_diff_beta(user: User, monkeypatch) -> None:
     page = board3d_diff.page(job)
     assert "beta" in page and f"/diffs/{job.new_glb}" in page and f"/diffs/{job.diff_json}" in page
     assert "UNMASKED_RENDERER_WEBGL" in page  # the graphics check
+    assert "statsTable" in page and "kigit3dStats" in page  # render stats (S)
 
 
 async def test_3d_build_shows_progress(user: User, monkeypatch, tmp_path: Path) -> None:
@@ -1448,7 +1449,7 @@ async def test_notebook(user: User, monkeypatch, tmp_path: Path) -> None:
     project = make_fixture_repo(tmp_path / "repo")
     vault = project / "reviews" / "Notes" / "Power"
     vault.mkdir(parents=True)
-    (vault / "Decoupling.md").write_text("# Decoupling\n\nC1 sits next to U1.\n")
+    (vault / "Decoupling.md").write_text("# Decoupling\n\nC1 sits next to U1.\n", encoding="utf-8")
     await open_at(user, monkeypatch, str(project))
     await user.should_see("Pick two commits on the left", retries=50)
     rows = commit_table(user).rows
@@ -1466,11 +1467,11 @@ async def test_notebook(user: User, monkeypatch, tmp_path: Path) -> None:
     with user.client:
         marked(user, "notebook-text").value = "# Decoupling\n\nC1 sits next to U1. 100n is enough."
     for _ in range(30):  # saved by itself, shortly after typing stops
-        if "100n" in (vault / "Decoupling.md").read_text():
+        if "100n" in (vault / "Decoupling.md").read_text(encoding="utf-8"):
             break
         await asyncio.sleep(0.1)
-    assert "100n is enough" in (vault / "Decoupling.md").read_text()
-    assert (vault / "Decoupling.md").read_text().startswith("# Decoupling\n")
+    assert "100n is enough" in (vault / "Decoupling.md").read_text(encoding="utf-8")
+    assert (vault / "Decoupling.md").read_text(encoding="utf-8").startswith("# Decoupling\n")
 
     emit(user, "kigit_quick_note", None)  # N
     await user.should_see("About C1")
@@ -1485,7 +1486,7 @@ async def test_notebook(user: User, monkeypatch, tmp_path: Path) -> None:
         if (vault / "Logs.md").exists():
             break
         await asyncio.sleep(0.1)
-    text = (vault / "Logs.md").read_text()
+    text = (vault / "Logs.md").read_text(encoding="utf-8")
     assert text.startswith("## ") and "Checked the decoupling (Footprint C1" in text
 
 
@@ -1515,7 +1516,7 @@ async def test_notebook_browse_rename_delete(user: User, monkeypatch, tmp_path: 
     project = make_fixture_repo(tmp_path / "repo")
     vault = project / "reviews" / "Owl" / "System"
     vault.mkdir(parents=True)
-    (vault / "USB.md").write_text("# USB\n\nCH340.\n")
+    (vault / "USB.md").write_text("# USB\n\nCH340.\n", encoding="utf-8")
     await open_at(user, monkeypatch, str(project))
     await user.should_see("Pick two commits on the left", retries=50)
     user.find(marker="notebook-button").click()
@@ -1565,7 +1566,7 @@ async def test_notebook_in_its_own_tab(user: User, monkeypatch, tmp_path: Path) 
 
     project = make_fixture_repo(tmp_path / "repo")
     (project / "reviews" / "Notes").mkdir(parents=True)
-    (project / "reviews" / "Notes" / "Decoupling.md").write_text("# Decoupling\n\nC1 next to U1.\n")
+    (project / "reviews" / "Notes" / "Decoupling.md").write_text("# Decoupling\n\nC1 next to U1.\n", encoding="utf-8")
     await open_at(user, monkeypatch, str(project))
     await user.should_see("Pick two commits on the left", retries=50)
     opened = []

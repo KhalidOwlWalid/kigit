@@ -78,6 +78,7 @@ GROUPS: list[tuple[str, str, list[Shortcut]]] = [
         Shortcut(("U",), "Fade the parts that didn't change", ("gui/kigit_gui/board3d_diff.py", 'k === "u"')),
         Shortcut(("T", "B", "3", "F"), "Top, bottom, angled, fit", ("gui/kigit_gui/board3d_diff.py", 'k === "t"')),
         Shortcut(("M", "K", "P"), "Mask, silkscreen, parts", ("gui/kigit_gui/board3d_diff.py", 'k === "m"')),
+        Shortcut(("S",), "Render stats", ("gui/kigit_gui/board3d_diff.py", 'k === "s"')),
     ]),
     ("Reviews page", "menu_book", [
         Shortcut(("/",), "Search", ("gui/kigit_gui/review_doc.py", 'e.key === "/"')),

@@ -16,7 +16,7 @@ def test_estimate_from_the_last_builds(tmp_path: Path, monkeypatch) -> None:
     assert buildtime.estimate(board, n=3) == 25 * 1.5  # three at once: each slower
     buildtime.record(board, 1)  # too quick to mean anything
     assert buildtime.estimate(board) == 25
-    (tmp_path / "times.json").write_text("not json")
+    (tmp_path / "times.json").write_text("not json", encoding="utf-8")
     assert buildtime.estimate(board) is None  # a broken file is just forgotten
 
 

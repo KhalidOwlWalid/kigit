@@ -71,9 +71,9 @@ def test_side_by_side_route() -> None:
 
 def test_cached_model_names(tmp_path) -> None:
     board = tmp_path / "b.kicad_pcb"
-    board.write_text("x")
+    board.write_text("x", encoding="utf-8")
     assert app.board3d_name(str(board), "a" * 40) == app.board3d_name(str(board), "a" * 40)
     assert app.board3d_name(str(board), "a" * 40) != app.board3d_name(str(board), "b" * 40)
     local = app.board3d_name(str(board), app.LOCAL)
-    board.write_text("changed")  # the working tree changed: a new model
+    board.write_text("changed", encoding="utf-8")  # the working tree changed: a new model
     assert app.board3d_name(str(board), app.LOCAL) != local

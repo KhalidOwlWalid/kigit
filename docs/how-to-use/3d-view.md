@@ -91,6 +91,7 @@ While comparing two commits, press **3D** in the header to dock the board in 3D 
 - The legend in the corner counts them. **Changes** (++c++) hides or shows the marks, **Fade others** (++u++) fades the parts that didn't change, and Mask, Silk and Parts (++m++, ++k++, ++p++) work as in the 3D view.
 - It uses the same models as the 3D view, so a board already made there isn't made again. The tab waits while KiCad makes them.
 - The bottom corner says which **graphics chip** draws the page: a dedicated GPU (fine), built-in laptop graphics (big boards may lag), or none, where your CPU draws everything and it will be slow. With weak graphics, kigit draws at a lower resolution to keep it moving.
+- ++s++ shows the same [render stats](#if-it-feels-slow) as the 3D view, plus what the diff added (changed parts kept apart, ghosts, strips) and how long it took to load (data, models, building the scene).
 - Zones, silkscreen and the schematic aren't marked in 3D: the 2D comparison shows those.
 
 It works for [Compare folders](../examples/without-git.md) too. If no tab opens, allow pop-ups for the kigit page.

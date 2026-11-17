@@ -38,7 +38,7 @@ def make_fixture_repo(dest: Path) -> Path:
     git("add", "-A")
     git("commit", "-q", "-m", "v1: first board", date="2025-01-10")
 
-    (dest / "README.md").write_text("Demo project for the kigit tests.\n")
+    (dest / "README.md").write_text("Demo project for the kigit tests.\n", encoding="utf-8")
     git("add", "-A")
     git("commit", "-q", "-m", "docs only", date="2025-02-01")
 

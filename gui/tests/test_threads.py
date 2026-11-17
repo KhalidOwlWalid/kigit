@@ -52,7 +52,7 @@ def test_order_and_counts(tmp_path: Path) -> None:
     threads.add(tmp_path, b.id, "x", C1, "", "done")
     assert [t.title for t in threads.all_threads(tmp_path)] == ["c", "b", "a"]  # attention first, accepted last
     assert threads.counts(threads.all_threads(tmp_path)) == {"open": 1, "done": 1, "accepted": 1}
-    (threads.folder(tmp_path) / "junk.md").write_text("not a discussion")
+    (threads.folder(tmp_path) / "junk.md").write_text("not a discussion", encoding="utf-8")
     assert len(threads.all_threads(tmp_path)) == 3  # other files are skipped
     assert threads.all_threads(tmp_path / "nowhere") == []
 

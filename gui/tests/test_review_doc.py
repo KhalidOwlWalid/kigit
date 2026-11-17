@@ -91,7 +91,7 @@ def test_review_page_has_its_notes(tmp_path: Path) -> None:
 
 
 def test_named_after_the_kicad_project(tmp_path: Path) -> None:
-    (tmp_path / "owl.kicad_pro").write_text("{}")
+    (tmp_path / "owl.kicad_pro").write_text("{}", encoding="utf-8")
     assert "<title>owl</title>" in page(tmp_path)
 
 
@@ -195,8 +195,8 @@ def test_file_route(tmp_path: Path) -> None:
     make(tmp_path)
     (tmp_path / "reviews" / "docs").mkdir()
     (tmp_path / "reviews" / "docs" / "ds.pdf").write_bytes(b"%PDF")
-    (tmp_path / "reviews" / "docs" / "x.html").write_text("<script>1</script>")
-    (tmp_path / "secret.txt").write_text("no")
+    (tmp_path / "reviews" / "docs" / "x.html").write_text("<script>1</script>", encoding="utf-8")
+    (tmp_path / "secret.txt").write_text("no", encoding="utf-8")
     key = project_key(tmp_path)
     ok = asyncio.run(review_doc._file(key, "docs/ds.pdf"))  # noqa: SLF001
     assert ok.status_code == 200 and Path(ok.path).read_bytes() == b"%PDF" and ok.media_type == "application/pdf"
