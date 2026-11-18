@@ -19,6 +19,7 @@ struct Match {
     std::string error;
     std::optional<Offer> pick;
     std::vector<Offer> candidates;
+    std::vector<Offer> alternatives; // what the site suggests instead of a pick that's short or ending
 };
 
 // How a line is searched on a site: its own number there, else the MPN

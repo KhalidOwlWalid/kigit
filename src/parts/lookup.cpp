@@ -13,8 +13,14 @@
 namespace kigit::parts {
 
 const std::vector<std::string>& known_sites() {
-    static const std::vector<std::string> sites = {"mouser"};
+    static const std::vector<std::string> sites = {"mouser", "digikey"};
     return sites;
+}
+
+std::string site_name(const std::string& site) {
+    if (site == "mouser") return "Mouser";
+    if (site == "digikey") return "Digi-Key";
+    return site;
 }
 
 std::string line_key(const BomLine& l) {
@@ -35,13 +41,39 @@ std::string cache_key(const std::string& site, const std::string& term, bool by_
 }
 
 nlohmann::json match_json(const Match& m, int need) {
-    nlohmann::json c = nlohmann::json::array();
+    nlohmann::json c = nlohmann::json::array(), a = nlohmann::json::array();
     for (const auto& o : m.candidates) c.push_back(offer_json(o, need));
+    for (const auto& o : m.alternatives) a.push_back(offer_json(o, need));
     return {{"status", m.status},
             {"searched", m.searched},
             {"error", m.error},
             {"pick", m.pick ? offer_json(*m.pick, need) : nlohmann::json(nullptr)},
-            {"candidates", c}};
+            {"candidates", c},
+            {"alternatives", a}};
+}
+
+// A search through the cache. Returns false (and sets m.error) on an error.
+bool cached_search(const std::string& key, const LookupOptions& opt, Cache& cache, nlohmann::json& info,
+                   std::map<std::string, std::string>& stopped, const std::string& site,
+                   const std::function<Search()>& ask, std::vector<Offer>& found, std::string& error) {
+    std::optional<nlohmann::json> hit = opt.refresh ? std::nullopt : cache.get(key, opt.max_age);
+    if (hit) {
+        found = hit->get<std::vector<Offer>>();
+        info["cached"] = info["cached"].get<int>() + 1;
+        return true;
+    }
+    Search s = ask();
+    if (!s.error.empty()) {
+        error = s.error;
+        if (s.fatal) {
+            stopped[site] = s.error;
+            info["error"] = s.error;
+        }
+        return false;
+    }
+    found = s.offers;
+    cache.put(key, found);
+    return true;
 }
 
 std::string join_refs(const std::vector<std::string>& refs) {
@@ -52,16 +84,17 @@ std::string join_refs(const std::vector<std::string>& refs) {
 
 } // namespace
 
-nlohmann::json lookup(const Bom& bom, const LookupOptions& opt, Mouser* mouser, const std::string& mouser_problem,
-                      Cache& cache, const Progress& progress) {
+nlohmann::json lookup(const Bom& bom, const LookupOptions& opt, const std::map<std::string, Source*>& sources,
+                      const std::map<std::string, std::string>& problems, Cache& cache, const Progress& progress) {
     nlohmann::json sites = nlohmann::json::object();
     std::map<std::string, std::string> stopped; // site -> why it isn't asked any more
     for (const auto& site : opt.sites) {
-        sites[site] = {{"calls", 0}, {"cached", 0}, {"error", ""}};
+        sites[site] = {{"calls", 0}, {"cached", 0}, {"error", ""}, {"name", site_name(site)}};
+        auto src = sources.find(site);
         if (std::find(known_sites().begin(), known_sites().end(), site) == known_sites().end())
             stopped[site] = "kigit can't look up " + site + " yet";
-        else if (site == "mouser" && !mouser)
-            stopped[site] = mouser_problem;
+        else if (src == sources.end() || !src->second)
+            stopped[site] = problems.count(site) ? problems.at(site) : "no key for " + site_name(site);
         if (stopped.count(site)) sites[site]["error"] = stopped[site];
     }
 
@@ -86,32 +119,32 @@ nlohmann::json lookup(const Bom& bom, const LookupOptions& opt, Mouser* mouser, 
                 m.status = "not_found";
                 m.error = "nothing to search for";
             } else {
-                std::string key = cache_key(site, m.searched, by_words);
-                std::optional<nlohmann::json> cached = opt.refresh ? std::nullopt : cache.get(key, opt.max_age);
+                Source* src = sources.at(site);
                 std::vector<Offer> found;
-                if (cached) {
-                    found = cached->get<std::vector<Offer>>();
-                    sites[site]["cached"] = sites[site]["cached"].get<int>() + 1;
+                std::string error;
+                if (!cached_search(cache_key(site, m.searched, by_words), opt, cache, sites[site], stopped, site,
+                                   [&] { return by_words ? src->keyword(m.searched) : src->part_number(m.searched); },
+                                   found, error)) {
+                    m.status = "error";
+                    m.error = error;
                 } else {
-                    Search s = by_words ? mouser->keyword(m.searched) : mouser->part_number(m.searched);
-                    sites[site]["calls"] = mouser->calls();
-                    if (!s.error.empty()) {
-                        m.status = "error";
-                        m.error = s.error;
-                        if (s.fatal) {
-                            stopped[site] = s.error;
-                            sites[site]["error"] = s.error;
-                        }
-                    } else {
-                        found = s.offers;
-                        cache.put(key, found);
-                    }
-                }
-                if (m.status.empty()) {
                     Match c = choose(line, found, by_words, need);
                     c.searched = m.searched;
                     m = c;
+                    // Short or ending: what the site suggests instead.
+                    if (m.pick && src->has_substitutes() && !stopped.count(site) &&
+                        ((m.pick->stock >= 0 && m.pick->stock < need) || winding_down(*m.pick))) {
+                        const Offer pick = *m.pick;
+                        std::vector<Offer> subs;
+                        std::string sub_error;
+                        if (cached_search(site + "|sub|" + norm_pn(pick.sku.empty() ? pick.mpn : pick.sku), opt, cache,
+                                          sites[site], stopped, site, [&] { return src->substitutes(pick); }, subs,
+                                          sub_error))
+                            m.alternatives = rank(line, subs, need);
+                        if (m.alternatives.size() > 5) m.alternatives.resize(5);
+                    }
                 }
+                sites[site]["calls"] = src->calls();
             }
             lj["sites"][site] = match_json(m, need);
         }
@@ -157,7 +190,7 @@ std::string lookup_table(const nlohmann::json& r) {
         return s + std::string(w - s.size() + 1, ' ');
     };
     for (const auto& [site, info] : r["sites"].items()) {
-        out << site << ":\n";
+        out << site_name(site) << ":\n";
         if (!info["error"].get<std::string>().empty()) out << "  " << info["error"].get<std::string>() << "\n";
         out << "  " << cell("Need", 5) << cell("References", 18) << cell("Value", 12) << cell("Part", 22)
             << cell("Stock", 9) << cell("Unit", 9) << cell("Total", 10) << "Status\n";
@@ -177,6 +210,7 @@ std::string lookup_table(const nlohmann::json& r) {
                 }
                 if (p["short"].get<bool>()) status = "SHORT";
                 if (p["winding_down"].get<bool>()) status += " (" + p["lifecycle"].get<std::string>() + ")";
+                if (!m["alternatives"].empty()) status += "; " + std::to_string(m["alternatives"].size()) + " suggested instead";
             } else if (status == "choose") {
                 status = "choose (" + std::to_string(m["candidates"].size()) + " options)";
             } else if (status == "error") {

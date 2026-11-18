@@ -58,7 +58,7 @@ Pieces:
 | `git/` | `git` (log, show, resolve revisions, changed files), `locate` (find a board that moved or was renamed in history; skipped folders like `.history`) |
 | `pcb/` | `board` (load `.kicad_pcb`: items, footprints, zones, silkscreen), `diff` (PCB diff) |
 | `net/` | `http` (HTTPS through the `curl` program: `curl -K -` with the whole request, URL included, on stdin; `Http` is a function so tests pass a stand-in) |
-| `parts/` | part lookups: `offer` (`Offer`, `cost_at`, `parse_price`), `mouser` (Search API v1, paced), `match` (pick or choices), `store` (keys, cache in the app folder), `lookup` (a BOM through the cache, JSON, table) |
+| `parts/` | part lookups: `offer` (`Offer`, `cost_at`, `parse_price`), `source` (`Source`: a site; `send` paces calls), `mouser` (Search API v1), `digikey` (Product Information v4, token, substitutes), `match` (pick or choices), `store` (keys, cache in the app folder), `lookup` (a BOM through the cache, JSON, table) |
 | `sch/` | `schematic` (load `.kicad_sch` hierarchy, compute nets and buses), `sch_diff` (schematic diff), `netcheck` (compare with a KiCad netlist), `bom` (bill of materials: lines, part number fields, search queries and links) |
 | `report/` | `html` (JSON for the viewer and `--json`; embeds the viewer), `viewer_template.hpp.in` |
 | `commands/` | the CLI: `options` (parsing, `--help`), `common` (shared helpers: board paths, warnings, output paths, `git_board`), `summary` (terminal summary), `diff` (compare, also `--check-netlist`), `history` (`--log`, `--rewritten`), `board3d` (`--3d`), `example` (`kigit example`), `uninstall` (`kigit uninstall`), `bom` (`kigit bom`), `projects` (`--projects`), `gui` (`kigit gui`) |
@@ -256,7 +256,7 @@ at once. localStorage settings are per origin, so per port.
   manifest.json: root, files) and each file is written via a temp file and
   rename. `--restore DIR` (only a `.kigit/bom-backup/` folder) puts them
   back. Prints JSON on stdout.
-- `kigit bom --lookup [--boards N] [--site mouser] [--refresh]` (`parts/`):
+- `kigit bom --lookup [--boards N] [--site mouser,digikey] [--refresh]` (`parts/`):
   stock, price, lead time, lifecycle per line, only on request. HTTP is the
   `curl` program (`$KIGIT_CURL`, else PATH; on Windows 10+ too) via
   `platform::run_input`: the request goes as a curl config on stdin, so keys
@@ -274,8 +274,26 @@ at once. localStorage settings are per origin, so per port.
   (`KIGIT_LOOKUP_PACE_MS`, 0 in tests); a refused key, the limit or no
   network is `fatal` and skips the site's remaining lines. Line `key` is
   the GUI's `bom.line_key`. Tests: `test_parts` (stand-in Http), and
-  test_cli with a stand-in curl script (Unix). Digi-Key (OAuth client
-  credentials, substitutes) is next; LCSC has no public API.
+  test_cli with a stand-in curl script (Unix). LCSC and RS have no
+  public API. Sites are `Source`s (`site()`, `part_number`, `keyword`,
+  `substitutes` + `has_substitutes`); `lookup` takes a map site ->
+  Source and a map of why the others are missing; `--site` defaults to
+  every site with a key (`has_key`), else all (to say how to get one).
+  Digi-Key: token from `POST /v1/oauth2/token` (form, client
+  credentials; kept in memory until `expires_in` - 30 s, a 401 gets a new
+  one once), then `POST /products/v4/search/keyword` {Keywords, Limit,
+  Offset} for numbers and words alike (ExactMatches first) with
+  `X-DIGIKEY-Client-Id` and `X-DIGIKEY-Locale-Site/-Language/-Currency`.
+  One Offer per ProductVariation (`package`; Digi-Reel skipped: cut tape
+  plus a fee; Tape & Reel's `mult` = its minimum, a whole reel). A pick
+  that's short or `winding_down` gets `GET .../{DigiKey number}/
+  substitutions` (cached `digikey|sub|...`, 404 = none) as the match's
+  `alternatives` (`note` = SubstituteType). Login in `parts-keys.json`
+  as {"digikey": {client_id, client_secret, site, currency}};
+  `--set-key digikey` reads ID, secret, optional "SITE CURRENCY" lines.
+  Pace 600 ms (about 120 a minute). Checked against the real token
+  endpoint (a fake ID gets "client_id form parameter has incorrect
+  value"); not yet against a real reply.
 - `kigit bom [REV] [PATH] [--json | --csv] [-o FILE]` (`commands/bom.cpp`,
   `sch/bom`): a subcommand with its own options (like `uninstall`), run
   from `run()` in main.cpp so it's logged. Default the working tree, read
@@ -560,23 +578,27 @@ at once. localStorage settings are per origin, so per port.
   diff) calls `window.bomHover(ref)`. The 3D code is a trimmed copy of the
   3D diff's (merge by material, materials, picking), sized to its pane
   (ResizeObserver). Planned step 2: Digi-Key / Mouser API lookups (stock, price,
-  lifecycle, alternatives), keys in the app folder. Look up (Mouser):
+  lifecycle, alternatives), keys in the app folder. Look up (every site with a key):
   the page POSTs `/bom/{key}/lookup` {boards = Build qty, refresh =
   Shift}, which runs `bom.run_lookup` as a task (`Job.lookup`: running,
   done/total from kigit's "looking up i/n" stderr lines via
   `kigit.bom_lookup`'s Popen reader, result, error); the page polls GET
   `/bom/{key}/lookup` (also on load, so a reload keeps it). Rows match
-  by `key` (= `lineKey`). Mouser and Price columns sit before Search
-  (the links cell must stay last); `N choices` opens a `tr.choices` row
-  and Use posts MPN + Manufacturer drafts. Key: `/bom/{key}/keys` GET ->
-  `kigit bom --keys` (set/env only), POST -> `--set-key` with the key on
-  stdin (`_run(input=)`); never logged. Parts files follow
+  by `key` (= `lineKey`). Per site in the result, columns `site:<s>` and
+  `price:<s>`; `N choices` / `N instead` opens a `tr.choices` row
+  (opened keys `"<line>|<site>"`; alternatives above candidates) and Use
+  (`data-site`, `data-list`) posts MPN + Manufacturer drafts. Keys:
+  `/bom/{key}/keys` GET -> `kigit bom --keys` (set/env/name, Digi-Key's
+  site and currency; never a key), POST {site: mouser, key} or {site:
+  digikey, client_id, client_secret, locale_site, currency} ->
+  `kigit.bom_set_key(site, *lines)` on stdin (`_run(input=)`); never
+  logged. The Keys dialog does both sites. Parts files follow
   `KIGIT_LOG_DIR`'s parent like the GUI's, so GUI tests stay in temp.
   Layout: panels List/PCB/3D (`PANES`, header buttons + `[data-hide]`
   on pane bars; the last shown one can't be hidden), `kigit.bomPanes`
   {list, two, three}. Columns: `tableCols()` is every column ({id, th,
-  td}; ids `qty`, `refs` (fixed), `value`, `f:<field name>`, `mouser`,
-  `price`, `search`), `visibleCols()` drops `hiddenCols`
+  td}; ids `qty`, `refs` (fixed), `value`, `f:<field name>`,
+  `site:<s>` and `price:<s>` per looked-up site, `search`), `visibleCols()` drops `hiddenCols`
   (`kigit.bomHiddenCols`); the Columns button opens `#colmenu`. Code
   finds cells by class (`td.refs`, `td.links`), never by position.
 - 3D diff (beta, `board3d_diff.py`): separate from the 3D view, which

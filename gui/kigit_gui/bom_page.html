@@ -109,7 +109,8 @@ tr.choices td { background: var(--panel); padding: 4px 8px 10px 30px; cursor: de
 .cand button { padding: 1px 8px; font-size: 12px; }
 dialog { background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 10px; max-width: 30rem; }
 dialog::backdrop { background: rgba(0,0,0,.45); }
-dialog input { width: 100%; margin: 8px 0; } dialog .row { display: flex; gap: 8px; justify-content: flex-end; }
+dialog input { width: 100%; margin: 4px 0; } dialog h4 { margin: 14px 0 0; font-size: 13px; }
+dialog .sub { margin: 4px 0; } dialog .row { display: flex; gap: 8px; justify-content: flex-end; }
 dialog a { color: var(--link); }
 .foot { color: var(--faint); font-size: 12px; margin-top: 14px; }
 @media (max-width: 1000px) { #split { flex-direction: column; } #list { flex: none; height: 55%; }
@@ -131,8 +132,8 @@ dialog a { color: var(--link); }
     <label class="sub"><input id="dnp" type="checkbox"> DNP in export</label>
     <button id="addfield" title="Add a column for another part information field (e.g. Tolerance, Supplier)">+ Field</button>
     <button id="export" class="primary" title="A CSV for Digi-Key's BOM Manager or Mouser's BOM Tool">Export CSV</button>
-    <button id="lookup" title="Ask Mouser for stock, prices and lifecycle, for Build qty boards (about 2 s a line; answers are kept a day; Shift+click asks again)">Look up</button>
-    <button id="keybtn" title="Your Mouser API key">Key</button>
+    <button id="lookup" title="Ask Mouser and Digi-Key (those you have a key for) for stock, prices and lifecycle, for Build qty boards (answers are kept a day; Shift+click asks again)">Look up</button>
+    <button id="keybtn" title="Your Mouser and Digi-Key keys">Keys</button>
     <span id="lookstate"></span>
     <button id="colsbtn" title="Show or hide columns">Columns</button>
     <button id="showlist" class="on" title="The list of parts">List</button>
@@ -149,7 +150,7 @@ dialog a { color: var(--link); }
 <div class="foot" id="foot">Hover a line to see its parts on the board; click it to keep them lit. Edits are drafts, saved as you type in
 <code>%%DRAFTS_FILE%%</code>, until you write them into the schematic. kigit only writes part information fields (part numbers,
 manufacturer, distributors, fields you add): never values, footprints, the board or the wiring, and it checks the schematic is the same
-design before saving. The search links only open the distributors' sites; kigit itself only contacts Mouser when you press Look up.</div>
+design before saving. The search links only open the distributors' sites; kigit itself only contacts Mouser and Digi-Key when you press Look up.</div>
 <div id="writebar"><span class="what" id="what"></span><button id="discard">Discard</button><button id="undo" hidden>Undo</button>
   <button id="write" class="primary">Write to schematic</button></div>
 </main>
@@ -171,12 +172,28 @@ design before saving. The search links only open the distributors' sites; kigit 
 <div id="tip"></div>
 <div id="colmenu" role="menu" aria-label="Columns"></div>
 <dialog id="keydlg">
-  <b>Mouser API key</b>
-  <p class="sub">Look up needs a Search API key from your Mouser account: <i>My Account</i> &rarr; <i>APIs</i> (free).
-    kigit keeps it in <code>parts-keys.json</code> in its app folder, readable only by you, and never puts it in logs.</p>
-  <p class="sub" id="keyhave"></p>
-  <input id="keyin" type="password" autocomplete="off" placeholder="Paste the key" aria-label="Mouser API key">
-  <div class="row"><button id="keyrm">Remove</button><button id="keyno">Cancel</button><button id="keyok" class="primary">Save</button></div>
+  <b>Parts sites' keys</b>
+  <p class="sub">Look up asks every site you have a key for. Both are free. kigit keeps them in <code>parts-keys.json</code> in
+    its app folder, readable only by you, and never puts them in logs.</p>
+  <h4>Mouser <span class="faint" id="mhave"></span></h4>
+  <p class="sub">A Search API key from your Mouser account: <i>My Account</i> &rarr; <i>APIs</i>.</p>
+  <input id="keyin" type="password" autocomplete="off" placeholder="Mouser API key" aria-label="Mouser API key">
+  <div class="row"><button id="mrm">Remove Mouser's key</button></div>
+  <h4>Digi-Key <span class="faint" id="dhave"></span></h4>
+  <p class="sub">On <a href="https://developer.digikey.com/" target="_blank" rel="noopener">developer.digikey.com</a>: an
+    organization, then a <i>Production</i> app with <i>Product Information V4</i>. Its client ID and secret go here.</p>
+  <input id="dkid" type="text" autocomplete="off" spellcheck="false" placeholder="Client ID" aria-label="Digi-Key client ID">
+  <input id="dksecret" type="password" autocomplete="off" placeholder="Client secret" aria-label="Digi-Key client secret">
+  <label class="sub">Prices from <select id="dklocale" aria-label="Digi-Key site and currency">
+    <option value="US USD">digikey.com (USD)</option><option value="UK GBP">digikey.co.uk (GBP)</option>
+    <option value="DE EUR">digikey.de (EUR)</option><option value="FR EUR">digikey.fr (EUR)</option>
+    <option value="NL EUR">digikey.nl (EUR)</option><option value="IE EUR">digikey.ie (EUR)</option>
+    <option value="CA CAD">digikey.ca (CAD)</option><option value="AU AUD">digikey.com.au (AUD)</option>
+    <option value="JP JPY">digikey.jp (JPY)</option><option value="CN CNY">digikey.cn (CNY)</option>
+  </select></label>
+  <div class="row"><button id="drm">Remove Digi-Key's key</button></div>
+  <p class="sub" id="keyerr" style="color:var(--bad)"></p>
+  <div class="row"><button id="keyno">Cancel</button><button id="keyok" class="primary">Save</button></div>
 </dialog>
 <script>
 let DATA = %%DATA%%;
@@ -285,11 +302,12 @@ function tableCols() {
       td: (l) => `<td>${esc(l.value)}<div class="pkg">${esc(l.package)}</div>${l.description ? `<div class="desc">${esc(l.description)}</div>` : ""}</td>` },
     ...cols.map((c, ci) => ({ id: "f:" + c.name, label: c.label === c.name ? c.label : `${c.label} (${c.name})`,
       th: `<th title="${esc(c.name)}">${esc(c.label)}</th>`, td: (l, i) => `<td>${cell(l, c, i, ci)}</td>` })),
-    ...(LOOK ? [
-      { id: "mouser", label: "Mouser", th: `<th title="Mouser: the part, its stock and lifecycle">Mouser</th>`,
-        td: (l, i) => `<td class="stock">${stockCell(l, i)}</td>` },
-      { id: "price", label: "Price", th: `<th title="What the parts cost at Mouser for ${LOOK.summary.boards} board${LOOK.summary.boards === 1 ? "" : "s"}">Price</th>`,
-        td: (l) => `<td class="stock">${priceCell(l)}</td>` }] : []),
+    ...lookSites().flatMap((site) => [
+      { id: "site:" + site, label: siteName(site), th: `<th title="${esc(siteName(site))}: the part, its stock and lifecycle">${esc(siteName(site))}</th>`,
+        td: (l, i) => `<td class="stock">${stockCell(l, i, site)}</td>` },
+      { id: "price:" + site, label: `${siteName(site)} price`,
+        th: `<th title="What the parts cost at ${esc(siteName(site))} for ${LOOK.summary.boards} board${LOOK.summary.boards === 1 ? "" : "s"}">Price</th>`,
+        td: (l) => `<td class="stock">${priceCell(l, site)}</td>` }]),
     { id: "search", label: "Search links", th: `<th>Search</th>`, td: (l) => `<td class="links">${links(l)}</td>` },
   ];
 }
@@ -298,7 +316,7 @@ function colMenu() {
   const all = tableCols();
   $("colmenu").innerHTML = all.map((c) => `<label class="${c.fixed ? "fixed" : ""}"><input type="checkbox" data-col="${esc(c.id)}"` +
     `${c.fixed || !hiddenCols.has(c.id) ? " checked" : ""}${c.fixed ? " disabled" : ""}> ${esc(c.label)}</label>`).join("") +
-    (LOOK ? "" : `<div class="sep"></div><div class="faint" style="padding:2px 10px">Mouser and Price come with Look up.</div>`) +
+    (LOOK ? "" : `<div class="sep"></div><div class="faint" style="padding:2px 10px">Each site's part and price come with Look up.</div>`) +
     `<div class="sep"></div><button id="colsall">Show all</button>`;
 }
 function saveCols() {
@@ -336,7 +354,7 @@ function render() {
   $("rows").innerHTML = rows.map((l) => {
     const i = DATA.lines.indexOf(l);
     return `<tr data-i="${i}" class="${l.dnp ? "dnp" : ""}">` + shownCols.map((c) => c.td(l, i)).join("") +
-      `</tr>` + (opened.has(i) ? choicesRow(l, i, shownCols.length) : "");
+      `</tr>` + lookSites().map((site) => opened.has(`${i}|${site}`) ? choicesRow(l, i, shownCols.length, site) : "").join("");
   }).join("") || `<tr><td colspan="${shownCols.length}" class="empty">Nothing to show.</td></tr>`;
   stats();
   bar();
@@ -347,12 +365,14 @@ function stats() {
   $("stats").innerHTML = `<span><b>${lines.length}</b> lines</span><span><b>${DATA.summary.parts}</b> parts</span>` +
     (DATA.summary.dnp_parts ? `<span><b>${DATA.summary.dnp_parts}</b> not populated</span>` : "") +
     `<span style="color:${need ? "var(--warn)" : "var(--ok)"}"><b>${need}</b> need a part number</span>`;
-  const s = LOOK?.summary?.mouser;
-  if (s) $("stats").innerHTML += `<span title="Mouser, for ${LOOK.summary.boards} board(s): the parts found by their part number">` +
-    `Mouser: <b>${s.ok || 0}</b> found` + (s.choose ? `, <b>${s.choose}</b> to choose` : "") +
+  for (const site of lookSites()) {
+  const s = LOOK.summary[site];
+  if (s && !LOOK.sites[site].error) $("stats").innerHTML += `<span title="${esc(siteName(site))}, for ${LOOK.summary.boards} board(s): the parts found by their part number">` +
+    `${esc(siteName(site))}: <b>${s.ok || 0}</b> found` + (s.choose ? `, <b>${s.choose}</b> to choose` : "") +
     (s.short ? `, <b style="color:var(--bad)">${s.short}</b> short` : "") +
     (s.winding_down ? `, <b style="color:var(--warn)">${s.winding_down}</b> ending` : "") +
     (s.cost ? ` &middot; <b>${money(s.cost, s.currency)}</b>` : "") + `</span>`;
+  }
 }
 // The cells that differ from the schematic, to write.
 function pending() {
@@ -375,14 +395,17 @@ function bar() {
     $("write").hidden = $("discard").hidden = true; $("undo").hidden = false;
   } else b.className = "";
 }
-// -------------------------------------------------------- Look up (Mouser)
-// kigit bom --lookup's answer, by line key. Lines with a part number get
-// that part; lines without one get choices, and "Use" makes the choice a
+// ------------------------------------------------- Look up (Mouser, Digi-Key)
+// kigit bom --lookup's answer, by line key, per site. Lines with a part
+// number get that part; lines without one get choices; a part short or
+// ending gets the site's suggestions (Digi-Key). "Use" makes a choice a
 // draft (MPN and manufacturer), written like any other edit.
 let LOOK = null;
-const opened = new Set();  // lines whose choices are shown
+const opened = new Set();  // "line|site" whose choices are shown
 function setLook(r) { LOOK = r && r.lines ? { ...r, byKey: new Map(r.lines.map((x) => [x.key, x])) } : null; }
-const lookOf = (l) => LOOK?.byKey.get(lineKey(l))?.sites?.mouser;
+const lookSites = () => LOOK ? Object.keys(LOOK.sites) : [];
+const siteName = (site) => LOOK?.sites?.[site]?.name || site;
+const lookOf = (l, site) => LOOK?.byKey.get(lineKey(l))?.sites?.[site];
 function money(v, cur) {
   try { return new Intl.NumberFormat(undefined, { style: "currency", currency: cur || "USD", maximumFractionDigits: v < 1 ? 4 : 2 }).format(v); }
   catch { return v.toFixed(v < 1 ? 4 : 2) + (cur ? " " + cur : ""); }
@@ -390,58 +413,68 @@ function money(v, cur) {
 const count = (n) => Number(n).toLocaleString();
 function lifeChip(o) {
   if (!o.winding_down) return "";
-  return `<span class="chip warn" title="${esc(o.replacement ? "Mouser suggests " + o.replacement : "Look for another part")}">${esc(o.lifecycle)}</span>`;
+  return `<span class="chip warn" title="${esc(o.replacement ? "Suggested instead: " + o.replacement : "Look for another part")}">${esc(o.lifecycle)}</span>`;
 }
-function stockCell(l, i) {
-  const m = lookOf(l);
+function stockCell(l, i, site) {
+  const m = lookOf(l, site);
   if (!m) return `<span class="faint" title="Not in the last Look up (edited since?)">&ndash;</span>`;
-  const o = m.pick, n = m.candidates.length;
-  const more = n ? ` <button class="more" data-i="${i}">${opened.has(i) ? "hide" : (m.status === "choose" ? n + " choices" : m.status === "ok" ? "+" + n + " more" : n + " similar")}</button>` : "";
+  const o = m.pick, n = m.candidates.length + m.alternatives.length, key = `${i}|${site}`;
+  const label = m.alternatives.length ? `${m.alternatives.length} instead` : m.status === "choose" ? `${n} choices`
+    : m.status === "ok" ? `+${n} more` : `${n} similar`;
+  const more = n ? ` <button class="more" data-key="${key}" title="${m.alternatives.length ? `What ${esc(siteName(site))} suggests instead` : ""}">${opened.has(key) ? "hide" : label}</button>` : "";
   if (m.status === "dnp") return "";
   if (m.status === "skipped" || m.status === "error") return `<span class="faint" title="${esc(m.error)}">${m.status === "error" ? "error" : "&ndash;"}</span>`;
-  if (m.status === "not_found") return `<span class="chip need" title="Mouser has no ${esc(m.searched)}">not at Mouser</span>${more}`;
+  if (m.status === "not_found") return `<span class="chip need" title="${esc(siteName(site))} has no ${esc(m.searched)}">not at ${esc(siteName(site))}</span>${more}`;
   if (!o) return `<span class="faint">no part number:</span>${more}`;
-  return `<a href="${esc(o.url)}" target="_blank" rel="noopener" title="${esc(o.description)}">${esc(o.sku || o.mpn)}</a><br>` +
-    (o.short ? `<span class="short" title="Mouser has ${count(o.stock)}, you need ${count(LOOK.byKey.get(lineKey(l)).need)}">SHORT: ${count(o.stock)}</span>`
+  return `<a href="${esc(o.url)}" target="_blank" rel="noopener" title="${esc(o.description)}${o.package ? " · " + esc(o.package) : ""}">${esc(o.sku || o.mpn)}</a><br>` +
+    (o.short ? `<span class="short" title="${esc(siteName(site))} has ${count(o.stock)}, you need ${count(LOOK.byKey.get(lineKey(l)).need)}">SHORT: ${count(o.stock)}</span>`
              : `${count(o.stock)} in stock`) +
     (o.lead_weeks > 0 ? ` <span class="faint">${o.lead_weeks} wk</span>` : "") + ` ${lifeChip(o)}${more}`;
 }
-function priceCell(l) {
-  const o = lookOf(l)?.pick;
+function priceCell(l, site) {
+  const o = lookOf(l, site)?.pick;
   if (!o || !o.cost) return "";
   return `${money(o.cost.total, o.currency)}<div class="faint">${count(o.cost.buy)} &times; ${money(o.cost.unit, o.currency)}</div>`;
 }
-function choicesRow(l, i, span) {
-  const m = lookOf(l); if (!m) return "";
-  const rows = m.candidates.map((o, n) => `<tr><td class="num">${esc(o.mpn)}<div class="faint">${esc(o.manufacturer)}</div></td>` +
-    `<td>${esc(o.description)} ${lifeChip(o)}</td>` +
-    `<td class="stock">${o.short ? `<span class="short">${count(o.stock)}</span>` : count(o.stock)} in stock</td>` +
+function offerRows(list, i, site, which) {
+  return list.map((o, n) => `<tr><td class="num">${esc(o.mpn)}<div class="faint">${esc(o.manufacturer)}</div></td>` +
+    `<td>${o.note ? `<span class="chip ok">${esc(o.note)}</span> ` : ""}${esc(o.description)} ${lifeChip(o)}` +
+    `${o.package ? `<div class="faint">${esc(o.package)}</div>` : ""}</td>` +
+    `<td class="stock">${o.stock < 0 ? "" : (o.short ? `<span class="short">${count(o.stock)}</span>` : count(o.stock)) + " in stock"}</td>` +
     `<td class="stock">${o.cost ? money(o.cost.unit, o.currency) + " each" : ""}</td>` +
-    `<td><a href="${esc(o.url)}" target="_blank" rel="noopener">Mouser</a></td>` +
-    (EDITABLE ? `<td><button data-use="${i}" data-n="${n}" title="Put this MPN and manufacturer in the line's drafts">Use</button></td>` : "") + `</tr>`).join("");
-  const what = m.status === "choose" ? `Mouser's best matches for <b>${esc(m.searched)}</b> (kigit doesn't pick one for you):`
-    : m.status === "ok" ? "The same part in other packagings:" : `Similar parts (no exact <b>${esc(m.searched)}</b>):`;
-  return `<tr class="choices"><td colspan="${span}"><div class="faint">${what}</div><table class="cand">${rows}</table></td></tr>`;
+    `<td>${o.url ? `<a href="${esc(o.url)}" target="_blank" rel="noopener">${esc(siteName(site))}</a>` : ""}</td>` +
+    (EDITABLE ? `<td><button data-use="${i}" data-site="${site}" data-list="${which}" data-n="${n}" title="Put this MPN and manufacturer in the line's drafts">Use</button></td>` : "") + `</tr>`).join("");
+}
+function choicesRow(l, i, span, site) {
+  const m = lookOf(l, site); if (!m) return "";
+  const name = esc(siteName(site));
+  const what = m.status === "choose" ? `${name}'s best matches for <b>${esc(m.searched)}</b> (kigit doesn't pick one for you):`
+    : m.status === "ok" ? "The same part in other packagings:" : `Similar parts at ${name} (no exact <b>${esc(m.searched)}</b>):`;
+  return `<tr class="choices"><td colspan="${span}">` +
+    (m.alternatives.length ? `<div class="faint">${name} suggests instead (the pick is ${m.pick?.short ? "short" : "ending"}):</div>` +
+      `<table class="cand">${offerRows(m.alternatives, i, site, "alternatives")}</table>` : "") +
+    (m.candidates.length ? `<div class="faint">${what}</div><table class="cand">${offerRows(m.candidates, i, site, "candidates")}</table>` : "") +
+    `</td></tr>`;
 }
 $("rows").addEventListener("click", async (e) => {
   const more = e.target.closest("button.more");
-  if (more) { const i = +more.dataset.i; opened.has(i) ? opened.delete(i) : opened.add(i); render(); return; }
+  if (more) { const k = more.dataset.key; opened.has(k) ? opened.delete(k) : opened.add(k); render(); return; }
   const use = e.target.closest("button[data-use]"); if (!use) return;
-  const l = DATA.lines[+use.dataset.use], o = lookOf(l).candidates[+use.dataset.n], [mpn, maker] = columns();
+  const i = +use.dataset.use, l = DATA.lines[i], o = lookOf(l, use.dataset.site)[use.dataset.list][+use.dataset.n], [mpn, maker] = columns();
   try {
     for (const [c, v] of [[mpn, o.mpn], [maker, o.manufacturer]]) if (v) drafts = await post("drafts", { key: lineKey(l), field: c.name, value: v === current(l, c) ? null : v });
-    opened.delete(+use.dataset.use); render();
+    opened.delete(`${i}|${use.dataset.site}`); render();
   } catch (err) { alert("Not saved: " + err.message); }
 });
 function lookState(s) {
   const el = $("lookstate");
   el.className = s.error ? "err" : "";
-  if (s.running) el.textContent = `Asking Mouser... ${s.done}/${s.total} (one search every 2 s)`;
+  if (s.running) el.textContent = `Asking ${s.sites || "the sites"}... ${s.done}/${s.total}`;
   else if (s.error) el.textContent = s.error;
   else if (s.result) {
-    const site = s.result.sites?.mouser, b = +$("boards").value || 1;
-    el.className = site?.error ? "err" : "";
-    el.textContent = site?.error ? "Mouser: " + site.error
+    const errs = Object.values(s.result.sites || {}).filter((x) => x.error).map((x) => `${x.name}: ${x.error}`), b = +$("boards").value || 1;
+    el.className = errs.length ? "err" : "";
+    el.textContent = errs.length ? errs.join(" · ")
       : (b !== s.result.summary.boards ? `Prices are for ${s.result.summary.boards} board(s): Look up again for ${b}` : "");
   } else el.textContent = "";
   $("lookup").disabled = !!s.running;
@@ -454,28 +487,48 @@ async function pollLookup() {
   if (s.result) { setLook(s.result); render(); }
 }
 async function keys() { try { return await (await fetch(`/bom/${KEY}/keys`)).json(); } catch { return {}; } }
+// The keys dialog: Mouser's key, Digi-Key's client ID and secret (and its
+// site and currency). Keys go to kigit and are never shown again.
 function askKey() {
   return new Promise(async (done) => {
     const k = await keys(), d = $("keydlg");
-    $("keyhave").textContent = k.mouser?.env ? "KIGIT_MOUSER_API_KEY is set: kigit uses that instead of a saved key."
-      : k.mouser?.set ? "A key is saved. Paste another to replace it." : "No key saved yet.";
-    $("keyrm").hidden = !k.mouser?.set || k.mouser?.env;
-    $("keyin").value = "";
-    const close = (ok) => { d.close(); done(ok); };
-    const save = async (value) => {
-      try { await post("keys", { site: "mouser", key: value }); close(!!value); }
-      catch (e) { $("keyhave").textContent = "Not saved: " + e.message; }
+    const say = (site, env) => k[site]?.env ? `${env} is set: kigit uses that instead of a saved key.`
+      : k[site]?.set ? "Saved. Fill in to replace it." : "Not set.";
+    $("mhave").textContent = say("mouser", "KIGIT_MOUSER_API_KEY");
+    $("dhave").textContent = say("digikey", "KIGIT_DIGIKEY_CLIENT_ID");
+    $("mrm").hidden = !k.mouser?.set || k.mouser?.env;
+    $("drm").hidden = !k.digikey?.set || k.digikey?.env;
+    for (const id of ["keyin", "dkid", "dksecret"]) $(id).value = "";
+    $("dklocale").value = k.digikey?.set ? `${k.digikey.site} ${k.digikey.currency}` : "US USD";
+    if (![...$("dklocale").options].some((o) => o.value === $("dklocale").value)) $("dklocale").value = "US USD";
+    $("keyerr").textContent = "";
+    let saved = false;
+    const close = () => { d.close(); done(saved); };
+    const send = async (body) => {
+      try { await post("keys", body); saved = true; return true; }
+      catch (e) { $("keyerr").textContent = "Not saved: " + e.message; return false; }
     };
-    $("keyok").onclick = () => { const v = $("keyin").value.trim(); if (v) save(v); };
-    $("keyrm").onclick = () => save("");
-    $("keyno").onclick = () => close(false);
-    d.showModal(); $("keyin").focus();
+    $("keyok").onclick = async () => {
+      const m = $("keyin").value.trim(), id = $("dkid").value.trim(), secret = $("dksecret").value.trim();
+      if (id && !secret || secret && !id) { $("keyerr").textContent = "Digi-Key needs both the client ID and the secret."; return; }
+      const [site, currency] = $("dklocale").value.split(" ");
+      if (m && !(await send({ site: "mouser", key: m }))) return;
+      if (id && !(await send({ site: "digikey", client_id: id, client_secret: secret, locale_site: site, currency }))) return;
+      if (!id && k.digikey?.set && !k.digikey?.env && `${k.digikey.site} ${k.digikey.currency}` !== $("dklocale").value) {
+        $("keyerr").textContent = "To change Digi-Key's currency, enter the client ID and secret again."; return;
+      }
+      close();
+    };
+    $("mrm").onclick = async () => { if (await send({ site: "mouser", key: "" })) close(); };
+    $("drm").onclick = async () => { if (await send({ site: "digikey", client_id: "" })) close(); };
+    $("keyno").onclick = close;
+    d.showModal();
   });
 }
 $("keybtn").addEventListener("click", askKey);
 $("lookup").addEventListener("click", async (e) => {
   const k = await keys();
-  if (!k.mouser?.set && !(await askKey())) return;
+  if (!Object.values(k).some((x) => x?.set) && !(await askKey())) return;
   const boards = Math.max(1, parseInt($("boards").value, 10) || 1);
   try { lookState(await post("lookup", { boards, refresh: e.shiftKey })); pollLookup(); }
   catch (err) { lookState({ error: err.message }); }

@@ -3,7 +3,6 @@
 #include <spdlog/spdlog.h>
 
 #include <cctype>
-#include <thread>
 
 namespace kigit::parts {
 
@@ -89,34 +88,27 @@ std::vector<Offer> parse_mouser(const nlohmann::json& reply, std::string& error)
     return out;
 }
 
-Mouser::Mouser(std::string key, net::Http http, int pace_ms)
-    : key_(std::move(key)), http_(std::move(http)), pace_(pace_ms) {}
+Mouser::Mouser(std::string key, net::Http http, int pace_ms) : Source(std::move(http), pace_ms), key_(std::move(key)) {}
 
 Search Mouser::part_number(const std::string& pn) {
     return post("/search/partnumber", {{"SearchByPartRequest", {{"mouserPartNumber", pn}, {"partSearchOptions", "Exact"}}}});
 }
 
-Search Mouser::keyword(const std::string& words, int records) {
+Search Mouser::keyword(const std::string& words) {
     return post("/search/keyword",
                 {{"SearchByKeywordRequest",
-                  {{"keyword", words}, {"records", records}, {"startingRecord", 0}, {"searchOptions", "None"}}}});
+                  {{"keyword", words}, {"records", 10}, {"startingRecord", 0}, {"searchOptions", "None"}}}});
 }
 
 Search Mouser::post(const std::string& path, const nlohmann::json& body) {
     Search s;
-    if (calls_ > 0) {
-        auto wait = pace_ - (std::chrono::steady_clock::now() - last_);
-        if (wait > std::chrono::milliseconds(0)) std::this_thread::sleep_for(wait);
-    }
     net::HttpRequest rq;
     rq.method = "POST";
     rq.url = std::string(kBase) + path + "?apiKey=" + net::url_encode(key_);
     rq.headers = {"Content-Type: application/json", "Accept: application/json"};
     rq.body = body.dump();
     rq.secrets = {key_, net::url_encode(key_)};
-    ++calls_;
-    net::HttpResponse r = http_(rq);
-    last_ = std::chrono::steady_clock::now();
+    net::HttpResponse r = send(rq);
     spdlog::info("mouser: {} {} -> {}", path, body.dump(), r.status);
     if (r.status == 0) {
         s.error = net::redact(r.error, rq.secrets);

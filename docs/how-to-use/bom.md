@@ -38,32 +38,44 @@ The links only open the sites in your browser. A part number you've typed in (no
 
 ## Stock and prices
 
-**Look up** on the BOM page (or `kigit bom --lookup`) asks Mouser about each line: stock, price for the quantity you need, lead time and lifecycle (obsolete, end of life...). It's the only time kigit contacts a parts site, and only when you press it.
+**Look up** on the BOM page (or `kigit bom --lookup`) asks **Mouser** and **Digi-Key** about each line: stock, price for the quantity you need, lead time and lifecycle (obsolete, end of life...), and for a part that's short or ending, what Digi-Key suggests instead. It asks every site you have a key for. It's the only time kigit contacts a parts site, and only when you press it.
 
-You need a Mouser API key (free): in your Mouser account, **My Account** → **APIs**, ask for a **Search API** key. The first Look up asks for it (or press **Key**); on the command line, save it once:
+### Keys
+
+Both are free. The first Look up asks for them, or press **Keys** on the BOM page.
+
+- **Mouser**: in your Mouser account, **My Account** → **APIs**, ask for a **Search API** key.
+- **Digi-Key**: on [developer.digikey.com](https://developer.digikey.com/), sign in, make an **organization**, then a **Production** app with **Product Information V4** ticked. Its **client ID** and **client secret** are what kigit needs. Pick which Digi-Key site the prices come from (digikey.com in USD, digikey.co.uk in GBP, digikey.de in EUR...).
+
+On the command line:
 
 ```sh
-kigit bom --set-key mouser     # then paste the key and press Enter
+kigit bom --set-key mouser       # paste the key, Enter
+kigit bom --set-key digikey      # the client ID, Enter, the secret, Enter, then optionally "UK GBP", Enter
+kigit bom --keys                 # which sites have a key (never the keys)
 ```
 
-It's kept in `parts-keys.json` in the [app folder](../app-folder.md), readable only by you. `KIGIT_MOUSER_API_KEY` (an environment variable) is used instead when set. The key goes to `curl` (which kigit uses to talk to Mouser) on its standard input, never on a command line, and it isn't written to the logs.
+They're kept in `parts-keys.json` in the [app folder](../app-folder.md), readable only by you. Environment variables win when set: `KIGIT_MOUSER_API_KEY`, `KIGIT_DIGIKEY_CLIENT_ID` and `KIGIT_DIGIKEY_CLIENT_SECRET` (and `KIGIT_DIGIKEY_SITE`, `KIGIT_DIGIKEY_CURRENCY`). Keys go to `curl` (which kigit uses to talk to the sites) on its standard input, never on a command line, and they aren't written to the logs.
+
+### Looking up
 
 ```sh
-kigit bom --lookup               # a table
-kigit bom --lookup --boards 25   # price 25 boards
-kigit bom --lookup --json        # everything, for scripts
-kigit bom --lookup --refresh     # ask again, not from the last day's answers
+kigit bom --lookup                  # a table per site
+kigit bom --lookup --boards 25      # price 25 boards
+kigit bom --lookup --site digikey   # one site
+kigit bom --lookup --json           # everything, for scripts
+kigit bom --lookup --refresh        # ask again, not from the last day's answers
 ```
 
-On the page, Look up prices **Build qty** boards and adds two columns: **Mouser** (the part, its stock, lead time and lifecycle; **SHORT** in red when Mouser has too few) and **Price** (the total, and how many at what each). The header sums it up. A line without a part number shows **N choices**: open them and press **Use** to put that MPN and manufacturer in the line's drafts, then write them like any other edit. Shift+click Look up to ask Mouser again instead of using the last day's answers. Change Build qty and the page says to look up again (from the kept answers, so it's quick).
+On the page, Look up prices **Build qty** boards and adds two columns per site: the **part** (its number, stock, lead time and lifecycle; **SHORT** in red when the site has too few) and **Price** (the total, and how many at what each). The header sums up each site. A line without a part number shows **N choices**: open them and press **Use** to put that MPN and manufacturer in the line's drafts, then write them like any other edit. Shift+click Look up to ask again instead of using the last day's answers. Change Build qty and the page says to look up again (from the kept answers, so it's quick). Hide the columns you don't want with **Columns**.
 
-- **A line with a part number** (its Mouser number, else its MPN) gets that exact part. If Mouser sells it in several packagings, the one with enough stock comes first, then the cheapest.
+- **A line with a part number** (the site's own number, else its MPN) gets that exact part. If the site sells it in several packagings (Digi-Key's cut tape and reels), the one with enough stock comes first, then the cheapest.
 - **A line without one** (most resistors and capacitors) gets up to five **choices** from searching "10k 0603 resistor", ranked by stock, lifecycle and package. kigit doesn't pick one for you: put the one you want in the MPN column.
-- **SHORT** means Mouser has fewer than you need (the line's quantity × `--boards`). The price is for what you'd buy: at least Mouser's minimum, in its multiples, at that quantity's price break.
-- Parts that are obsolete, end of life or not for new designs say so, with Mouser's suggested replacement in the JSON.
+- **SHORT** means the site has fewer than you need (the line's quantity × `--boards`). The price is for what you'd buy: at least the minimum, in its multiples (a reel is a whole reel), at that quantity's price break.
+- **Short or ending** (obsolete, last time buy, not for new designs): Digi-Key's **substitutes** show as **N instead**, marked *Direct* (a drop-in) or *Upgrade* and the like, each with its stock and price and a **Use** button.
 - DNP lines aren't looked up.
 
-Mouser allows 30 searches a minute and 1000 a day, so kigit waits 2 seconds between searches and keeps the answers for a day (`parts-cache.json` in the app folder): asking again is instant and free. A refused key or the daily limit stops the lookup with a message, instead of trying every line.
+Answers are kept for a day (`parts-cache.json` in the app folder): asking again is instant and free. Mouser allows 30 searches a minute and 1000 a day, so kigit waits 2 seconds between them; Digi-Key allows about 120 a minute and 1000 a day (0.6 seconds). A refused key or a site's daily limit stops that site with a message, instead of trying every line; the other site carries on.
 
 ## Editing part numbers
 

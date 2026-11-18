@@ -15,10 +15,10 @@ kigit-bom.json (in git, so they go with the project): {"version": 2,
 Only made when asked (the header's BOM button); nothing runs in the
 background.
 
-Look up asks Mouser (kigit bom --lookup) for stock, prices and lifecycle,
-only when pressed; the answer is kept with the job for the page. The
-Mouser key goes to kigit on stdin (kigit bom --set-key); the page only
-learns whether one is set (kigit bom --keys).
+Look up asks Mouser and Digi-Key (kigit bom --lookup: each site with a
+key) for stock, prices and lifecycle, only when pressed; the answer is
+kept with the job for the page. Keys go to kigit on stdin (kigit bom
+--set-key); the page only learns whether one is set (kigit bom --keys).
 """
 
 from __future__ import annotations
@@ -64,13 +64,14 @@ class Lookup:
     done: int = 0
     total: int = 0
     boards: int = 1
+    sites: str = ""                 # "Mouser and Digi-Key": who's being asked
     result: dict | None = None
     error: str = ""
     task: asyncio.Task | None = None
 
     def state(self) -> dict:
         return {"running": self.running, "done": self.done, "total": self.total, "boards": self.boards,
-                "result": self.result, "error": self.error}
+                "sites": self.sites, "result": self.result, "error": self.error}
 
 
 jobs: dict[str, Job] = {}
@@ -283,12 +284,20 @@ async def _set_key(key: str, request: Request) -> Response:
     if _job(key) is None:
         return JSONResponse({"error": "gone"}, status_code=404)
     body = await request.json()
-    site, value = str(body.get("site", "")), str(body.get("key", ""))
-    if site != "mouser" or len(value) > 200 or "\n" in value:
+    site = str(body.get("site", ""))
+    if site == "mouser":
+        lines = [str(body.get("key", ""))]
+    elif site == "digikey":
+        cid = str(body.get("client_id", ""))
+        lines = [cid] if not cid.strip() else [cid, str(body.get("client_secret", "")),
+                                               f"{body.get('locale_site', 'US')} {body.get('currency', 'USD')}"]
+    else:
+        return JSONResponse({"error": f"kigit has no lookups for {site}"}, status_code=400)
+    if any(len(x) > 300 or "\n" in x or "\r" in x for x in lines):
         return JSONResponse({"error": "not a key kigit can keep"}, status_code=400)
     try:
-        await kigit.bom_set_key(site, value)
-        logs.log.info("bom: %s key %s", site, "saved" if value.strip() else "removed")  # never the key
+        await kigit.bom_set_key(site, *lines)
+        logs.log.info("bom: %s key %s", site, "saved" if lines[0].strip() else "removed")  # never the key
         return JSONResponse(await kigit.bom_keys())
     except kigit.KigitError as e:
         return JSONResponse({"error": str(e)}, status_code=500)
@@ -297,6 +306,11 @@ async def _set_key(key: str, request: Request) -> Response:
 async def run_lookup(job: Job, boards: int, refresh: bool) -> None:
     look = job.lookup
     look.running, look.done, look.total, look.error, look.boards = True, 0, len(job.data.get("lines", [])), "", boards
+    try:
+        names = [k.get("name", s) for s, k in (await kigit.bom_keys()).items() if k.get("set")]
+    except kigit.KigitError:
+        names = []
+    look.sites = " and ".join(names) or "the parts sites"
 
     def progress(done: int, total: int) -> None:
         look.done, look.total = done, total

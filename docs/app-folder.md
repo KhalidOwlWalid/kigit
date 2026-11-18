@@ -35,8 +35,8 @@ In the GUI, the :material-receipt-text: log button shows the log's full path and
 | `thumbnails/` | The board pictures on the landing page, one per project | the GUI (with KiCad) |
 | `mentions-seen.json` | Which [mentions](how-to-use/reviews.md#mentions) of your discussions you've been told about, per project (for the bell) | the GUI |
 | `3d-build-times.json` | How long each board's [3D model](how-to-use/3d-view.md#making-the-model) took to make, for the progress bar | the GUI |
-| `parts-keys.json` | Your API keys for [part lookups](how-to-use/bom.md#stock-and-prices) (Mouser), readable only by you | `kigit bom --set-key` |
-| `parts-cache.json` | Mouser's answers to part lookups, used for a day (dropped after a week) | `kigit bom --lookup` |
+| `parts-keys.json` | Your keys for [part lookups](how-to-use/bom.md#keys) (Mouser's API key, Digi-Key's client ID and secret), readable only by you | `kigit bom --set-key` |
+| `parts-cache.json` | Mouser's and Digi-Key's answers to part lookups, used for a day (dropped after a week) | `kigit bom --lookup` |
 | `gui-env/` | The GUI's Python and packages, set up the first time you run `kigit gui` | the installed kigit |
 | `example/` | The [example project](example.md), if you tried it from the GUI | the GUI |
 

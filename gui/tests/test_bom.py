@@ -125,7 +125,7 @@ def test_look_up_through_kigit_with_a_stand_in_curl(tmp_path: Path, monkeypatch)
 
     from kigit_gui import kigit
 
-    assert asyncio.run(kigit.bom_keys())["mouser"] == {"set": False, "env": False}
+    assert asyncio.run(kigit.bom_keys())["mouser"] == {"set": False, "env": False, "name": "Mouser"}
     asyncio.run(kigit.bom_set_key("mouser", " SECRET-1 "))
     keys = asyncio.run(kigit.bom_keys())
     assert keys["mouser"]["set"] and "SECRET-1" not in json.dumps(keys)
@@ -142,10 +142,18 @@ def test_look_up_through_kigit_with_a_stand_in_curl(tmp_path: Path, monkeypatch)
     assert one_k["need"] == 9  # 3 parts x 3 boards
     assert one_k["sites"]["mouser"]["status"] == "choose"
     assert one_k["sites"]["mouser"]["candidates"][0]["mpn"] == "RC0603FR-071KL"
+    assert list(state["result"]["sites"]) == ["mouser"]  # only the sites with a key
+    assert state["sites"] == "Mouser"
     assert "SECRET-1" not in (tmp_path / "args.log").read_text(encoding="utf-8")
 
+    asyncio.run(kigit.bom_set_key("digikey", "DK-ID", "DK-SECRET", "UK GBP"))
+    dk = asyncio.run(kigit.bom_keys())["digikey"]
+    assert dk["set"] and dk["site"] == "UK" and dk["currency"] == "GBP" and "DK-SECRET" not in json.dumps(dk)
+
     asyncio.run(kigit.bom_set_key("mouser", ""))
-    assert not asyncio.run(kigit.bom_keys())["mouser"]["set"]
+    asyncio.run(kigit.bom_set_key("digikey", ""))
+    keys = asyncio.run(kigit.bom_keys())
+    assert not keys["mouser"]["set"] and not keys["digikey"]["set"]
 
 
 def test_every_panel_and_column_can_be_hidden() -> None:
@@ -156,7 +164,7 @@ def test_every_panel_and_column_can_be_hidden() -> None:
         assert f'id="{button}"' in page
     assert 'data-hide="show2d"' in page and 'data-hide="show3d"' in page
     assert 'const PANES = ["showlist", "show2d", "show3d"]' in page
-    for col in ('id: "qty"', 'id: "value"', 'id: "f:" + c.name', 'id: "mouser"', 'id: "price"', 'id: "search"'):
+    for col in ('id: "qty"', 'id: "value"', 'id: "f:" + c.name', 'id: "site:" + site', 'id: "price:" + site', 'id: "search"'):
         assert col in page
     assert 'id: "refs", label: "References", fixed: true' in page  # always shown
     assert "children[1]" not in page and "lastElementChild" not in page  # cells by class, so hidden columns don't shift them

@@ -188,6 +188,22 @@ TEST_CASE("kigit bom --lookup: Mouser through curl, the key on stdin only, answe
     CHECK(static_cast<size_t>(std::count(args.begin(), args.end(), '\n')) == 2 * calls);
 
     CHECK(run_kigit("bom --no-log --lookup --boards 0 -C " + board).code == 2);
+
+    // Digi-Key: client ID, secret and locale, one per line on stdin.
+    std::string set_dk = "printf 'DK-ID\\nDK-SECRET\\nUK GBP\\n' | " + quote(KIGIT_BIN) + " bom --no-log --set-key digikey";
+    REQUIRE(run(set_dk).code == 0);
+    json dk = json::parse(read_text(keys))["digikey"];
+    CHECK(dk["client_id"] == "DK-ID");
+    CHECK(dk["client_secret"] == "DK-SECRET");
+    CHECK(dk["currency"] == "GBP");
+    status = parse(run_kigit("bom --no-log --keys"));
+    CHECK(status["digikey"]["set"] == true);
+    CHECK(status["digikey"]["site"] == "UK");
+    CHECK(status.dump().find("DK-SECRET") == std::string::npos);
+    CHECK(run("printf 'DK-ID\\n' | " + quote(KIGIT_BIN) + " bom --no-log --set-key digikey").code == 1); // no secret
+    REQUIRE(run("printf '\\n' | " + quote(KIGIT_BIN) + " bom --no-log --set-key digikey").code == 0);    // removed
+    CHECK(parse(run_kigit("bom --no-log --keys"))["digikey"]["set"] == false);
+    CHECK(json::parse(read_text(keys))["mouser"] == "MY-KEY"); // the other key stays
     for (const char* v : {"KIGIT_CURL", "XDG_STATE_HOME", "KIGIT_LOOKUP_PACE_MS"}) kigit::platform::set_env(v, "");
 }
 #endif

@@ -1,10 +1,11 @@
 #pragma once
 // Looks up every line of a BOM at the parts sites, through the cache.
-#include "parts/mouser.hpp"
+#include "parts/source.hpp"
 #include "parts/store.hpp"
 #include "sch/bom.hpp"
 
 #include <functional>
+#include <map>
 #include <string>
 #include <vector>
 
@@ -27,9 +28,13 @@ std::string line_key(const BomLine& line);
 using Progress = std::function<void(int, int, const std::string&)>;
 
 // {"lines": [...], "sites": {site: {calls, cached, error}}, "summary": {...}}.
-// mouser may be null (no key): its lines are then skipped with the reason.
-nlohmann::json lookup(const Bom& bom, const LookupOptions& opt, Mouser* mouser, const std::string& mouser_problem,
-                      Cache& cache, const Progress& progress = {});
+// A site in opt.sites without a source is skipped, with problems[site] as
+// the reason (no key, say).
+nlohmann::json lookup(const Bom& bom, const LookupOptions& opt, const std::map<std::string, Source*>& sources,
+                      const std::map<std::string, std::string>& problems, Cache& cache, const Progress& progress = {});
+
+// A site's name for people: "Mouser", "Digi-Key".
+std::string site_name(const std::string& site);
 
 // The lookup as a table for a terminal.
 std::string lookup_table(const nlohmann::json& result);

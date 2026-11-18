@@ -68,6 +68,7 @@ void to_json(nlohmann::json& j, const Offer& o) {
          {"description", o.description}, {"url", o.url},
          {"datasheet", o.datasheet}, {"lifecycle", o.lifecycle},
          {"replacement", o.replacement}, {"currency", o.currency},
+         {"package", o.package},     {"note", o.note},
          {"stock", o.stock},         {"min_qty", o.min_qty},
          {"mult", o.mult},           {"lead_weeks", o.lead_weeks},
          {"prices", prices}};
@@ -84,6 +85,8 @@ void from_json(const nlohmann::json& j, Offer& o) {
     o.lifecycle = j.value("lifecycle", "");
     o.replacement = j.value("replacement", "");
     o.currency = j.value("currency", "");
+    o.package = j.value("package", "");
+    o.note = j.value("note", "");
     o.stock = j.value("stock", -1L);
     o.min_qty = j.value("min_qty", 1);
     o.mult = j.value("mult", 1);

@@ -274,9 +274,12 @@ async def bom_keys() -> dict:
     return json.loads(out)
 
 
-async def bom_set_key(site: str, key: str) -> None:
-    """kigit bom --set-key: the key goes on stdin, never on a command line."""
-    await _run("bom", "--set-key", site, input=(key.strip() + "\n").encode())
+async def bom_set_key(site: str, *lines: str) -> None:
+    """kigit bom --set-key: the key goes on stdin, never on a command line.
+    Mouser: the key; Digi-Key: client ID, secret, "SITE CURRENCY". An empty
+    first line removes the site's key."""
+    text = "".join(line.strip() + "\n" for line in lines) or "\n"
+    await _run("bom", "--set-key", site, input=text.encode())
 
 
 # kigit bom --lookup's progress lines: "kigit: looking up 3/40 R1 R2"

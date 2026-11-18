@@ -68,6 +68,57 @@ void set_api_key(const std::string& site, const std::string& key) {
     write_json(keys_file(), keys, true);
 }
 
+namespace {
+
+std::string env(const char* name) {
+    const char* e = std::getenv(name);
+    return e ? e : "";
+}
+
+} // namespace
+
+DigiKeyLogin digikey_login() {
+    DigiKeyLogin l;
+    if (!env("KIGIT_DIGIKEY_CLIENT_ID").empty()) {
+        l.client_id = env("KIGIT_DIGIKEY_CLIENT_ID");
+        l.client_secret = env("KIGIT_DIGIKEY_CLIENT_SECRET");
+    } else {
+        nlohmann::json keys = read_json(keys_file());
+        auto d = keys.find("digikey");
+        if (d != keys.end() && d->is_object()) {
+            l.client_id = d->value("client_id", "");
+            l.client_secret = d->value("client_secret", "");
+            l.site = d->value("site", l.site);
+            l.currency = d->value("currency", l.currency);
+        }
+    }
+    if (!env("KIGIT_DIGIKEY_SITE").empty()) l.site = env("KIGIT_DIGIKEY_SITE");
+    if (!env("KIGIT_DIGIKEY_CURRENCY").empty()) l.currency = env("KIGIT_DIGIKEY_CURRENCY");
+    return l;
+}
+
+void set_digikey_login(const DigiKeyLogin& l) {
+    nlohmann::json keys = read_json(keys_file());
+    if (l.client_id.empty()) keys.erase("digikey");
+    else keys["digikey"] = {{"client_id", l.client_id}, {"client_secret", l.client_secret}, {"site", l.site}, {"currency", l.currency}};
+    write_json(keys_file(), keys, true);
+}
+
+bool has_key(const std::string& site) {
+    if (site == "digikey") {
+        DigiKeyLogin l = digikey_login();
+        return !l.client_id.empty() && !l.client_secret.empty();
+    }
+    return !api_key(site).empty();
+}
+
+bool key_from_env(const std::string& site) {
+    if (site == "digikey") return !env("KIGIT_DIGIKEY_CLIENT_ID").empty();
+    std::string var = "KIGIT_";
+    for (char c : site) var += static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+    return !env((var + "_API_KEY").c_str()).empty();
+}
+
 Cache::Cache(fs::path file) : file_(std::move(file)) {
     data_ = read_json(file_);
 }

@@ -1,6 +1,7 @@
 // Part lookups: prices, Mouser's replies, matching, the cache, and curl's config.
 #include "helpers.hpp"
 #include "net/http.hpp"
+#include "parts/digikey.hpp"
 #include "parts/lookup.hpp"
 #include "parts/match.hpp"
 #include "parts/mouser.hpp"
@@ -52,6 +53,38 @@ BomLine line(const std::string& value, int qty, const std::string& mpn = "") {
     l.query = value + " 0603 resistor";
     for (int i = 1; i <= qty; ++i) l.refs.push_back("R" + std::to_string(i));
     return l;
+}
+
+} // namespace
+
+namespace {
+
+// A Digi-Key product in a v4 keyword reply, as Digi-Key's docs show it.
+json dk_product(const std::string& mpn, long cut_stock, const std::string& status = "Active") {
+    return {{"Description", {{"ProductDescription", "RES 10K OHM 1% 1/10W 0603"}, {"DetailedDescription", "10 kOhms 1% 0.1W 0603"}}},
+            {"Manufacturer", {{"Id", 13}, {"Name", "YAGEO"}}},
+            {"ManufacturerProductNumber", mpn},
+            {"ProductUrl", "https://www.digikey.com/en/products/detail/yageo/" + mpn},
+            {"DatasheetUrl", "https://x/ds.pdf"},
+            {"QuantityAvailable", cut_stock + 50000},
+            {"ManufacturerLeadWeeks", "16"},
+            {"ProductStatus", {{"Id", 0}, {"Status", status}}},
+            {"ProductVariations",
+             {{{"DigiKeyProductNumber", "311-" + mpn + "CT-ND"}, {"PackageType", {{"Id", 2}, {"Name", "Cut Tape (CT)"}}},
+               {"QuantityAvailableforPackageType", cut_stock}, {"MinimumOrderQuantity", 1},
+               {"StandardPricing", {{{"BreakQuantity", 1}, {"UnitPrice", 0.1}, {"TotalPrice", 0.1}},
+                                    {{"BreakQuantity", 10}, {"UnitPrice", 0.03}, {"TotalPrice", 0.3}}}}},
+              {{"DigiKeyProductNumber", "311-" + mpn + "TR-ND"}, {"PackageType", {{"Id", 1}, {"Name", "Tape & Reel (TR)"}}},
+               {"QuantityAvailableforPackageType", 50000}, {"MinimumOrderQuantity", 5000},
+               {"StandardPricing", {{{"BreakQuantity", 5000}, {"UnitPrice", 0.002}, {"TotalPrice", 10.0}}}}},
+              {{"DigiKeyProductNumber", "311-" + mpn + "DKR-ND"}, {"PackageType", {{"Id", 243}, {"Name", "Digi-Reel®"}}},
+               {"QuantityAvailableforPackageType", cut_stock}, {"MinimumOrderQuantity", 1},
+               {"StandardPricing", {{{"BreakQuantity", 1}, {"UnitPrice", 0.1}, {"TotalPrice", 0.1}}}}}}}};
+}
+
+json dk_reply(std::vector<json> exact, std::vector<json> products = {}) {
+    return {{"Products", products}, {"ProductsCount", products.size()}, {"ExactMatches", exact},
+            {"SearchLocaleUsed", {{"Site", "UK"}, {"Language", "en"}, {"Currency", "GBP"}}}};
 }
 
 } // namespace
@@ -212,7 +245,7 @@ TEST_CASE("lookup: through the cache, DNP skipped, no key explained, totals") {
     Cache cache(tmp / "cache.json");
     LookupOptions opt;
     opt.boards = 2;
-    json r = lookup(bom, opt, &m, "", cache);
+    json r = lookup(bom, opt, {{"mouser", &m}}, {}, cache);
     CHECK(calls == 2);
     REQUIRE(r["lines"].size() == 3);
     const json& first = r["lines"][0]["sites"]["mouser"];
@@ -229,24 +262,24 @@ TEST_CASE("lookup: through the cache, DNP skipped, no key explained, totals") {
 
     cache.save();
     Cache again(tmp / "cache.json");
-    json r2 = lookup(bom, opt, &m, "", again);
+    json r2 = lookup(bom, opt, {{"mouser", &m}}, {}, again);
     CHECK(calls == 2); // all from the cache
     CHECK(r2["sites"]["mouser"]["cached"] == 2);
     CHECK(r2["lines"][0]["sites"]["mouser"]["pick"]["sku"] == "603-RC0603FR-0710KL");
     opt.refresh = true;
-    lookup(bom, opt, &m, "", again);
+    lookup(bom, opt, {{"mouser", &m}}, {}, again);
     CHECK(calls == 4);
     CHECK_FALSE(again.get("mouser|pn|RC0603FR0710KL", -1)); // too old for a max age below 0
 
-    json none = lookup(bom, LookupOptions{}, nullptr, "no Mouser API key", cache);
+    json none = lookup(bom, LookupOptions{}, {}, {{"mouser", "no Mouser API key"}}, cache);
     CHECK(none["lines"][0]["sites"]["mouser"]["status"] == "skipped");
     CHECK(none["sites"]["mouser"]["error"] == "no Mouser API key");
     CHECK(lookup_table(none).find("no Mouser API key") != std::string::npos);
 
-    LookupOptions dk;
-    dk.sites = {"digikey"};
-    json d = lookup(bom, dk, nullptr, "", cache);
-    CHECK(d["sites"]["digikey"]["error"].get<std::string>().find("can't look up digikey") != std::string::npos);
+    LookupOptions rs;
+    rs.sites = {"rs"};
+    json d = lookup(bom, rs, {}, {}, cache);
+    CHECK(d["sites"]["rs"]["error"].get<std::string>().find("can't look up rs") != std::string::npos);
 }
 
 TEST_CASE("a refused key stops asking for the rest of the run") {
@@ -259,11 +292,135 @@ TEST_CASE("a refused key stops asking for the rest of the run") {
     }, 0);
     TempDir tmp;
     Cache cache(tmp / "c.json");
-    json r = lookup(bom, LookupOptions{}, &m, "", cache);
+    json r = lookup(bom, LookupOptions{}, {{"mouser", &m}}, {}, cache);
     CHECK(calls == 1);
     CHECK(r["lines"][0]["sites"]["mouser"]["status"] == "error");
     CHECK(r["lines"][1]["sites"]["mouser"]["status"] == "skipped");
     CHECK(r["sites"]["mouser"]["error"].get<std::string>().find("refused") != std::string::npos);
+}
+
+TEST_CASE("Digi-Key replies: one offer per packaging, reels by the reel, no Digi-Reel") {
+    auto offers = parse_digikey(dk_reply({dk_product("RC0603FR-0710KL", 120, "Last Time Buy")}, {dk_product("RC0603FR-0710KL", 120)}));
+    REQUIRE(offers.size() == 2); // CT and TR; the same product again in Products isn't repeated
+    CHECK(offers[0].sku == "311-RC0603FR-0710KLCT-ND");
+    CHECK(offers[0].package == "Cut Tape (CT)");
+    CHECK(offers[0].stock == 120);
+    CHECK(offers[0].mpn == "RC0603FR-0710KL");
+    CHECK(offers[0].manufacturer == "YAGEO");
+    CHECK(offers[0].description == "10 kOhms 1% 0.1W 0603");
+    CHECK(offers[0].currency == "GBP");
+    CHECK(offers[0].lead_weeks == 16);
+    CHECK(offers[0].lifecycle == "Last Time Buy");
+    CHECK(winding_down(offers[0]));
+    CHECK(offers[1].mult == 5000);
+    CHECK(cost_at(offers[1], 10).buy == 5000);
+    CHECK(cost_at(offers[0], 10).unit == doctest::Approx(0.03));
+    CHECK(parse_digikey(dk_reply({dk_product("X", 1)}))[0].lifecycle.empty()); // "Active"
+
+    json subs = {{"ProductSubstitutesCount", 1},
+                 {"ProductSubstitutes", {{{"SubstituteType", "Direct"}, {"DigiKeyProductNumber", "13-NEW-ND"},
+                                          {"ManufacturerProductNumber", "AC0603FR-0710KL"}, {"Manufacturer", {{"Name", "YAGEO"}}},
+                                          {"Description", "RES 10K 0603"}, {"UnitPrice", "£0.08"}, {"QuantityAvailable", 90000},
+                                          {"ProductUrl", "https://x/new"}}}},
+                 {"SearchLocaleUsed", {{"Currency", "GBP"}}}};
+    auto s = parse_digikey_substitutes(subs);
+    REQUIRE(s.size() == 1);
+    CHECK(s[0].note == "Direct");
+    CHECK(s[0].mpn == "AC0603FR-0710KL");
+    CHECK(s[0].stock == 90000);
+    CHECK(s[0].prices[0].price == doctest::Approx(0.08));
+}
+
+TEST_CASE("Digi-Key client: a token first, locale headers, a new token on 401, secrets kept out") {
+    std::vector<net::HttpRequest> asked;
+    int api_calls = 0;
+    bool expire_once = true;
+    auto http = [&](const net::HttpRequest& rq) {
+        asked.push_back(rq);
+        if (rq.url.ends_with("/v1/oauth2/token"))
+            return net::HttpResponse{200, json{{"access_token", "TOKEN-" + std::to_string(asked.size())}, {"expires_in", 599}}.dump(), ""};
+        ++api_calls;
+        if (expire_once) {
+            expire_once = false;
+            return net::HttpResponse{401, "{}", ""};
+        }
+        if (rq.url.ends_with("/substitutions")) return net::HttpResponse{404, "{}", ""};
+        return net::HttpResponse{200, dk_reply({dk_product("RC0603FR-0710KL", 5)}).dump(), ""};
+    };
+    DigiKeyLogin login{"ID-1", "SECRET-1", "UK", "en", "GBP"};
+    DigiKey dk(login, http, 0);
+    Search s = dk.part_number("RC0603FR-0710KL");
+    CHECK(s.error.empty());
+    CHECK(s.offers.size() == 2);
+    REQUIRE(asked.size() == 4); // token, 401, token again, search
+    CHECK(asked[0].body.find("grant_type=client_credentials") != std::string::npos);
+    CHECK(asked[0].body.find("client_secret=SECRET-1") != std::string::npos);
+    const auto& rq = asked[3];
+    CHECK(rq.url == "https://api.digikey.com/products/v4/search/keyword");
+    CHECK(rq.method == "POST");
+    auto has = [&](const std::string& h) { return std::find(rq.headers.begin(), rq.headers.end(), h) != rq.headers.end(); };
+    CHECK(has("Authorization: Bearer TOKEN-3"));
+    CHECK(has("X-DIGIKEY-Client-Id: ID-1"));
+    CHECK(has("X-DIGIKEY-Locale-Site: UK"));
+    CHECK(has("X-DIGIKEY-Locale-Currency: GBP"));
+    CHECK(json::parse(rq.body)["Keywords"] == "RC0603FR-0710KL");
+
+    dk.keyword("10k 0603 resistor"); // the token is reused
+    CHECK(asked.size() == 5);
+    CHECK(dk.substitutes(s.offers[0]).offers.empty()); // 404: none, not an error
+    CHECK(asked.back().url == "https://api.digikey.com/products/v4/search/311-RC0603FR-0710KLCT-ND/substitutions");
+    CHECK(asked.back().method == "GET");
+
+    DigiKey bad(login, [&](const net::HttpRequest&) {
+        return net::HttpResponse{401, json{{"ErrorMessage", "Unauthorized"}, {"ErrorDetails", "Invalid clientId SECRET-1"}}.dump(), ""};
+    }, 0);
+    Search b = bad.keyword("x");
+    CHECK(b.fatal);
+    CHECK(b.error.find("refused the client ID and secret") != std::string::npos);
+    CHECK(b.error.find("SECRET-1") == std::string::npos);
+}
+
+TEST_CASE("lookup with Digi-Key and Mouser: a short or ending part gets Digi-Key's substitutes") {
+    TempDir tmp;
+    Bom bom;
+    bom.lines = {line("10k", 3, "RC0603FR-0710KL")};
+    auto dk_http = [&](const net::HttpRequest& rq) {
+        if (rq.url.ends_with("/token")) return net::HttpResponse{200, R"({"access_token":"T","expires_in":599})", ""};
+        if (rq.url.ends_with("/substitutions"))
+            return net::HttpResponse{200, json{{"ProductSubstitutes", {{{"SubstituteType", "Upgrade"}, {"DigiKeyProductNumber", "S-ND"},
+                {"ManufacturerProductNumber", "AC0603FR-0710KL"}, {"Manufacturer", {{"Name", "YAGEO"}}}, {"QuantityAvailable", 9000},
+                {"UnitPrice", 0.05}}}}}.dump(), ""};
+        return net::HttpResponse{200, dk_reply({dk_product("RC0603FR-0710KL", 2)}).dump(), ""}; // 2 cut, need 3
+    };
+    DigiKey dk({"id", "secret"}, dk_http, 0);
+    Mouser m("k", [&](const net::HttpRequest&) {
+        return net::HttpResponse{200, reply({mouser_part("603-RC0603FR-0710KL", "RC0603FR-0710KL", "500")}).dump(), ""};
+    }, 0);
+    Cache cache(tmp / "c.json");
+    LookupOptions opt;
+    opt.sites = {"mouser", "digikey"};
+    json r = lookup(bom, opt, {{"mouser", &m}, {"digikey", &dk}}, {}, cache);
+    const json& d = r["lines"][0]["sites"]["digikey"];
+    CHECK(d["status"] == "ok");
+    // Enough stock on a reel beats 2 on cut tape, but 5000 for 3 costs more: stock first.
+    CHECK(d["pick"]["sku"] == "311-RC0603FR-0710KLTR-ND");
+    CHECK(d["alternatives"].empty()); // the pick isn't short
+
+    LookupOptions dk_only;
+    dk_only.sites = {"digikey"};
+    dk_only.refresh = true;
+    Bom one;
+    one.lines = {line("10k", 3, "RC0603FR-0710KL")};
+    one.lines[0].digikey = "311-RC0603FR-0710KLCT-ND"; // its own Digi-Key number: cut tape, short
+    json s = lookup(one, dk_only, {{"digikey", &dk}}, {}, cache);
+    const json& c = s["lines"][0]["sites"]["digikey"];
+    CHECK(c["pick"]["short"] == true);
+    REQUIRE(c["alternatives"].size() == 1);
+    CHECK(c["alternatives"][0]["mpn"] == "AC0603FR-0710KL");
+    CHECK(c["alternatives"][0]["note"] == "Upgrade");
+    CHECK(r["lines"][0]["sites"]["mouser"]["status"] == "ok");
+    CHECK(r["sites"]["digikey"]["name"] == "Digi-Key");
+    CHECK(lookup_table(s).find("1 suggested instead") != std::string::npos);
 }
 
 TEST_CASE("curl's config: everything quoted, nothing on the command line") {

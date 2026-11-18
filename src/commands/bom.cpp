@@ -7,7 +7,9 @@
 #include "commands/common.hpp"
 #include "git/locate.hpp"
 #include "net/http.hpp"
+#include "parts/digikey.hpp"
 #include "parts/lookup.hpp"
+#include "parts/mouser.hpp"
 #include "parts/store.hpp"
 #include "sch/bom.hpp"
 #include "sch/fields.hpp"
@@ -22,6 +24,7 @@
 #include <fstream>
 #include <iostream>
 #include <map>
+#include <memory>
 #include <set>
 #include <sstream>
 #include <optional>
@@ -213,15 +216,20 @@ const char* kHelp =
     "  --force                write even if KiCad has the schematic open\n"
     "  --restore DIR          put back the files from a .kigit/bom-backup/ folder\n"
     "\n"
-    "  Looking parts up (needs a Mouser API key, free from your Mouser account):\n"
+    "  Looking parts up at Mouser and Digi-Key (free keys from each; see the docs):\n"
     "  --lookup               stock, prices and lifecycle for each line. Lines with a\n"
-    "                         part number get that part; lines without one get choices.\n"
+    "                         part number get that part; lines without one get choices;\n"
+    "                         parts short or ending get Digi-Key's suggested substitutes.\n"
     "                         Answers are kept a day (in kigit's app folder).\n"
     "  --boards N             how many boards to price for (default 1)\n"
-    "  --site LIST            sites to ask, comma separated (default: mouser)\n"
+    "  --site LIST            sites to ask, comma separated: mouser, digikey\n"
+    "                         (default: every site with a key)\n"
     "  --refresh              ask again even for answers kept from earlier\n"
-    "  --set-key SITE         save SITE's API key, read from stdin (empty removes it);\n"
-    "                         $KIGIT_MOUSER_API_KEY overrides the saved one\n"
+    "  --set-key SITE         save a site's key, read from stdin (empty removes it):\n"
+    "                         mouser: the API key; digikey: the client ID, then the\n"
+    "                         client secret, then optionally \"SITE CURRENCY\" (UK GBP),\n"
+    "                         one per line. $KIGIT_MOUSER_API_KEY, $KIGIT_DIGIKEY_CLIENT_ID\n"
+    "                         and _CLIENT_SECRET override the saved ones\n"
     "  --keys                 which sites have a key, as JSON (never the keys)\n"
     "\n"
     "  Part numbers are read from the usual field names: MPN, Manufacturer,\n"
@@ -231,13 +239,30 @@ const char* kHelp =
 int set_key(const std::string& site) {
     const auto& known = parts::known_sites();
     if (std::find(known.begin(), known.end(), site) == known.end())
-        throw std::runtime_error("kigit has no lookups for " + site + " (it knows: mouser)");
-    std::string key;
-    std::getline(std::cin, key);
-    while (!key.empty() && (key.back() == '\r' || key.back() == ' ' || key.back() == '\t')) key.pop_back();
-    while (!key.empty() && (key.front() == ' ' || key.front() == '\t')) key.erase(0, 1);
-    parts::set_api_key(site, key);
-    spdlog::info("bom: {} key {}", site, key.empty() ? "removed" : "saved");
+        throw std::runtime_error("kigit has no lookups for " + site + " (it knows: mouser, digikey)");
+    auto line = [] {
+        std::string s;
+        std::getline(std::cin, s);
+        while (!s.empty() && (s.back() == '\r' || s.back() == ' ' || s.back() == '\t')) s.pop_back();
+        while (!s.empty() && (s.front() == ' ' || s.front() == '\t')) s.erase(0, 1);
+        return s;
+    };
+    std::string key = line();
+    if (site == "digikey") {
+        parts::DigiKeyLogin l;
+        l.client_id = key;
+        l.client_secret = key.empty() ? "" : line();
+        if (!key.empty() && l.client_secret.empty()) throw std::runtime_error("--set-key digikey: the client secret goes on the second line");
+        std::stringstream locale(key.empty() ? "" : line());
+        std::string site_code, currency;
+        locale >> site_code >> currency;
+        if (!site_code.empty()) l.site = site_code;
+        if (!currency.empty()) l.currency = currency;
+        parts::set_digikey_login(l);
+    } else {
+        parts::set_api_key(site, key);
+    }
+    spdlog::info("bom: {} key {}", site, key.empty() ? "removed" : "saved"); // never the key
     std::cerr << "kigit: " << site << " key " << (key.empty() ? "removed" : "saved") << " in "
               << (parts::app_dir() / "parts-keys.json").string() << "\n";
     return 0;
@@ -251,22 +276,36 @@ nlohmann::json run_lookup(const Bom& bom, const std::string& sites_arg, int boar
     std::stringstream ss(sites_arg);
     for (std::string s; std::getline(ss, s, ',');)
         if (!s.empty()) opt.sites.push_back(s);
-    std::optional<parts::Mouser> mouser;
-    std::string problem;
-    std::string key = parts::api_key("mouser");
-    if (!key.empty()) {
-        int pace = 2100; // Mouser allows 30 calls a minute
-        if (const char* e = std::getenv("KIGIT_LOOKUP_PACE_MS"); e && *e) pace = std::atoi(e);
-        mouser.emplace(key, net::curl_http, pace);
+    if (opt.sites.empty()) { // every site with a key; none: all, to say how to get one
+        for (const auto& s : parts::known_sites())
+            if (parts::has_key(s)) opt.sites.push_back(s);
+        if (opt.sites.empty()) opt.sites = parts::known_sites();
+    }
+    int pace = -1; // each site's own unless set
+    if (const char* e = std::getenv("KIGIT_LOOKUP_PACE_MS"); e && *e) pace = std::atoi(e);
+    std::unique_ptr<parts::Mouser> mouser;
+    std::unique_ptr<parts::DigiKey> digikey;
+    std::map<std::string, parts::Source*> sources;
+    std::map<std::string, std::string> problems;
+    if (parts::has_key("mouser")) {
+        mouser = std::make_unique<parts::Mouser>(parts::api_key("mouser"), net::curl_http, pace < 0 ? 2100 : pace);
+        sources["mouser"] = mouser.get();
     } else {
-        problem = "no Mouser API key: get one in your Mouser account (My Account, APIs), then "
-                  "save it with `kigit bom --set-key mouser` (reads it from stdin)";
+        problems["mouser"] = "no Mouser API key: get one in your Mouser account (My Account, APIs), then "
+                             "save it with `kigit bom --set-key mouser` (reads it from stdin)";
+    }
+    if (parts::has_key("digikey")) {
+        digikey = std::make_unique<parts::DigiKey>(parts::digikey_login(), net::curl_http, pace < 0 ? 600 : pace);
+        sources["digikey"] = digikey.get();
+    } else {
+        problems["digikey"] = "no Digi-Key key: make an app on developer.digikey.com (Production, Product Information v4), "
+                              "then save its client ID and secret with `kigit bom --set-key digikey` (two lines on stdin)";
     }
     parts::Cache cache(parts::Cache::default_file());
     auto progress = [](int done, int total, const std::string& what) {
         if (done < total) std::cerr << "kigit: looking up " << (done + 1) << "/" << total << " " << what << "\n";
     };
-    nlohmann::json j = parts::lookup(bom, opt, mouser ? &*mouser : nullptr, problem, cache, progress);
+    nlohmann::json j = parts::lookup(bom, opt, sources, problems, cache, progress);
     cache.save();
     for (const auto& [site, info] : j["sites"].items())
         if (!info["error"].get<std::string>().empty()) warn(site + ": " + info["error"].get<std::string>());
@@ -299,7 +338,7 @@ int run_bom(int argc, char** argv) {
     std::string rev_arg, path_arg, project_arg, out_file, format = "table", write_arg, restore_arg;
     bool force = false, lookup = false, refresh = false, keys = false;
     int boards = 1;
-    std::string sites_arg = "mouser", set_key_arg;
+    std::string sites_arg, set_key_arg;
     for (int i = 0; i < argc; ++i) {
         std::string a = argv[i];
         if (a == "-h" || a == "--help") {
@@ -347,10 +386,12 @@ int run_bom(int argc, char** argv) {
     if (keys) {
         nlohmann::json j = nlohmann::json::object();
         for (const auto& site : parts::known_sites()) {
-            std::string var = "KIGIT_" + site + "_API_KEY";
-            for (auto& c : var) c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
-            const char* e = std::getenv(var.c_str());
-            j[site] = {{"set", !parts::api_key(site).empty()}, {"env", e && *e}};
+            j[site] = {{"set", parts::has_key(site)}, {"env", parts::key_from_env(site)}, {"name", parts::site_name(site)}};
+            if (site == "digikey") {
+                parts::DigiKeyLogin l = parts::digikey_login();
+                j[site]["site"] = l.site;
+                j[site]["currency"] = l.currency;
+            }
         }
         std::cout << j.dump() << "\n";
         return 0;
