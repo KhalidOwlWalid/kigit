@@ -168,3 +168,15 @@ def test_every_panel_and_column_can_be_hidden() -> None:
         assert col in page
     assert 'id: "refs", label: "References", fixed: true' in page  # always shown
     assert "children[1]" not in page and "lastElementChild" not in page  # cells by class, so hidden columns don't shift them
+
+
+def test_cells_wrap_and_columns_resize() -> None:
+    """Part number cells are text boxes that wrap (one line of text, no
+    line breaks); every column has a grip, widths are kept, Reset widths
+    puts them back."""
+    page = _page()
+    assert '<textarea class="cell' in page and "input.cell" not in page
+    assert 'class="grip" data-col=' in page
+    assert '"kigit.bomColWidths"' in page
+    assert 'id="resetw"' in page and 'id="colsreset"' in page
+    assert '<colgroup id="colgroup">' in page

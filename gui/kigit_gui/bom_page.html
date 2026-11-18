@@ -72,7 +72,14 @@ button.primary, button.on { border-color: var(--accent); color: var(--accent); }
 .box.one { stroke: #fff; }
 /* the table */
 table { width: 100%; border-collapse: collapse; }
-th { text-align: left; font-weight: 600; color: var(--muted); font-size: 12px; padding: 6px 8px; border-bottom: 1px solid var(--line);
+/* the list: fixed column widths (dragged at a header's right edge), cells wrap */
+#bom { table-layout: fixed; width: auto; }
+#bom td { overflow-wrap: anywhere; }
+th .grip { position: absolute; top: 0; right: 0; width: 8px; height: 100%; cursor: col-resize; z-index: 2; touch-action: none; }
+th .grip::after { content: ""; position: absolute; right: 0; top: 25%; height: 50%; border-left: 1px solid var(--line); }
+th:hover .grip::after, th .grip.drag::after { border-left: 0; border-right: 2px solid var(--accent); top: 0; height: 100%; }
+body.colresize, body.colresize * { cursor: col-resize !important; user-select: none; }
+th { overflow: visible; text-align: left; font-weight: 600; color: var(--muted); font-size: 12px; padding: 6px 8px; border-bottom: 1px solid var(--line);
   position: sticky; top: 0; background: var(--bg); z-index: 1; }
 td { padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
 tbody tr { cursor: pointer; }
@@ -87,9 +94,12 @@ tr.dnp td { opacity: .55; }
 .chip.ok { color: var(--ok); } .chip.picked { color: var(--accent); } .chip.need { color: var(--warn); } .chip.dnp { color: var(--faint); }
 .links a { display: block; color: var(--link); text-decoration: none; white-space: nowrap; }
 .links a:hover { text-decoration: underline; }
-input.cell { width: 100%; min-width: 6rem; padding: 3px 6px; font-size: 12px; }
-input.cell.mpn { min-width: 9rem; font-family: ui-monospace, Menlo, Consolas, monospace; }
-input.cell.changed { border-color: var(--accent); box-shadow: inset 3px 0 var(--accent); }
+textarea.cell { display: block; width: 100%; min-width: 0; padding: 3px 6px; font: inherit; font-size: 12px; line-height: 1.4;
+  resize: none; overflow: hidden; overflow-wrap: anywhere; white-space: pre-wrap; color: var(--text); background: var(--panel);
+  border: 1px solid var(--line); border-radius: 6px; }
+textarea.cell:focus { outline: none; border-color: var(--accent); }
+textarea.cell.mpn { font-family: ui-monospace, Menlo, Consolas, monospace; }
+textarea.cell.changed { border-color: var(--accent); box-shadow: inset 3px 0 var(--accent); }
 .ro { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; }
 #writebar { position: sticky; bottom: 0; z-index: 2; display: none; gap: 10px; align-items: center; flex-wrap: wrap;
   padding: 8px 10px; margin: 0 -12px; background: var(--panel); border-top: 1px solid var(--accent); }
@@ -136,6 +146,7 @@ dialog a { color: var(--link); }
     <button id="keybtn" title="Your Mouser and Digi-Key keys">Keys</button>
     <span id="lookstate"></span>
     <button id="colsbtn" title="Show or hide columns">Columns</button>
+    <button id="resetw" hidden title="Put every column back to its own width (double-click a column's edge for just that one)">Reset widths</button>
     <button id="showlist" class="on" title="The list of parts">List</button>
     <button id="show2d" class="on" title="The board in 2D beside the list">PCB</button>
     <button id="show3d" class="on" title="The board in 3D beside the list">3D</button>
@@ -143,7 +154,8 @@ dialog a { color: var(--link); }
 </header>
 <div id="split">
 <main id="list">
-<table>
+<table id="bom">
+  <colgroup id="colgroup"></colgroup>
   <thead><tr id="head"></tr></thead>
   <tbody id="rows"></tbody>
 </table>
@@ -283,9 +295,9 @@ function status(l) {
 }
 function cell(l, c, i, ci) {
   if (!EDITABLE) return `<span class="ro">${esc(current(l, c))}</span>`;
-  return `<input class="cell${ci === 0 ? " mpn" : ""}${changed(l, c) ? " changed" : ""}" data-i="${i}" data-c="${ci}" ` +
-    `value="${esc(shown(l, c))}" placeholder="${esc(c.label)}" aria-label="${esc(c.name)} for ${esc(l.refs.join(" "))}" ` +
-    `title="${esc(c.name)}${changed(l, c) ? ` (in the schematic: ${esc(current(l, c)) || "empty"})` : ""}">`;
+  return `<textarea class="cell${ci === 0 ? " mpn" : ""}${changed(l, c) ? " changed" : ""}" rows="1" spellcheck="false" ` +
+    `data-i="${i}" data-c="${ci}" placeholder="${esc(c.label)}" aria-label="${esc(c.name)} for ${esc(l.refs.join(" "))}" ` +
+    `title="${esc(c.name)}${changed(l, c) ? ` (in the schematic: ${esc(current(l, c)) || "empty"})` : ""}">${esc(shown(l, c))}</textarea>`;
 }
 // ------------------------------------------------------------- the columns
 // Every column of the table, by id; any but References can be hidden
@@ -317,7 +329,7 @@ function colMenu() {
   $("colmenu").innerHTML = all.map((c) => `<label class="${c.fixed ? "fixed" : ""}"><input type="checkbox" data-col="${esc(c.id)}"` +
     `${c.fixed || !hiddenCols.has(c.id) ? " checked" : ""}${c.fixed ? " disabled" : ""}> ${esc(c.label)}</label>`).join("") +
     (LOOK ? "" : `<div class="sep"></div><div class="faint" style="padding:2px 10px">Each site's part and price come with Look up.</div>`) +
-    `<div class="sep"></div><button id="colsall">Show all</button>`;
+    `<div class="sep"></div><button id="colsall">Show all</button><button id="colsreset">Reset widths</button>`;
 }
 function saveCols() {
   try { localStorage.setItem("kigit.bomHiddenCols", JSON.stringify([...hiddenCols])); } catch {}
@@ -330,7 +342,8 @@ $("colsbtn").addEventListener("click", (e) => {
   m.style.top = r.bottom + 4 + "px";
   m.style.left = Math.max(8, Math.min(r.left, innerWidth - m.offsetWidth - 8)) + "px";
 });
-$("colmenu").addEventListener("click", (e) => { e.stopPropagation(); if (e.target.id === "colsall") { hiddenCols.clear(); saveCols(); } });
+$("colmenu").addEventListener("click", (e) => { e.stopPropagation(); if (e.target.id === "colsall") { hiddenCols.clear(); saveCols(); }
+  if (e.target.id === "colsreset") { colWidths = {}; saveWidths(); render(); } });
 $("colmenu").addEventListener("change", (e) => {
   const id = e.target.dataset.col; if (!id) return;
   e.target.checked ? hiddenCols.delete(id) : hiddenCols.add(id); saveCols();
@@ -338,9 +351,59 @@ $("colmenu").addEventListener("change", (e) => {
 document.addEventListener("click", () => $("colmenu").classList.remove("on"));
 addEventListener("keydown", (e) => { if (e.key === "Escape") $("colmenu").classList.remove("on"); });
 
+// Column widths: each column's own, or as dragged (remembered in this
+// browser). The table is as wide as its columns; the list scrolls sideways.
+let colWidths = {};
+try { colWidths = JSON.parse(localStorage.getItem("kigit.bomColWidths") || "{}") || {}; } catch {}
+function defaultWidth(id) {
+  if (id === "qty") return 52;
+  if (id === "refs") return 170;
+  if (id === "value") return 150;
+  if (id === "search") return 84;
+  if (id.startsWith("price:")) return 120;
+  if (id.startsWith("site:")) return 210;
+  return id === "f:" + (columns()[0]?.name) ? 200 : 170;  // MPN a bit wider than the other fields
+}
+const widthOf = (id) => colWidths[id] || defaultWidth(id);
+function applyWidths(shownCols) {
+  $("colgroup").innerHTML = shownCols.map((c) => `<col data-col="${esc(c.id)}" style="width:${widthOf(c.id)}px">`).join("");
+  $("bom").style.width = shownCols.reduce((sum, c) => sum + widthOf(c.id), 0) + "px";
+  $("resetw").hidden = !Object.keys(colWidths).length;
+}
+function saveWidths() { try { localStorage.setItem("kigit.bomColWidths", JSON.stringify(colWidths)); } catch {} }
+// Text boxes as tall as their text (they wrap at the column's width).
+function fit(box) { box.style.height = "auto"; box.style.height = box.scrollHeight + 2 + "px"; }
+const fitAll = () => document.querySelectorAll("#rows textarea.cell").forEach(fit);
+addEventListener("resize", fitAll);
+// Drag a header's right edge to resize its column; double-click it for its own width.
+$("head").addEventListener("pointerdown", (e) => {
+  const grip = e.target.closest(".grip"); if (!grip) return;
+  e.preventDefault(); e.stopPropagation();
+  const id = grip.dataset.col, col = $("colgroup").querySelector(`col[data-col="${CSS.escape(id)}"]`);
+  const start = e.clientX, from = widthOf(id), others = $("bom").offsetWidth - from;
+  grip.setPointerCapture(e.pointerId); grip.classList.add("drag"); document.body.classList.add("colresize");
+  const move = (ev) => {
+    const w = Math.max(40, Math.round(from + ev.clientX - start));
+    colWidths[id] = w; col.style.width = w + "px"; $("bom").style.width = others + w + "px"; fitAll();
+  };
+  const up = () => {
+    grip.removeEventListener("pointermove", move); grip.removeEventListener("pointerup", up); grip.removeEventListener("pointercancel", up);
+    grip.classList.remove("drag"); document.body.classList.remove("colresize");
+    saveWidths(); $("resetw").hidden = !Object.keys(colWidths).length;
+  };
+  grip.addEventListener("pointermove", move); grip.addEventListener("pointerup", up); grip.addEventListener("pointercancel", up);
+});
+$("head").addEventListener("dblclick", (e) => {
+  const grip = e.target.closest(".grip"); if (!grip) return;
+  delete colWidths[grip.dataset.col]; saveWidths(); render();
+});
+$("resetw").addEventListener("click", () => { colWidths = {}; saveWidths(); render(); });
+
 function render() {
   const cols = columns(), shownCols = visibleCols();
-  $("head").innerHTML = shownCols.map((c) => c.th).join("");
+  applyWidths(shownCols);
+  $("head").innerHTML = shownCols.map((c) => c.th.replace(/<\/th>$/,
+    `<span class="grip" data-col="${esc(c.id)}" title="Drag to resize; double-click for its own width"></span></th>`)).join("");
   $("colsbtn").classList.toggle("on", shownCols.length < tableCols().length);  // lit while some are hidden
   const f = $("filter").value.trim().toLowerCase(), show = $("show").value;
   const rows = DATA.lines.filter((l) => {
@@ -359,6 +422,7 @@ function render() {
   stats();
   bar();
   if (lit) light(lit);
+  fitAll();
 }
 function stats() {
   const lines = DATA.lines, need = lines.filter((l) => !l.dnp && !numberOf(l)).length;
@@ -542,7 +606,7 @@ $("rows").addEventListener("mouseover", (e) => {
 });
 $("rows").addEventListener("mouseleave", rest);
 $("rows").addEventListener("click", (e) => {
-  if (e.target.closest("a, input, button, tr.choices")) return;
+  if (e.target.closest("a, input, textarea, button, tr.choices")) return;
   const tr = e.target.closest("tr[data-i]"); if (!tr) return;
   pinned = pinned === +tr.dataset.i ? null : +tr.dataset.i;
   light(DATA.lines[+tr.dataset.i].refs);
@@ -554,10 +618,18 @@ async function post(path, body) {
   if (!r.ok) { const e = new Error(j.error || r.status); e.info = j; throw e; }
   return j;
 }
+// Enter leaves the box (fields are one line); the text still wraps to show it all.
+$("rows").addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && e.target.matches("textarea.cell")) { e.preventDefault(); e.target.blur(); }
+});
 // A cell: a draft a moment after typing stops (back to the schematic's value: no draft).
 const timers = {};
 $("rows").addEventListener("input", (e) => {
-  const box = e.target.closest("input.cell"); if (!box) return;
+  const box = e.target.closest("textarea.cell"); if (!box) return;
+  if (/[\r\n]/.test(box.value)) {  // one line of text (pasted line breaks become spaces)
+    const at = box.selectionStart; box.value = box.value.replace(/\s*[\r\n]+\s*/g, " "); box.selectionStart = box.selectionEnd = at;
+  }
+  fit(box);
   const l = DATA.lines[+box.dataset.i], c = columns()[+box.dataset.c], k = lineKey(l) + "\u0000" + c.name;
   clearTimeout(timers[k]);
   timers[k] = setTimeout(async () => {

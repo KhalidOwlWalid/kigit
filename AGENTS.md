@@ -601,6 +601,14 @@ at once. localStorage settings are per origin, so per port.
   `site:<s>` and `price:<s>` per looked-up site, `search`), `visibleCols()` drops `hiddenCols`
   (`kigit.bomHiddenCols`); the Columns button opens `#colmenu`. Code
   finds cells by class (`td.refs`, `td.links`), never by position.
+  Widths: `#bom` is `table-layout: fixed` with a `<colgroup>` from
+  `applyWidths` (`widthOf(id)`: dragged `colWidths`, kept in
+  `kigit.bomColWidths`, else `defaultWidth`), and the table is exactly
+  their sum (no 100%, so dragging one doesn't move the others); a `.grip`
+  inside each th's right edge drags (pointer capture), double-click drops
+  that width, `#resetw`/`#colsreset` drop all. Field cells are
+  `textarea.cell` (rows 1, `fit()` sets the height to the text; Enter
+  blurs; line breaks become spaces) so long values wrap.
 - 3D diff (beta, `board3d_diff.py`): separate from the 3D view, which
   stays as it is. The header's "3D diff" button (`diff3d_btn`, a "beta"
   badge; shown with `dock_btn`) opens a blank tab in its click

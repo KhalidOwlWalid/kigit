@@ -87,7 +87,8 @@ The BOM is also where part numbers go into your schematic, without hunting for p
 </figure>
 
 - The columns are **MPN** and **Manufacturer**, **Digi-Key**, **Mouser** and **LCSC** when your project uses them, and any field you add with **+ Field** (Supplier, Tolerance...). Each uses the name your project already uses for it ("LCSC Part #", "Part Number"...), so nothing ends up under two names.
-- Type in a cell: it's a **draft** (marked), saved as you type in `kigit-bom.json` next to the board (commit it to share drafts). A line's value applies to every part on it.
+- Type in a cell: it's a **draft** (marked), saved as you type in `kigit-bom.json` next to the board (commit it to share drafts). A line's value applies to every part on it. Long part numbers wrap onto more lines so you can read them whole; Enter leaves the cell (a field is one line of text).
+- **Column widths**: drag a column header's right edge. Double-click the edge to put that column back to its own width; **Reset widths** (in the header while any is changed, and in **Columns**) puts them all back. Remembered in your browser. When the columns are wider than the list, it scrolls sideways.
 - **Write to schematic** puts the drafts into the schematic files; **Discard** drops them; **Undo** puts the files back as they were before the last write.
 
 kigit is not a schematic editor, and this can't change your design:
