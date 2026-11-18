@@ -237,6 +237,24 @@ async def bom(board: str, rev: str = "LOCAL") -> dict:
     return json.loads(out)
 
 
+async def bom_write(board: str, edits: list[dict], edits_file: Path, force: bool = False) -> dict:
+    """kigit bom --write: sets part information fields ({refs, field, value})
+    in the schematic on disk. kigit refuses KiCad's own fields and anything
+    that would change the design. Returns {written, fields, backup}."""
+    edits_file.write_text(json.dumps(edits, ensure_ascii=False), encoding="utf-8")
+    try:
+        out, _ = await _run("bom", "--write", str(edits_file), *(["--force"] if force else []), board)
+    finally:
+        edits_file.unlink(missing_ok=True)
+    return json.loads(out)
+
+
+async def bom_restore(backup: str) -> dict:
+    """kigit bom --restore: puts back the files a --write replaced."""
+    out, _ = await _run("bom", "--restore", backup)
+    return json.loads(out)
+
+
 async def board_json(board: str, rev: str, out_file: Path) -> None:
     """One revision's board as kigit's viewer data (outline, tracks, pads with
     their parts, zones): kigit --json REV..REV. For the BOM page's 2D view."""

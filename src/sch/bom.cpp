@@ -164,6 +164,7 @@ Bom make_bom(const Schematic& sch) {
              size_t>
         index;
     std::set<std::string> seen; // a part in several units: once
+    std::map<std::string, std::map<std::string, int>> names; // kind -> spelling -> uses
     for (const SchSymbol& s : sch.symbols) {
         if (s.power || !s.in_bom || s.ref.empty() || s.ref[0] == '#' || s.ref.ends_with("?")) continue;
         if (!seen.insert(s.ref).second) continue;
@@ -175,11 +176,11 @@ Bom make_bom(const Schematic& sch) {
         for (const auto& [name, v] : s.fields) {
             if (empty_value(v)) continue;
             std::string k = key_of(name);
-            if (kMpn.count(k)) l.mpn = v;
-            else if (kMaker.count(k)) l.manufacturer = v;
-            else if (kDigikey.count(k)) l.digikey = v;
-            else if (kMouser.count(k)) l.mouser = v;
-            else if (kLcsc.count(k)) l.lcsc = v;
+            if (kMpn.count(k)) l.mpn = v, ++names["mpn"][name];
+            else if (kMaker.count(k)) l.manufacturer = v, ++names["manufacturer"][name];
+            else if (kDigikey.count(k)) l.digikey = v, ++names["digikey"][name];
+            else if (kMouser.count(k)) l.mouser = v, ++names["mouser"][name];
+            else if (kLcsc.count(k)) l.lcsc = v, ++names["lcsc"][name];
             else if (k == "dnp") l.dnp = l.dnp || !(lower(v) == "no" || v == "0" || lower(v) == "false");
             else if (name == "Description") l.description = v;
             else if (name == "Datasheet") l.datasheet = v;
@@ -196,6 +197,14 @@ Bom make_bom(const Schematic& sch) {
             bom.lines.push_back(std::move(l));
         }
         bom.lines[it->second].refs.push_back(s.ref);
+    }
+    const std::map<std::string, std::string> plain = {
+        {"mpn", "MPN"}, {"manufacturer", "Manufacturer"}, {"digikey", "DigiKey"}, {"mouser", "Mouser"}, {"lcsc", "LCSC"}};
+    for (const auto& [kind, name] : plain) {
+        bom.field_names[kind] = name;
+        int best = 0;
+        for (const auto& [spelling, n] : names[kind])
+            if (n > best) best = n, bom.field_names[kind] = spelling;
     }
     for (auto& l : bom.lines) {
         std::sort(l.refs.begin(), l.refs.end(), ref_less);
@@ -244,6 +253,7 @@ nlohmann::json bom_json(const Bom& bom) {
                            {"mouser", search_url(l, "mouser")},
                            {"lcsc", search_url(l, "lcsc")}}}});
     return {{"lines", lines},
+            {"field_names", bom.field_names},
             {"summary",
              {{"lines", bom.lines.size()},
               {"parts", bom.parts},

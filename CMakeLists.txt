@@ -82,6 +82,7 @@ add_library(kigit_core STATIC
   src/sch/sch_diff.cpp
   src/sch/netcheck.cpp
   src/sch/bom.cpp
+  src/sch/fields.cpp
   src/git/git.cpp
   src/git/locate.cpp
   src/report/html.cpp

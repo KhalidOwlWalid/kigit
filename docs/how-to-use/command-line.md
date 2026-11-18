@@ -52,7 +52,7 @@ Makes the [example project](../example.md) (a git repository) in DIR (default: `
 kigit bom [REV] [PATH] [--json | --csv] [-o FILE]
 ```
 
-The bill of materials of the schematic (the working tree, or REV): a line per part, with part numbers and Digi-Key, Mouser and LCSC search links. See [Bill of Materials](bom.md).
+The bill of materials of the schematic (the working tree, or REV): a line per part, with part numbers and Digi-Key, Mouser and LCSC search links. `--write EDITS.json` sets part information fields (MPN, manufacturer...) in the schematic on disk, only those, checked to leave the design as it was, with `--restore` to undo. See [Bill of Materials](bom.md).
 
 ## Uninstalling
 

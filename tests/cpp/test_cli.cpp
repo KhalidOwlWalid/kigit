@@ -121,6 +121,51 @@ TEST_CASE("kigit bom: the working tree, a commit, CSV and JSON") {
     CHECK(run_kigit("bom --nope").code == 2);
 }
 
+TEST_CASE("kigit bom --write: part information only, checked, with a backup to restore") {
+    TempDir tmp;
+    make_fixture_repo(tmp.path());
+    fs::path sch = tmp / "board/demo.kicad_sch";
+    const std::string before = read_text(sch);
+    auto write = [&](const std::string& edits, const std::string& extra = "") {
+        write_text(tmp / "edits.json", edits);
+        return run_kigit("bom --no-log --write " + quote((tmp / "edits.json").string()) + " " + extra + " " +
+                         quote(sch.string()));
+    };
+
+    // Refused, and nothing written: KiCad's own fields, unknown parts, a commit.
+    RunResult r = write(R"([{"refs": ["R1"], "field": "Value", "value": "2k"}])");
+    CHECK(r.code == 1);
+    CHECK(r.err.find("KiCad's own fields") != std::string::npos);
+    CHECK(write(R"([{"refs": ["R99"], "field": "MPN", "value": "x"}])").code == 1);
+    CHECK(write(R"([{"refs": ["R1"], "field": "MPN", "value": "x"}])", "HEAD").code == 1);
+    CHECK(read_text(sch) == before);
+
+    // KiCad has it open: refused unless --force.
+    write_text(tmp / "board/~demo.kicad_sch.lck", "");
+    r = write(R"([{"refs": ["R1", "R3"], "field": "MPN", "value": "RC0603FR-071KL"}])");
+    CHECK(r.code == 1);
+    CHECK(r.err.find("KiCad has demo.kicad_sch open") != std::string::npos);
+    CHECK(read_text(sch) == before);
+    r = write(R"([{"refs": ["R1", "R3"], "field": "MPN", "value": "RC0603FR-071KL"}])", "--force");
+    REQUIRE(r.code == 0);
+    fs::remove(tmp / "board/~demo.kicad_sch.lck");
+    json out = json::parse(r.out);
+    CHECK(out["fields"] == 2);
+    CHECK(out["written"] == json::array({"demo.kicad_sch"}));
+
+    // The BOM sees it; the backup puts the file back as it was.
+    json bom = parse(run_kigit("bom --no-log --json " + quote(sch.string())));
+    bool found = false;
+    for (const auto& l : bom["lines"])
+        if (l["mpn"] == "RC0603FR-071KL") found = l["refs"] == json::array({"R1", "R3"});
+    CHECK(found);
+    CHECK(fs::exists(tmp / "board/.kigit/.gitignore"));
+    RunResult back = run_kigit("bom --no-log --restore " + quote(out["backup"].get<std::string>()));
+    CHECK(back.code == 0);
+    CHECK(read_text(sch) == before);
+    CHECK(run_kigit("bom --no-log --restore " + quote(tmp.path().string())).code == 1); // not a backup folder
+}
+
 TEST_CASE("--rewritten: where an amended commit went") {
     TempDir tmp;
     make_fixture_repo(tmp.path());

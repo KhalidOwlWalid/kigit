@@ -950,6 +950,36 @@ async def test_bom_page(user: User, monkeypatch) -> None:
         await asyncio.sleep(0.1)
     assert job.model_error and not job.model_ready
 
+    # Writing part numbers into the schematic, then undoing it: through the
+    # page's own routes.
+    class Req:
+        def __init__(self, body):
+            self.body = body
+
+        async def json(self):
+            return self.body
+
+    key = next(k for k, j in bom.jobs.items() if j is job)
+    sch = Path(job.board).with_suffix(".kicad_sch")
+    original = sch.read_bytes()
+    line = next(l for l in job.data["lines"] if l["refs"][0].startswith("R"))
+    lkey = bom.line_key(line)
+    await bom._set_draft(key, Req({"key": lkey, "field": "MPN", "value": "RC0603FR-071KL"}))
+    assert bom.load_drafts(job.board)["drafts"][lkey]["MPN"] == "RC0603FR-071KL"
+    refused = await bom._write(key, Req({"cells": [{"key": lkey, "field": "Value", "value": "2k"}]}))
+    assert refused.status_code == 409 and sch.read_bytes() == original  # KiCad's own field: nothing written
+    done = await bom._write(key, Req({"cells": [{"key": lkey, "field": "MPN", "value": "RC0603FR-071KL"}]}))
+    assert done.status_code == 200
+    body = json.loads(done.body)
+    assert body["result"]["fields"] == len(line["refs"])
+    assert any(l["mpn"] == "RC0603FR-071KL" for l in body["data"]["lines"])
+    assert lkey not in body["drafts"]["drafts"]  # written: no longer a draft
+    assert sch.read_bytes() != original
+    undone = await bom._undo(key)
+    assert undone.status_code == 200 and sch.read_bytes() == original
+    bom.drafts_path(job.board).unlink(missing_ok=True)  # the fixture project is shared: tidy up
+    shutil.rmtree(Path(job.board).parent / ".kigit" / "bom-backup", ignore_errors=True)
+
     rows = commit_table(user).rows
     await select(user, [rows[1]])
     before = set(bom.jobs)
@@ -961,6 +991,8 @@ async def test_bom_page(user: User, monkeypatch) -> None:
         await asyncio.sleep(0.1)
     assert rows[1]["short"] in made[0].title
     assert made[0].data["meta"]["rev"]["hash"] == rows[1]["hash"]
+    commit_key = next(k for k, j in bom.jobs.items() if j is made[0])
+    assert (await bom._write(commit_key, Req({"cells": []}))).status_code == 400  # a commit's BOM: not written
 
 
 async def test_3d_build_shows_progress(user: User, monkeypatch, tmp_path: Path) -> None:

@@ -29,6 +29,10 @@ struct BomLine {
 struct Bom {
     std::vector<BomLine> lines;
     int parts = 0, dnp_parts = 0, without_number = 0; // without_number: lines
+    // The field name this project uses for each kind of part number (the
+    // most used spelling, e.g. "LCSC Part #"), else the plain one ("LCSC").
+    // Keys: mpn, manufacturer, digikey, mouser, lcsc.
+    std::map<std::string, std::string> field_names;
 };
 
 // Every part that goes on the BOM: not power symbols or "#" references, not

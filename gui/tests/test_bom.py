@@ -17,23 +17,43 @@ DATA = {"lines": [{"refs": ["R1", "R2"], "qty": 2, "value": "10k", "footprint": 
         "summary": {"lines": 1, "parts": 2, "dnp_parts": 0, "without_number": 1}}
 
 
-def test_picks_saved_next_to_the_board(tmp_path: Path) -> None:
+def test_drafts_kept_next_to_the_board(tmp_path: Path) -> None:
     board = tmp_path / "x.kicad_pcb"
-    assert bom.load_picks(board) == {}
-    picks = bom.save_pick(board, "10k|R_0603", {"mpn": " RC0603FR-0710KL ", "manufacturer": "Yageo", "junk": "x"})
-    assert picks["10k|R_0603"]["mpn"] == "RC0603FR-0710KL" and "junk" not in picks["10k|R_0603"]
-    saved = json.loads((tmp_path / bom.PICKS).read_text(encoding="utf-8"))
-    assert saved["version"] == 1 and saved["picks"]["10k|R_0603"]["manufacturer"] == "Yageo"
-    bom.save_pick(board, "100n|C_0603", {"mpn": "CL10B104KB8NNNC"})
-    assert set(bom.load_picks(board)) == {"10k|R_0603", "100n|C_0603"}  # re-read, not overwritten
-    bom.save_pick(board, "10k|R_0603", {"mpn": "", "note": ""})  # emptied: gone
-    bom.save_pick(board, "100n|C_0603", {})
-    assert not (tmp_path / bom.PICKS).exists()  # nothing left: no file
+    assert bom.load_drafts(board) == {"drafts": {}, "columns": []}
+    state = bom.set_draft(board, "10k|R_0603", "MPN", " RC0603FR-0710KL ")
+    assert state["drafts"]["10k|R_0603"]["MPN"] == "RC0603FR-0710KL"
+    saved = json.loads((tmp_path / bom.DRAFTS).read_text(encoding="utf-8"))
+    assert saved["version"] == 2 and saved["drafts"]["10k|R_0603"]["MPN"] == "RC0603FR-0710KL"
+    bom.set_draft(board, "100n|C_0603", "LCSC Part #", "C1525")
+    assert set(bom.load_drafts(board)["drafts"]) == {"10k|R_0603", "100n|C_0603"}  # re-read, not overwritten
+    bom.add_column(board, "Supplier")
+    assert bom.load_drafts(board)["columns"] == ["Supplier"]
+    bom.set_draft(board, "10k|R_0603", "MPN", None)
+    bom.set_draft(board, "100n|C_0603", "LCSC Part #", None)
+    assert bom.load_drafts(board)["drafts"] == {}
+    state = bom.load_drafts(board)
+    state["columns"] = []
+    bom.save_drafts(board, state)
+    assert not (tmp_path / bom.DRAFTS).exists()  # nothing left: no file
 
 
-def test_broken_picks_file_is_ignored(tmp_path: Path) -> None:
-    (tmp_path / bom.PICKS).write_text("{not json", encoding="utf-8")
-    assert bom.load_picks(tmp_path / "x.kicad_pcb") == {}
+def test_version_1_picks_are_read_as_drafts(tmp_path: Path) -> None:
+    (tmp_path / bom.DRAFTS).write_text(json.dumps({"version": 1, "picks": {
+        "10k|R_0603": {"mpn": "RC0603FR-0710KL", "manufacturer": "Yageo", "note": "cheap", "updated": "2026-11-18"}}}),
+        encoding="utf-8")
+    state = bom.load_drafts(tmp_path / "x.kicad_pcb")
+    assert state["drafts"]["10k|R_0603"] == {"MPN": "RC0603FR-0710KL", "Manufacturer": "Yageo", "Note": "cheap"}
+    assert state["columns"] == ["Note"]
+
+
+def test_broken_drafts_file_is_ignored(tmp_path: Path) -> None:
+    (tmp_path / bom.DRAFTS).write_text("{not json", encoding="utf-8")
+    assert bom.load_drafts(tmp_path / "x.kicad_pcb") == {"drafts": {}, "columns": []}
+
+
+def test_line_key() -> None:
+    assert bom.line_key({"value": "10k", "footprint": "R_0603"}) == "10k|R_0603"
+    assert bom.line_key({"value": "10k", "footprint": "R_0603", "lcsc": "C25804"}) == "10k|R_0603|C25804"
 
 
 def _page() -> str:
@@ -45,6 +65,9 @@ def test_page_has_the_data_and_no_html_injection() -> None:
     evil["lines"][0]["value"] = "</script><script>alert(1)</script>"
     page = bom.page("k", bom.Job("/p/owl.kicad_pcb", "<b>t</b>", evil))
     assert "</script><script>alert" not in page and "&lt;b&gt;t&lt;/b&gt;" in page
+    assert "EDITABLE = true" in page
+    commit = bom.page("k", bom.Job("/p/owl.kicad_pcb", "t", DATA, rev="abc123"))
+    assert "EDITABLE = false" in commit  # a commit's BOM can't be written
 
 
 @pytest.mark.skipif(not shutil.which("node"), reason="needs Node.js to check the script")
@@ -60,3 +83,15 @@ def test_page_scripts_parse(tmp_path: Path) -> None:
         f.write_text(text, encoding="utf-8")
         r = subprocess.run(["node", "--check", str(f)], capture_output=True, text=True)
         assert r.returncode == 0, f"{name}: {r.stderr}"
+
+
+def test_page_file_is_not_ignored_by_git() -> None:
+    """bom_page.html ships with the GUI: the repo's "*.html" ignore rule
+    (for generated diff pages) must not hide it from git."""
+    page = Path(bom.__file__).with_name("bom_page.html")
+    if not shutil.which("git"):
+        pytest.skip("needs git")
+    r = subprocess.run(["git", "-C", str(page.parent), "check-ignore", "-q", str(page)], capture_output=True)
+    if r.returncode == 128:
+        pytest.skip("not in a git checkout")
+    assert r.returncode == 1, f"{page.name} is ignored by .gitignore"

@@ -236,6 +236,24 @@ at once. localStorage settings are per origin, so per port.
   first `parent`, the real one even when filtered), `--projects`
   (`--depth`).
 - `--check-netlist FILE`: compare kigit's nets with a KiCad netlist.
+- `kigit bom --write EDITS.json` (`sch/fields`, `write_fields` in
+  commands/bom.cpp): **kigit only writes part information fields, never the
+  design** (the user's rule). `field_refused` refuses KiCad's own fields
+  (Reference, Value, Footprint, Datasheet, Description, sheet fields, ki_*,
+  Sim.*). `set_fields` edits text in place: a value replaced at its atom's
+  offset (atoms are views into the text), or a new property copied from the
+  symbol's own hidden field (Footprint, Datasheet, ...; KiCad 6 gets the
+  next `(id N)`), inserted after its last property with its indent and the
+  file's line endings. Every unit of a part (by ref, via the loaded
+  schematic) gets it. Before writing: the edited text is loaded again and
+  `same_design` must hold (sheets, symbols' ref/value/footprint/lib/unit/
+  flags/position, fields other than the edited ones, nets, wires, labels,
+  junctions, no-connects) and each field must read back as written;
+  KiCad's lock `~<file>.lck` refuses unless `--force`. Then the old files
+  go to `<schematic folder>/.kigit/bom-backup/<time>/` (with
+  manifest.json: root, files) and each file is written via a temp file and
+  rename. `--restore DIR` (only a `.kigit/bom-backup/` folder) puts them
+  back. Prints JSON on stdout.
 - `kigit bom [REV] [PATH] [--json | --csv] [-o FILE]` (`commands/bom.cpp`,
   `sch/bom`): a subcommand with its own options (like `uninstall`), run
   from `run()` in main.cpp so it's logged. Default the working tree, read
@@ -493,12 +511,21 @@ at once. localStorage settings are per origin, so per port.
   Chrome renders big models in software and slowly.
 - BOM (`bom.py`): the header's BOM button (opens its tab in the click,
   `window.kigitBomTab`) runs `kigit bom --json` for the working tree or the
-  one ticked commit and shows `/bom/{key}` (`bom.jobs`, in memory). Picks
-  (MPN, manufacturer, note) are posted to `/bom/{key}/picks` and kept in
-  `<board folder>/kigit-bom.json` (`{"version": 1, "picks": {"value|footprint":
-  {...}}}`, re-read before each write, removed when empty); a schematic's
-  own part number wins. Export CSV is made in the page (quantities x
-  Boards, DNP left out unless ticked). Only on request: no background
+  one ticked commit and shows `/bom/{key}` (`bom.jobs`, in memory). It's
+  also the editor for part information fields: columns MPN, Manufacturer,
+  Digi-Key/Mouser/LCSC (when used), fields added with + Field, each by the
+  project's own name (`field_names` in the JSON). Edited cells are drafts
+  in `<board folder>/kigit-bom.json` (`{"version": 2, "drafts": {line key:
+  {field: value}}, "columns": [...]}`; version 1 "picks" are read as
+  drafts; line key = value|footprint[|part number], `bom.line_key` and the
+  page's `lineKey` must agree), posted to `/bom/{key}/drafts`. Write posts
+  the changed cells to `/bom/{key}/write` -> `kigit bom --write` (refs per
+  line from the job's data), then drops their drafts and re-reads the BOM;
+  `/bom/{key}/undo` -> `--restore` of that write's backup. Commits'
+  BOMs are read-only (`EDITABLE`, and the route refuses). KiCad's lock
+  (409 `locked`) asks before `force`. Export CSV is made in the page (what's
+  shown, drafts included; quantities x Boards, DNP left out unless ticked).
+  Only on request: no background
   lookups. The page is `bom_page.html` (a plain file, read at import: no
   Python escaping), placeholders `%%KEY%%` etc. Beside the list: a 2D
   board drawn from `kigit --json REV..REV` (`kigit.board_json`, in CACHE

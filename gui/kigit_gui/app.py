@@ -1709,7 +1709,7 @@ body.kigit-dragging iframe { pointer-events: none; }  /* else the frames swallow
             board_data = ""
         title = f"{name} · {'working tree' if rev == LOCAL else short_rev(rev)}"
         todo = not (CACHE / glb).exists()
-        job = bom.Job(board, title, data, board_json=board_data, glb=glb,
+        job = bom.Job(board, title, data, rev=rev, board_json=board_data, glb=glb,
                       expected=buildtime.estimate(board, 1) if todo else 1.0)
         key = bom.new_job(job)
         logs.log.info("bom of %s at %s (job %s)", board, short_rev(rev), key)

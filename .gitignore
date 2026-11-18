@@ -3,4 +3,5 @@ build/
 compile_commands.json
 *.html
 !resources/*.html
+!gui/kigit_gui/*.html
 site/
