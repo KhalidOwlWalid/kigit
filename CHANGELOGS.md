@@ -4,20 +4,12 @@ All notable changes to kigit, newest first. The format follows [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.2.3] - 2026-11-18
+
 ### Added
 
 - **3D diff (beta)**: a new header button beside **3D**, while a comparison shows. It opens the comparison in 3D in its own tab: parts added (green), changed (amber), moved (blue, with a ghost of the old place) and removed (a red ghost), and added, removed and changed tracks and vias as coloured strips. It says which graphics chip draws it and warns when that's built-in laptop graphics or none (the CPU draws it all). Hover a part to see what it is (reference, value, footprint) and what changed. Render stats with S, as in the 3D view. Separate from the 3D view, which is unchanged.
 - **3D for Compare folders**: the 3D dock works without git too, showing each folder's board as it is on disk (New, Old or Both). `kigit --3d --disk BOARD.kicad_pcb` does the same from the command line.
-
-### Fixed
-
-- Schematics saved by KiCad 6 (HackRF One's, say) failed with " is not a KiCad schematic": KiCad 6 named a sheet's properties "Sheet name" / "Sheet file", which kigit didn't read.
-- Nets now match KiCad in two more cases: a local label and a global label with the same name on the same sheet are one net, and a `/` in a sheet name is written `{slash}` in net names.
-
-## [0.2.3] - 2026-11-16
-
-### Added
-
 - Click a picture in a review, note or discussion to see it full size (in kigit and on the Reviews page). Obsidian's `![[picture.png]]` pictures now show in kigit too, not just on the Reviews page.
 - Somewhere in the GUI there's a door. Something lives behind it. Hoo knows.
 - **Notebook**: your own notes, as Markdown in `reviews/` (an Obsidian vault works as it is), in folders as deep as you like. A panel beside the viewer (or a tab of its own, still in touch with kigit's tab for pins): your folders browsed like files (in, and back up), search, rename and delete (deleting warns what goes and whether git still has it), the note (saved as you type), pins to parts not tied to a commit, the notes about whatever's pinned (counted on its button), N for a quick note about it, and Today's log (a line under today's date in `Logs.md`). On the Reviews page, nested folders are rows of sub-tabs.
@@ -28,6 +20,9 @@ All notable changes to kigit, newest first. The format follows [Keep a Changelog
 
 ### Fixed
 
+- Schematics saved by KiCad 6 (HackRF One's, say) failed with " is not a KiCad schematic": KiCad 6 named a sheet's properties "Sheet name" / "Sheet file", which kigit didn't read.
+- Nets now match KiCad in two more cases: a local label and a global label with the same name on the same sheet are one net, and a `/` in a sheet name is written `{slash}` in net names.
+- The GUI tests read and write files as UTF-8, so they pass on Windows too (they failed on a notebook log line).
 - A picture added in kigit to a note in a folder (`Design Notes/...`) showed "No page" on the Reviews page: kigit keeps added files in `reviews/assets/`, and the page now looks there when a picture isn't next to the note.
 
 ## [0.2.2] - 2026-11-16
