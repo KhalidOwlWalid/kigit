@@ -87,6 +87,21 @@ input.cell.changed { border-color: var(--accent); box-shadow: inset 3px 0 var(--
 #writebar.on { display: flex; } #writebar .what { margin-right: auto; }
 #writebar.done { border-top-color: var(--ok); }
 .empty { color: var(--faint); padding: 30px; text-align: center; }
+/* Look up (Mouser) */
+#lookstate { color: var(--muted); font-size: 12px; } #lookstate.err { color: var(--bad); }
+.stock { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.stock a { color: var(--link); text-decoration: none; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; }
+.stock a:hover { text-decoration: underline; }
+.short { color: var(--bad); font-weight: 600; } .faint { color: var(--faint); font-size: 12px; }
+.chip.bad { color: var(--bad); } .chip.warn { color: var(--warn); }
+button.more { padding: 1px 7px; font-size: 12px; }
+tr.choices td { background: var(--panel); padding: 4px 8px 10px 30px; cursor: default; }
+.cand { width: 100%; font-size: 12px; } .cand td { border-bottom: 1px dashed var(--line); padding: 4px 6px; }
+.cand button { padding: 1px 8px; font-size: 12px; }
+dialog { background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 10px; max-width: 30rem; }
+dialog::backdrop { background: rgba(0,0,0,.45); }
+dialog input { width: 100%; margin: 8px 0; } dialog .row { display: flex; gap: 8px; justify-content: flex-end; }
+dialog a { color: var(--link); }
 .foot { color: var(--faint); font-size: 12px; margin-top: 14px; }
 @media (max-width: 1000px) { #split { flex-direction: column; } #list { flex: none; height: 55%; }
   #side { border-left: 0; border-top: 1px solid var(--line); flex: none; height: 45%; } #side .pane { flex: 1; } }
@@ -102,10 +117,13 @@ input.cell.changed { border-color: var(--accent); box-shadow: inset 3px 0 var(--
       <option value="all">All lines</option><option value="need">Needs a part number</option>
       <option value="has">Has a part number</option><option value="changed">Edited, not written</option>
     </select>
-    <label class="sub">Boards <input id="boards" type="number" min="1" value="1" style="width:4.5rem"></label>
+    <label class="sub" title="How many boards you're building: multiplies the quantities in the exported CSV (the list itself doesn't change)">Build qty <input id="boards" type="number" min="1" value="1" style="width:4.5rem" aria-label="Build quantity"></label>
     <label class="sub"><input id="dnp" type="checkbox"> DNP in export</label>
     <button id="addfield" title="Add a column for another part information field (e.g. Tolerance, Supplier)">+ Field</button>
     <button id="export" class="primary" title="A CSV for Digi-Key's BOM Manager or Mouser's BOM Tool">Export CSV</button>
+    <button id="lookup" title="Ask Mouser for stock, prices and lifecycle, for Build qty boards (about 2 s a line; answers are kept a day; Shift+click asks again)">Look up</button>
+    <button id="keybtn" title="Your Mouser API key">Key</button>
+    <span id="lookstate"></span>
     <button id="show2d" class="on" title="The board in 2D beside the list">PCB</button>
     <button id="show3d" class="on" title="The board in 3D beside the list">3D</button>
   </div>
@@ -119,7 +137,7 @@ input.cell.changed { border-color: var(--accent); box-shadow: inset 3px 0 var(--
 <div class="foot" id="foot">Hover a line to see its parts on the board; click it to keep them lit. Edits are drafts, saved as you type in
 <code>%%DRAFTS_FILE%%</code>, until you write them into the schematic. kigit only writes part information fields (part numbers,
 manufacturer, distributors, fields you add): never values, footprints, the board or the wiring, and it checks the schematic is the same
-design before saving. The search links only open the distributors' sites: kigit itself doesn't contact anyone.</div>
+design before saving. The search links only open the distributors' sites; kigit itself only contacts Mouser when you press Look up.</div>
 <div id="writebar"><span class="what" id="what"></span><button id="discard">Discard</button><button id="undo" hidden>Undo</button>
   <button id="write" class="primary">Write to schematic</button></div>
 </main>
@@ -137,6 +155,14 @@ design before saving. The search links only open the distributors' sites: kigit 
 </aside>
 </div>
 <div id="tip"></div>
+<dialog id="keydlg">
+  <b>Mouser API key</b>
+  <p class="sub">Look up needs a Search API key from your Mouser account: <i>My Account</i> &rarr; <i>APIs</i> (free).
+    kigit keeps it in <code>parts-keys.json</code> in its app folder, readable only by you, and never puts it in logs.</p>
+  <p class="sub" id="keyhave"></p>
+  <input id="keyin" type="password" autocomplete="off" placeholder="Paste the key" aria-label="Mouser API key">
+  <div class="row"><button id="keyrm">Remove</button><button id="keyno">Cancel</button><button id="keyok" class="primary">Save</button></div>
+</dialog>
 <script>
 let DATA = %%DATA%%;
 const KEY = "%%KEY%%", NAME = %%NAME%%, EDITABLE = %%EDITABLE%%;
@@ -232,7 +258,9 @@ function cell(l, c, i, ci) {
 function render() {
   const cols = columns();
   $("head").innerHTML = `<th class="qty">Qty</th><th>References</th><th>Value</th>` +
-    cols.map((c) => `<th title="${esc(c.name)}">${esc(c.label)}</th>`).join("") + `<th>Search</th>`;
+    cols.map((c) => `<th title="${esc(c.name)}">${esc(c.label)}</th>`).join("") +
+    (LOOK ? `<th title="Mouser: the part, its stock and lifecycle">Mouser</th><th title="What the parts cost at Mouser for ${LOOK.summary.boards} board${LOOK.summary.boards === 1 ? "" : "s"}">Price</th>` : "") +
+    `<th>Search</th>`;
   const f = $("filter").value.trim().toLowerCase(), show = $("show").value;
   const rows = DATA.lines.filter((l) => {
     const has = !!numberOf(l);
@@ -247,8 +275,10 @@ function render() {
     return `<tr data-i="${i}" class="${l.dnp ? "dnp" : ""}"><td class="qty">${l.qty}</td>` +
       `<td class="refs">${esc(l.refs.join(", "))}<div>${status(l)}</div></td>` +
       `<td>${esc(l.value)}<div class="pkg">${esc(l.package)}</div>${l.description ? `<div class="desc">${esc(l.description)}</div>` : ""}</td>` +
-      cols.map((c, ci) => `<td>${cell(l, c, i, ci)}</td>`).join("") + `<td class="links">${links(l)}</td></tr>`;
-  }).join("") || `<tr><td colspan="${4 + cols.length}" class="empty">Nothing to show.</td></tr>`;
+      cols.map((c, ci) => `<td>${cell(l, c, i, ci)}</td>`).join("") +
+      (LOOK ? `<td class="stock">${stockCell(l, i)}</td><td class="stock">${priceCell(l)}</td>` : "") +
+      `<td class="links">${links(l)}</td></tr>` + (opened.has(i) ? choicesRow(l, i, cols.length) : "");
+  }).join("") || `<tr><td colspan="${4 + cols.length + (LOOK ? 2 : 0)}" class="empty">Nothing to show.</td></tr>`;
   stats();
   bar();
   if (lit) light(lit);
@@ -258,6 +288,12 @@ function stats() {
   $("stats").innerHTML = `<span><b>${lines.length}</b> lines</span><span><b>${DATA.summary.parts}</b> parts</span>` +
     (DATA.summary.dnp_parts ? `<span><b>${DATA.summary.dnp_parts}</b> not populated</span>` : "") +
     `<span style="color:${need ? "var(--warn)" : "var(--ok)"}"><b>${need}</b> need a part number</span>`;
+  const s = LOOK?.summary?.mouser;
+  if (s) $("stats").innerHTML += `<span title="Mouser, for ${LOOK.summary.boards} board(s): the parts found by their part number">` +
+    `Mouser: <b>${s.ok || 0}</b> found` + (s.choose ? `, <b>${s.choose}</b> to choose` : "") +
+    (s.short ? `, <b style="color:var(--bad)">${s.short}</b> short` : "") +
+    (s.winding_down ? `, <b style="color:var(--warn)">${s.winding_down}</b> ending` : "") +
+    (s.cost ? ` &middot; <b>${money(s.cost, s.currency)}</b>` : "") + `</span>`;
 }
 // The cells that differ from the schematic, to write.
 function pending() {
@@ -280,6 +316,113 @@ function bar() {
     $("write").hidden = $("discard").hidden = true; $("undo").hidden = false;
   } else b.className = "";
 }
+// -------------------------------------------------------- Look up (Mouser)
+// kigit bom --lookup's answer, by line key. Lines with a part number get
+// that part; lines without one get choices, and "Use" makes the choice a
+// draft (MPN and manufacturer), written like any other edit.
+let LOOK = null;
+const opened = new Set();  // lines whose choices are shown
+function setLook(r) { LOOK = r && r.lines ? { ...r, byKey: new Map(r.lines.map((x) => [x.key, x])) } : null; }
+const lookOf = (l) => LOOK?.byKey.get(lineKey(l))?.sites?.mouser;
+function money(v, cur) {
+  try { return new Intl.NumberFormat(undefined, { style: "currency", currency: cur || "USD", maximumFractionDigits: v < 1 ? 4 : 2 }).format(v); }
+  catch { return v.toFixed(v < 1 ? 4 : 2) + (cur ? " " + cur : ""); }
+}
+const count = (n) => Number(n).toLocaleString();
+function lifeChip(o) {
+  if (!o.winding_down) return "";
+  return `<span class="chip warn" title="${esc(o.replacement ? "Mouser suggests " + o.replacement : "Look for another part")}">${esc(o.lifecycle)}</span>`;
+}
+function stockCell(l, i) {
+  const m = lookOf(l);
+  if (!m) return `<span class="faint" title="Not in the last Look up (edited since?)">&ndash;</span>`;
+  const o = m.pick, n = m.candidates.length;
+  const more = n ? ` <button class="more" data-i="${i}">${opened.has(i) ? "hide" : (m.status === "choose" ? n + " choices" : m.status === "ok" ? "+" + n + " more" : n + " similar")}</button>` : "";
+  if (m.status === "dnp") return "";
+  if (m.status === "skipped" || m.status === "error") return `<span class="faint" title="${esc(m.error)}">${m.status === "error" ? "error" : "&ndash;"}</span>`;
+  if (m.status === "not_found") return `<span class="chip need" title="Mouser has no ${esc(m.searched)}">not at Mouser</span>${more}`;
+  if (!o) return `<span class="faint">no part number:</span>${more}`;
+  return `<a href="${esc(o.url)}" target="_blank" rel="noopener" title="${esc(o.description)}">${esc(o.sku || o.mpn)}</a><br>` +
+    (o.short ? `<span class="short" title="Mouser has ${count(o.stock)}, you need ${count(LOOK.byKey.get(lineKey(l)).need)}">SHORT: ${count(o.stock)}</span>`
+             : `${count(o.stock)} in stock`) +
+    (o.lead_weeks > 0 ? ` <span class="faint">${o.lead_weeks} wk</span>` : "") + ` ${lifeChip(o)}${more}`;
+}
+function priceCell(l) {
+  const o = lookOf(l)?.pick;
+  if (!o || !o.cost) return "";
+  return `${money(o.cost.total, o.currency)}<div class="faint">${count(o.cost.buy)} &times; ${money(o.cost.unit, o.currency)}</div>`;
+}
+function choicesRow(l, i, ncols) {
+  const m = lookOf(l); if (!m) return "";
+  const rows = m.candidates.map((o, n) => `<tr><td class="num">${esc(o.mpn)}<div class="faint">${esc(o.manufacturer)}</div></td>` +
+    `<td>${esc(o.description)} ${lifeChip(o)}</td>` +
+    `<td class="stock">${o.short ? `<span class="short">${count(o.stock)}</span>` : count(o.stock)} in stock</td>` +
+    `<td class="stock">${o.cost ? money(o.cost.unit, o.currency) + " each" : ""}</td>` +
+    `<td><a href="${esc(o.url)}" target="_blank" rel="noopener">Mouser</a></td>` +
+    (EDITABLE ? `<td><button data-use="${i}" data-n="${n}" title="Put this MPN and manufacturer in the line's drafts">Use</button></td>` : "") + `</tr>`).join("");
+  const what = m.status === "choose" ? `Mouser's best matches for <b>${esc(m.searched)}</b> (kigit doesn't pick one for you):`
+    : m.status === "ok" ? "The same part in other packagings:" : `Similar parts (no exact <b>${esc(m.searched)}</b>):`;
+  return `<tr class="choices"><td colspan="${6 + ncols}"><div class="faint">${what}</div><table class="cand">${rows}</table></td></tr>`;
+}
+$("rows").addEventListener("click", async (e) => {
+  const more = e.target.closest("button.more");
+  if (more) { const i = +more.dataset.i; opened.has(i) ? opened.delete(i) : opened.add(i); render(); return; }
+  const use = e.target.closest("button[data-use]"); if (!use) return;
+  const l = DATA.lines[+use.dataset.use], o = lookOf(l).candidates[+use.dataset.n], [mpn, maker] = columns();
+  try {
+    for (const [c, v] of [[mpn, o.mpn], [maker, o.manufacturer]]) if (v) drafts = await post("drafts", { key: lineKey(l), field: c.name, value: v === current(l, c) ? null : v });
+    opened.delete(+use.dataset.use); render();
+  } catch (err) { alert("Not saved: " + err.message); }
+});
+function lookState(s) {
+  const el = $("lookstate");
+  el.className = s.error ? "err" : "";
+  if (s.running) el.textContent = `Asking Mouser... ${s.done}/${s.total} (one search every 2 s)`;
+  else if (s.error) el.textContent = s.error;
+  else if (s.result) {
+    const site = s.result.sites?.mouser, b = +$("boards").value || 1;
+    el.className = site?.error ? "err" : "";
+    el.textContent = site?.error ? "Mouser: " + site.error
+      : (b !== s.result.summary.boards ? `Prices are for ${s.result.summary.boards} board(s): Look up again for ${b}` : "");
+  } else el.textContent = "";
+  $("lookup").disabled = !!s.running;
+}
+async function pollLookup() {
+  let s;
+  try { s = await (await fetch(`/bom/${KEY}/lookup`)).json(); } catch { setTimeout(pollLookup, 2000); return; }
+  lookState(s);
+  if (s.running) { setTimeout(pollLookup, 1000); return; }
+  if (s.result) { setLook(s.result); render(); }
+}
+async function keys() { try { return await (await fetch(`/bom/${KEY}/keys`)).json(); } catch { return {}; } }
+function askKey() {
+  return new Promise(async (done) => {
+    const k = await keys(), d = $("keydlg");
+    $("keyhave").textContent = k.mouser?.env ? "KIGIT_MOUSER_API_KEY is set: kigit uses that instead of a saved key."
+      : k.mouser?.set ? "A key is saved. Paste another to replace it." : "No key saved yet.";
+    $("keyrm").hidden = !k.mouser?.set || k.mouser?.env;
+    $("keyin").value = "";
+    const close = (ok) => { d.close(); done(ok); };
+    const save = async (value) => {
+      try { await post("keys", { site: "mouser", key: value }); close(!!value); }
+      catch (e) { $("keyhave").textContent = "Not saved: " + e.message; }
+    };
+    $("keyok").onclick = () => { const v = $("keyin").value.trim(); if (v) save(v); };
+    $("keyrm").onclick = () => save("");
+    $("keyno").onclick = () => close(false);
+    d.showModal(); $("keyin").focus();
+  });
+}
+$("keybtn").addEventListener("click", askKey);
+$("lookup").addEventListener("click", async (e) => {
+  const k = await keys();
+  if (!k.mouser?.set && !(await askKey())) return;
+  const boards = Math.max(1, parseInt($("boards").value, 10) || 1);
+  try { lookState(await post("lookup", { boards, refresh: e.shiftKey })); pollLookup(); }
+  catch (err) { lookState({ error: err.message }); }
+});
+$("boards").addEventListener("input", () => { if (LOOK) lookState({ result: LOOK }); });
+
 // Hover a line: its parts light up; click: they stay lit (click again to let go).
 $("rows").addEventListener("mouseover", (e) => {
   const tr = e.target.closest("tr[data-i]"); if (!tr) return;
@@ -287,7 +430,7 @@ $("rows").addEventListener("mouseover", (e) => {
 });
 $("rows").addEventListener("mouseleave", rest);
 $("rows").addEventListener("click", (e) => {
-  if (e.target.closest("a, input")) return;
+  if (e.target.closest("a, input, button, tr.choices")) return;
   const tr = e.target.closest("tr[data-i]"); if (!tr) return;
   pinned = pinned === +tr.dataset.i ? null : +tr.dataset.i;
   light(DATA.lines[+tr.dataset.i].refs);
@@ -496,7 +639,8 @@ const board2d = (() => {
     .then(draw).catch((e) => { $("msg2d").textContent = "Couldn't show the board: " + e.message; $("msg2d").classList.add("err"); });
   return { light, zoomTo, fit, refs: () => [...padsOf.keys()] };
 })();
-window.kigitBom = { csv, drafts: () => drafts, pending, light, board2d, lit: () => lit };  // for scripted checks
+window.kigitBom = { csv, drafts: () => drafts, pending, light, board2d, lit: () => lit, look: () => LOOK };  // for scripted checks
+pollLookup();  // a Look up from before (this page reloaded), or one still running
 fetch(`/bom/${KEY}/drafts`).then((r) => r.json()).then((d) => { drafts = d; render(); }).catch(() => render());
 </script>
 <script type="module">

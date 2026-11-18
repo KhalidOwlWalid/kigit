@@ -83,6 +83,12 @@ add_library(kigit_core STATIC
   src/sch/netcheck.cpp
   src/sch/bom.cpp
   src/sch/fields.cpp
+  src/net/http.cpp
+  src/parts/offer.cpp
+  src/parts/store.cpp
+  src/parts/mouser.cpp
+  src/parts/match.cpp
+  src/parts/lookup.cpp
   src/git/git.cpp
   src/git/locate.cpp
   src/report/html.cpp

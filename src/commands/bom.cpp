@@ -2,15 +2,22 @@
 // materials of a schematic, at a revision (default: the working tree, which
 // also works outside git). PATH is a .kicad_sch, .kicad_pro or .kicad_pcb,
 // or a folder (its board's schematic, or its only project's).
+// `--lookup` looks the lines up at Mouser (stock, prices, lifecycle).
 #include "commands/commands.hpp"
 #include "commands/common.hpp"
 #include "git/locate.hpp"
+#include "net/http.hpp"
+#include "parts/lookup.hpp"
+#include "parts/store.hpp"
 #include "sch/bom.hpp"
 #include "sch/fields.hpp"
 
 #include <spdlog/spdlog.h>
 
+#include <algorithm>
+#include <cctype>
 #include <chrono>
+#include <cstdlib>
 #include <ctime>
 #include <fstream>
 #include <iostream>
@@ -206,8 +213,65 @@ const char* kHelp =
     "  --force                write even if KiCad has the schematic open\n"
     "  --restore DIR          put back the files from a .kigit/bom-backup/ folder\n"
     "\n"
+    "  Looking parts up (needs a Mouser API key, free from your Mouser account):\n"
+    "  --lookup               stock, prices and lifecycle for each line. Lines with a\n"
+    "                         part number get that part; lines without one get choices.\n"
+    "                         Answers are kept a day (in kigit's app folder).\n"
+    "  --boards N             how many boards to price for (default 1)\n"
+    "  --site LIST            sites to ask, comma separated (default: mouser)\n"
+    "  --refresh              ask again even for answers kept from earlier\n"
+    "  --set-key SITE         save SITE's API key, read from stdin (empty removes it);\n"
+    "                         $KIGIT_MOUSER_API_KEY overrides the saved one\n"
+    "  --keys                 which sites have a key, as JSON (never the keys)\n"
+    "\n"
     "  Part numbers are read from the usual field names: MPN, Manufacturer,\n"
     "  DigiKey, Mouser, LCSC (and spellings like \"LCSC Part #\").\n";
+
+// `--set-key SITE`: the key from stdin (a line), into the app folder.
+int set_key(const std::string& site) {
+    const auto& known = parts::known_sites();
+    if (std::find(known.begin(), known.end(), site) == known.end())
+        throw std::runtime_error("kigit has no lookups for " + site + " (it knows: mouser)");
+    std::string key;
+    std::getline(std::cin, key);
+    while (!key.empty() && (key.back() == '\r' || key.back() == ' ' || key.back() == '\t')) key.pop_back();
+    while (!key.empty() && (key.front() == ' ' || key.front() == '\t')) key.erase(0, 1);
+    parts::set_api_key(site, key);
+    spdlog::info("bom: {} key {}", site, key.empty() ? "removed" : "saved");
+    std::cerr << "kigit: " << site << " key " << (key.empty() ? "removed" : "saved") << " in "
+              << (parts::app_dir() / "parts-keys.json").string() << "\n";
+    return 0;
+}
+
+nlohmann::json run_lookup(const Bom& bom, const std::string& sites_arg, int boards, bool refresh) {
+    parts::LookupOptions opt;
+    opt.boards = boards;
+    opt.refresh = refresh;
+    opt.sites.clear();
+    std::stringstream ss(sites_arg);
+    for (std::string s; std::getline(ss, s, ',');)
+        if (!s.empty()) opt.sites.push_back(s);
+    std::optional<parts::Mouser> mouser;
+    std::string problem;
+    std::string key = parts::api_key("mouser");
+    if (!key.empty()) {
+        int pace = 2100; // Mouser allows 30 calls a minute
+        if (const char* e = std::getenv("KIGIT_LOOKUP_PACE_MS"); e && *e) pace = std::atoi(e);
+        mouser.emplace(key, net::curl_http, pace);
+    } else {
+        problem = "no Mouser API key: get one in your Mouser account (My Account, APIs), then "
+                  "save it with `kigit bom --set-key mouser` (reads it from stdin)";
+    }
+    parts::Cache cache(parts::Cache::default_file());
+    auto progress = [](int done, int total, const std::string& what) {
+        if (done < total) std::cerr << "kigit: looking up " << (done + 1) << "/" << total << " " << what << "\n";
+    };
+    nlohmann::json j = parts::lookup(bom, opt, mouser ? &*mouser : nullptr, problem, cache, progress);
+    cache.save();
+    for (const auto& [site, info] : j["sites"].items())
+        if (!info["error"].get<std::string>().empty()) warn(site + ": " + info["error"].get<std::string>());
+    return j;
+}
 
 bool is_kicad_file(const std::string& a) {
     return a.ends_with(".kicad_sch") || a.ends_with(".kicad_pro") || a.ends_with(".kicad_pcb");
@@ -233,7 +297,9 @@ fs::path root_schematic(const fs::path& path) {
 
 int run_bom(int argc, char** argv) {
     std::string rev_arg, path_arg, project_arg, out_file, format = "table", write_arg, restore_arg;
-    bool force = false;
+    bool force = false, lookup = false, refresh = false, keys = false;
+    int boards = 1;
+    std::string sites_arg = "mouser", set_key_arg;
     for (int i = 0; i < argc; ++i) {
         std::string a = argv[i];
         if (a == "-h" || a == "--help") {
@@ -244,6 +310,22 @@ int run_bom(int argc, char** argv) {
         else if (a == "--write" && i + 1 < argc) write_arg = argv[++i];
         else if (a == "--restore" && i + 1 < argc) restore_arg = argv[++i];
         else if (a == "--force") force = true;
+        else if (a == "--lookup") lookup = true;
+        else if (a == "--keys") keys = true;
+        else if (a == "--refresh") refresh = true;
+        else if (a == "--site" && i + 1 < argc) sites_arg = argv[++i];
+        else if (a == "--set-key" && i + 1 < argc) set_key_arg = argv[++i];
+        else if (a == "--boards" && i + 1 < argc) {
+            try {
+                boards = std::stoi(argv[++i]);
+            } catch (const std::exception&) {
+                boards = 0;
+            }
+            if (boards < 1) {
+                std::cerr << "kigit: --boards needs a number of 1 or more\n";
+                return 2;
+            }
+        }
         else if (a == "--csv") format = "csv";
         else if ((a == "-o" || a == "--output") && i + 1 < argc) out_file = argv[++i];
         else if ((a == "-C" || a == "--kicad-repo") && i + 1 < argc) project_arg = argv[++i];
@@ -261,6 +343,18 @@ int run_bom(int argc, char** argv) {
     }
 
     if (!restore_arg.empty()) return restore(restore_arg);
+    if (!set_key_arg.empty()) return set_key(set_key_arg);
+    if (keys) {
+        nlohmann::json j = nlohmann::json::object();
+        for (const auto& site : parts::known_sites()) {
+            std::string var = "KIGIT_" + site + "_API_KEY";
+            for (auto& c : var) c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+            const char* e = std::getenv(var.c_str());
+            j[site] = {{"set", !parts::api_key(site).empty()}, {"env", e && *e}};
+        }
+        std::cout << j.dump() << "\n";
+        return 0;
+    }
     fs::path base = project_arg.empty() ? fs::current_path() : fs::absolute(expand_home(project_arg));
     fs::path path = path_arg.empty() ? base : fs::absolute(base / expand_home(path_arg));
     fs::path sch_file = root_schematic(path);
@@ -297,7 +391,17 @@ int run_bom(int argc, char** argv) {
     Bom bom = make_bom(sch);
 
     std::string text;
-    if (format == "json") {
+    if (lookup) {
+        nlohmann::json j = run_lookup(bom, sites_arg, boards, refresh);
+        if (format == "json") {
+            j["meta"] = {{"schematic", sch_file.generic_string()},
+                         {"rev", {{"local", rev.local}, {"hash", rev.hash}, {"short", rev.short_hash}}},
+                         {"version", KIGIT_VERSION}};
+            text = j.dump(1) + "\n";
+        } else {
+            text = parts::lookup_table(j);
+        }
+    } else if (format == "json") {
         nlohmann::json j = bom_json(bom);
         j["meta"] = {{"schematic", sch_file.generic_string()},
                      {"rev", {{"local", rev.local}, {"hash", rev.hash}, {"short", rev.short_hash},

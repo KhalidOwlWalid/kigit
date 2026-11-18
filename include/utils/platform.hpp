@@ -25,6 +25,10 @@ struct RunResult : CommandResult {
 };
 RunResult run(const std::vector<std::string>& args, bool capture_stderr = false);
 
+// run(), with `input` written to the program's standard input (for data
+// that mustn't show on a command line, like API keys).
+RunResult run_input(const std::vector<std::string>& args, const std::string& input, bool capture_stderr = false);
+
 // Runs a command line through the system shell (sh, or cmd.exe on Windows)
 // and captures its standard output. Unless `keep_stderr`, stderr is thrown
 // away. Build the command with quote() for each argument. Prefer run(args).

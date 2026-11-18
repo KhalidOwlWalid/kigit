@@ -15,8 +15,10 @@
 #include <windows.h>
 #else
 #include <cerrno>
+#include <csignal>
 #include <fcntl.h>
 #include <poll.h>
+#include <thread>
 #include <spawn.h>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -99,9 +101,7 @@ void drain(HANDLE h, std::string& out) {
     while (ReadFile(h, buf.data(), static_cast<DWORD>(buf.size()), &n, nullptr) && n > 0) out.append(buf.data(), n);
 }
 
-} // namespace
-
-RunResult run(const std::vector<std::string>& args, bool capture_stderr) {
+RunResult run_impl(const std::vector<std::string>& args, bool capture_stderr, const std::string* input) {
     RunResult r;
     if (args.empty()) return r;
     std::optional<fs::path> exe = find_program(args[0]);
@@ -109,7 +109,7 @@ RunResult run(const std::vector<std::string>& args, bool capture_stderr) {
     for (size_t i = 1; i < args.size(); ++i) cmdline += " " + quote(args[i]);
 
     SECURITY_ATTRIBUTES sa{sizeof(sa), nullptr, TRUE};
-    HANDLE out_r, out_w, err_r = nullptr, err_w;
+    HANDLE out_r, out_w, err_r = nullptr, err_w, in, in_w = nullptr;
     if (!CreatePipe(&out_r, &out_w, &sa, 0)) return r;
     SetHandleInformation(out_r, HANDLE_FLAG_INHERIT, 0);
     if (capture_stderr) {
@@ -118,7 +118,12 @@ RunResult run(const std::vector<std::string>& args, bool capture_stderr) {
     } else {
         err_w = CreateFileW(L"NUL", GENERIC_WRITE, FILE_SHARE_WRITE, &sa, OPEN_EXISTING, 0, nullptr);
     }
-    HANDLE in = CreateFileW(L"NUL", GENERIC_READ, FILE_SHARE_READ, &sa, OPEN_EXISTING, 0, nullptr);
+    if (input) {
+        CreatePipe(&in, &in_w, &sa, 0);
+        SetHandleInformation(in_w, HANDLE_FLAG_INHERIT, 0);
+    } else {
+        in = CreateFileW(L"NUL", GENERIC_READ, FILE_SHARE_READ, &sa, OPEN_EXISTING, 0, nullptr);
+    }
 
     STARTUPINFOW si{};
     si.cb = sizeof(si);
@@ -136,13 +141,21 @@ RunResult run(const std::vector<std::string>& args, bool capture_stderr) {
     if (!started) {
         CloseHandle(out_r);
         if (err_r) CloseHandle(err_r);
+        if (in_w) CloseHandle(in_w);
         return r;
     }
-    // Read stderr on a thread so neither pipe can fill up and stall git.
+    // Write the input and read stderr on threads so no pipe can fill up and stall.
+    std::thread writer;
+    if (in_w) writer = std::thread([&] {
+        DWORD n = 0;
+        WriteFile(in_w, input->data(), static_cast<DWORD>(input->size()), &n, nullptr);
+        CloseHandle(in_w);
+    });
     std::thread err_reader;
     if (err_r) err_reader = std::thread([&] { drain(err_r, r.err); });
     drain(out_r, r.out);
     if (err_reader.joinable()) err_reader.join();
+    if (writer.joinable()) writer.join();
     WaitForSingleObject(pi.hProcess, INFINITE);
     DWORD code = 1;
     GetExitCodeProcess(pi.hProcess, &code);
@@ -154,6 +167,8 @@ RunResult run(const std::vector<std::string>& args, bool capture_stderr) {
     r.ok = r.code == 0;
     return r;
 }
+
+} // namespace
 
 bool stderr_supports_color() {
     // Windows Terminal and VS Code set these; the classic console may not show ANSI codes.
@@ -279,19 +294,38 @@ CommandResult run_shell(const std::string& command_line, bool keep_stderr) {
     return r;
 }
 
-RunResult run(const std::vector<std::string>& args, bool capture_stderr) {
+namespace {
+
+RunResult run_impl(const std::vector<std::string>& args, bool capture_stderr, const std::string* input) {
     RunResult r;
     if (args.empty()) return r;
-    int out_pipe[2], err_pipe[2] = {-1, -1};
+    int out_pipe[2], err_pipe[2] = {-1, -1}, in_pipe[2] = {-1, -1};
     if (pipe(out_pipe) != 0) return r;
     if (capture_stderr && pipe(err_pipe) != 0) {
         close(out_pipe[0]);
         close(out_pipe[1]);
         return r;
     }
+    if (input) {
+        // A program that exits without reading all its input would otherwise
+        // kill kigit with SIGPIPE; the write just fails instead.
+        std::signal(SIGPIPE, SIG_IGN);
+        if (pipe(in_pipe) != 0) {
+            close(out_pipe[0]);
+            close(out_pipe[1]);
+            if (capture_stderr) close(err_pipe[0]), close(err_pipe[1]);
+            return r;
+        }
+    }
     posix_spawn_file_actions_t fa;
     posix_spawn_file_actions_init(&fa);
-    posix_spawn_file_actions_addopen(&fa, 0, "/dev/null", O_RDONLY, 0);
+    if (input) {
+        posix_spawn_file_actions_adddup2(&fa, in_pipe[0], 0);
+        posix_spawn_file_actions_addclose(&fa, in_pipe[0]);
+        posix_spawn_file_actions_addclose(&fa, in_pipe[1]);
+    } else {
+        posix_spawn_file_actions_addopen(&fa, 0, "/dev/null", O_RDONLY, 0);
+    }
     posix_spawn_file_actions_adddup2(&fa, out_pipe[1], 1);
     if (capture_stderr) posix_spawn_file_actions_adddup2(&fa, err_pipe[1], 2);
     else posix_spawn_file_actions_addopen(&fa, 2, "/dev/null", O_WRONLY, 0);
@@ -307,11 +341,24 @@ RunResult run(const std::vector<std::string>& args, bool capture_stderr) {
     posix_spawn_file_actions_destroy(&fa);
     close(out_pipe[1]);
     if (capture_stderr) close(err_pipe[1]);
+    if (input) close(in_pipe[0]);
     if (rc != 0) {
         close(out_pipe[0]);
         if (capture_stderr) close(err_pipe[0]);
+        if (input) close(in_pipe[1]);
         return r;
     }
+    std::thread writer;
+    if (input) writer = std::thread([&] {
+        size_t done = 0;
+        while (done < input->size()) {
+            ssize_t n = write(in_pipe[1], input->data() + done, input->size() - done);
+            if (n < 0 && errno == EINTR) continue;
+            if (n <= 0) break;
+            done += static_cast<size_t>(n);
+        }
+        close(in_pipe[1]);
+    });
     // Read both pipes as data arrives, so neither can fill up and stall the child.
     std::vector<pollfd> fds = {{out_pipe[0], POLLIN, 0}};
     if (capture_stderr) fds.push_back({err_pipe[0], POLLIN, 0});
@@ -334,6 +381,7 @@ RunResult run(const std::vector<std::string>& args, bool capture_stderr) {
             }
         }
     }
+    if (writer.joinable()) writer.join();
     int status = 0;
     while (waitpid(pid, &status, 0) < 0 && errno == EINTR) {
     }
@@ -341,6 +389,8 @@ RunResult run(const std::vector<std::string>& args, bool capture_stderr) {
     r.ok = r.code == 0;
     return r;
 }
+
+} // namespace
 
 bool stderr_supports_color() { return isatty(2) && env("TERM") != "dumb"; }
 
@@ -416,6 +466,14 @@ fs::path state_dir() {
 }
 
 #endif
+
+RunResult run(const std::vector<std::string>& args, bool capture_stderr) {
+    return run_impl(args, capture_stderr, nullptr);
+}
+
+RunResult run_input(const std::vector<std::string>& args, const std::string& input, bool capture_stderr) {
+    return run_impl(args, capture_stderr, &input);
+}
 
 std::time_t file_time(const fs::path& p) {
     // file_time_type's clock differs per platform; convert via "now" on both clocks.

@@ -57,6 +57,8 @@ Pieces:
 | `utils/` | `platform` (processes, paths, browser, env, app-data dirs: all OS code), `log` (spdlog session logs), `sexpr` (S-expression parser for KiCad files) |
 | `git/` | `git` (log, show, resolve revisions, changed files), `locate` (find a board that moved or was renamed in history; skipped folders like `.history`) |
 | `pcb/` | `board` (load `.kicad_pcb`: items, footprints, zones, silkscreen), `diff` (PCB diff) |
+| `net/` | `http` (HTTPS through the `curl` program: `curl -K -` with the whole request, URL included, on stdin; `Http` is a function so tests pass a stand-in) |
+| `parts/` | part lookups: `offer` (`Offer`, `cost_at`, `parse_price`), `mouser` (Search API v1, paced), `match` (pick or choices), `store` (keys, cache in the app folder), `lookup` (a BOM through the cache, JSON, table) |
 | `sch/` | `schematic` (load `.kicad_sch` hierarchy, compute nets and buses), `sch_diff` (schematic diff), `netcheck` (compare with a KiCad netlist), `bom` (bill of materials: lines, part number fields, search queries and links) |
 | `report/` | `html` (JSON for the viewer and `--json`; embeds the viewer), `viewer_template.hpp.in` |
 | `commands/` | the CLI: `options` (parsing, `--help`), `common` (shared helpers: board paths, warnings, output paths, `git_board`), `summary` (terminal summary), `diff` (compare, also `--check-netlist`), `history` (`--log`, `--rewritten`), `board3d` (`--3d`), `example` (`kigit example`), `uninstall` (`kigit uninstall`), `bom` (`kigit bom`), `projects` (`--projects`), `gui` (`kigit gui`) |
@@ -254,6 +256,26 @@ at once. localStorage settings are per origin, so per port.
   manifest.json: root, files) and each file is written via a temp file and
   rename. `--restore DIR` (only a `.kigit/bom-backup/` folder) puts them
   back. Prints JSON on stdout.
+- `kigit bom --lookup [--boards N] [--site mouser] [--refresh]` (`parts/`):
+  stock, price, lead time, lifecycle per line, only on request. HTTP is the
+  `curl` program (`$KIGIT_CURL`, else PATH; on Windows 10+ too) via
+  `platform::run_input`: the request goes as a curl config on stdin, so keys
+  never reach argv; error text is `redact`ed and keys aren't logged. Keys:
+  `$KIGIT_<SITE>_API_KEY`, else `<app data>/kigit/parts-keys.json` (owner
+  only), set by `--set-key SITE` from stdin. Cache: `parts-cache.json`,
+  keyed `site|pn|NORMPN` or `site|kw|words`, used 24 h, dropped after 7 days
+  (both in the folder above `$KIGIT_LOG_DIR` when that's set); `--keys`
+  prints which sites have a key;
+  errors aren't cached. Matching (`parts/match`): the line's site number,
+  else its MPN, gets only that exact part (`norm_pn`), best ranked first; a
+  line without one gets up to 5 ranked `choose` candidates and no pick (never
+  guess a part). Need = qty x boards; `cost_at` honours min, mult and price
+  breaks. Mouser: 30 calls/min, 1000/day, so 2.1 s between calls
+  (`KIGIT_LOOKUP_PACE_MS`, 0 in tests); a refused key, the limit or no
+  network is `fatal` and skips the site's remaining lines. Line `key` is
+  the GUI's `bom.line_key`. Tests: `test_parts` (stand-in Http), and
+  test_cli with a stand-in curl script (Unix). Digi-Key (OAuth client
+  credentials, substitutes) is next; LCSC has no public API.
 - `kigit bom [REV] [PATH] [--json | --csv] [-o FILE]` (`commands/bom.cpp`,
   `sch/bom`): a subcommand with its own options (like `uninstall`), run
   from `run()` in main.cpp so it's logged. Default the working tree, read
@@ -524,7 +546,7 @@ at once. localStorage settings are per origin, so per port.
   `/bom/{key}/undo` -> `--restore` of that write's backup. Commits'
   BOMs are read-only (`EDITABLE`, and the route refuses). KiCad's lock
   (409 `locked`) asks before `force`. Export CSV is made in the page (what's
-  shown, drafts included; quantities x Boards, DNP left out unless ticked).
+  shown, drafts included; quantities x Build qty `#boards`, DNP left out unless ticked).
   Only on request: no background
   lookups. The page is `bom_page.html` (a plain file, read at import: no
   Python escaping), placeholders `%%KEY%%` etc. Beside the list: a 2D
@@ -538,7 +560,18 @@ at once. localStorage settings are per origin, so per port.
   diff) calls `window.bomHover(ref)`. The 3D code is a trimmed copy of the
   3D diff's (merge by material, materials, picking), sized to its pane
   (ResizeObserver). Planned step 2: Digi-Key / Mouser API lookups (stock, price,
-  lifecycle, alternatives), keys in the app folder.
+  lifecycle, alternatives), keys in the app folder. Look up (Mouser):
+  the page POSTs `/bom/{key}/lookup` {boards = Build qty, refresh =
+  Shift}, which runs `bom.run_lookup` as a task (`Job.lookup`: running,
+  done/total from kigit's "looking up i/n" stderr lines via
+  `kigit.bom_lookup`'s Popen reader, result, error); the page polls GET
+  `/bom/{key}/lookup` (also on load, so a reload keeps it). Rows match
+  by `key` (= `lineKey`). Mouser and Price columns sit before Search
+  (the links cell must stay last); `N choices` opens a `tr.choices` row
+  and Use posts MPN + Manufacturer drafts. Key: `/bom/{key}/keys` GET ->
+  `kigit bom --keys` (set/env only), POST -> `--set-key` with the key on
+  stdin (`_run(input=)`); never logged. Parts files follow
+  `KIGIT_LOG_DIR`'s parent like the GUI's, so GUI tests stay in temp.
 - 3D diff (beta, `board3d_diff.py`): separate from the 3D view, which
   stays as it is. The header's "3D diff" button (`diff3d_btn`, a "beta"
   badge; shown with `dock_btn`) opens a blank tab in its click

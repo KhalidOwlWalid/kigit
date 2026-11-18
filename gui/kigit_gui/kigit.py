@@ -8,7 +8,9 @@ import os
 import re
 import shutil
 import subprocess
+import threading
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -34,25 +36,36 @@ def kigit_binary() -> str:
 _LOG_LINE = re.compile(r"^\[\d{4}-\d\d-\d\d \d\d:\d\d:\d\d")
 
 
-async def _run(*args: str) -> tuple[bytes, str]:
-    """Runs kigit. Returns (stdout, stderr without log lines). In a logged GUI
-    session, kigit appends to the session log and its lines are echoed to the
-    console."""
+def _command(args: tuple[str, ...]) -> list[str]:
     session_log = os.environ.get(logs.SESSION_FILE_ENV)
     extra = ["--log-file", session_log, "--log-stderr"] if session_log else ["--no-log"]
+    return [kigit_binary(), *args, *extra]
+
+
+_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)  # no console flash on Windows
+
+
+async def _run(*args: str, input: bytes | None = None) -> tuple[bytes, str]:
+    """Runs kigit. Returns (stdout, stderr without log lines). In a logged GUI
+    session, kigit appends to the session log and its lines are echoed to the
+    console. `input` goes to its stdin."""
     started = time.monotonic()
     # subprocess in a worker thread: works the same on Windows, Linux and
     # macOS (asyncio's own subprocess support depends on the event loop type).
-    cmd = [kigit_binary(), *args, *extra]
-    no_window = getattr(subprocess, "CREATE_NO_WINDOW", 0)  # no console flash on Windows
-    proc = await asyncio.to_thread(subprocess.run, cmd, capture_output=True, creationflags=no_window)
-    out, err = proc.stdout, proc.stderr
+    cmd = _command(args)
+    proc = await asyncio.to_thread(subprocess.run, cmd, capture_output=True, creationflags=_NO_WINDOW,
+                                   input=input if input is not None else b"")
+    return _finish(args, proc.returncode, proc.stdout, proc.stderr, started)
+
+
+def _finish(args: tuple[str, ...], code: int, out: bytes, err: bytes, started: float) -> tuple[bytes, str]:
+    """Logs a finished run; raises KigitError if it failed."""
     lines = err.decode(errors="replace").splitlines()
     logs.echo_kigit_lines([l for l in lines if _LOG_LINE.match(l)])
     text = "\n".join(l for l in lines if not _LOG_LINE.match(l)).strip()
-    logs.log.debug("kigit %s -> exit %d in %.2f s", " ".join(args), proc.returncode, time.monotonic() - started)
-    if proc.returncode != 0:
-        message = text.removeprefix("kigit: ") or f"kigit exited with {proc.returncode}"
+    logs.log.debug("kigit %s -> exit %d in %.2f s", " ".join(args), code, time.monotonic() - started)
+    if code != 0:
+        message = text.removeprefix("kigit: ") or f"kigit exited with {code}"
         logs.log.warning("kigit %s failed: %s", " ".join(args), message)  # a user-facing problem, not a GUI error
         raise KigitError(message)
     return out, text
@@ -252,6 +265,50 @@ async def bom_write(board: str, edits: list[dict], edits_file: Path, force: bool
 async def bom_restore(backup: str) -> dict:
     """kigit bom --restore: puts back the files a --write replaced."""
     out, _ = await _run("bom", "--restore", backup)
+    return json.loads(out)
+
+
+async def bom_keys() -> dict:
+    """kigit bom --keys: {site: {set, env}} (never the keys themselves)."""
+    out, _ = await _run("bom", "--keys")
+    return json.loads(out)
+
+
+async def bom_set_key(site: str, key: str) -> None:
+    """kigit bom --set-key: the key goes on stdin, never on a command line."""
+    await _run("bom", "--set-key", site, input=(key.strip() + "\n").encode())
+
+
+# kigit bom --lookup's progress lines: "kigit: looking up 3/40 R1 R2"
+_PROGRESS = re.compile(r"^kigit: looking up (\d+)/(\d+)")
+
+
+async def bom_lookup(board: str, rev: str = "LOCAL", boards: int = 1, refresh: bool = False,
+                     progress: Callable[[int, int], None] | None = None) -> dict:
+    """kigit bom --lookup --json: stock, prices and lifecycle at Mouser for
+    each line. Mouser is asked about 2 s apart, so this can take a minute;
+    progress(done, total) follows kigit's progress lines."""
+    args = ("bom", "--lookup", "--json", "--boards", str(max(1, boards)), *(["--refresh"] if refresh else []),
+            *([] if rev == "LOCAL" else [rev]), board)
+    started = time.monotonic()
+
+    def go() -> tuple[int, bytes, bytes]:
+        proc = subprocess.Popen(_command(args), stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                                stderr=subprocess.PIPE, creationflags=_NO_WINDOW)
+        out: list[bytes] = []
+        reader = threading.Thread(target=lambda: out.append(proc.stdout.read()), daemon=True)
+        reader.start()
+        err = []
+        for raw in proc.stderr:
+            err.append(raw)
+            m = _PROGRESS.match(raw.decode(errors="replace"))
+            if m and progress:
+                progress(int(m.group(1)) - 1, int(m.group(2)))
+        reader.join()
+        return proc.wait(), b"".join(out), b"".join(err)
+
+    code, out, err = await asyncio.to_thread(go)
+    _finish(args, code, out, err, started)
     return json.loads(out)
 
 

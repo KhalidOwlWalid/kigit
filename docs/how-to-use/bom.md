@@ -33,7 +33,36 @@ Each line has **Digi-Key**, **Mouser** and **LCSC** links that open the site's s
 - otherwise, for chip resistors, capacitors, inductors, ferrites and LEDs, the value and package: "10k 0603 resistor" (`10kR`, `5k1` and `4R7` are written the way distributors search: `10k`, `5.1k`, `4.7 ohm`);
 - otherwise the value, which for an IC is usually its part name.
 
-The links only open the sites in your browser: kigit itself doesn't contact anyone. A part number you've typed in (not written yet) searches for itself.
+The links only open the sites in your browser. A part number you've typed in (not written yet) searches for itself.
+
+## Stock and prices
+
+**Look up** on the BOM page (or `kigit bom --lookup`) asks Mouser about each line: stock, price for the quantity you need, lead time and lifecycle (obsolete, end of life...). It's the only time kigit contacts a parts site, and only when you press it.
+
+You need a Mouser API key (free): in your Mouser account, **My Account** → **APIs**, ask for a **Search API** key. The first Look up asks for it (or press **Key**); on the command line, save it once:
+
+```sh
+kigit bom --set-key mouser     # then paste the key and press Enter
+```
+
+It's kept in `parts-keys.json` in the [app folder](../app-folder.md), readable only by you. `KIGIT_MOUSER_API_KEY` (an environment variable) is used instead when set. The key goes to `curl` (which kigit uses to talk to Mouser) on its standard input, never on a command line, and it isn't written to the logs.
+
+```sh
+kigit bom --lookup               # a table
+kigit bom --lookup --boards 25   # price 25 boards
+kigit bom --lookup --json        # everything, for scripts
+kigit bom --lookup --refresh     # ask again, not from the last day's answers
+```
+
+On the page, Look up prices **Build qty** boards and adds two columns: **Mouser** (the part, its stock, lead time and lifecycle; **SHORT** in red when Mouser has too few) and **Price** (the total, and how many at what each). The header sums it up. A line without a part number shows **N choices**: open them and press **Use** to put that MPN and manufacturer in the line's drafts, then write them like any other edit. Shift+click Look up to ask Mouser again instead of using the last day's answers. Change Build qty and the page says to look up again (from the kept answers, so it's quick).
+
+- **A line with a part number** (its Mouser number, else its MPN) gets that exact part. If Mouser sells it in several packagings, the one with enough stock comes first, then the cheapest.
+- **A line without one** (most resistors and capacitors) gets up to five **choices** from searching "10k 0603 resistor", ranked by stock, lifecycle and package. kigit doesn't pick one for you: put the one you want in the MPN column.
+- **SHORT** means Mouser has fewer than you need (the line's quantity × `--boards`). The price is for what you'd buy: at least Mouser's minimum, in its multiples, at that quantity's price break.
+- Parts that are obsolete, end of life or not for new designs say so, with Mouser's suggested replacement in the JSON.
+- DNP lines aren't looked up.
+
+Mouser allows 30 searches a minute and 1000 a day, so kigit waits 2 seconds between searches and keeps the answers for a day (`parts-cache.json` in the app folder): asking again is instant and free. A refused key or the daily limit stops the lookup with a message, instead of trying every line.
 
 ## Editing part numbers
 
@@ -60,7 +89,7 @@ Only the working tree can be edited: a commit's BOM is read-only.
 
 ## Exporting
 
-**Export CSV** writes a file for Digi-Key's BOM Manager or Mouser's BOM Tool (both let you match up the columns): quantity, manufacturer, MPN, Digi-Key, Mouser and LCSC part numbers, references, value, footprint, and fields you added. It uses what's on screen, drafts included. **Boards** multiplies the quantities; DNP parts are left out unless you tick **DNP in export**.
+**Export CSV** writes a file for Digi-Key's BOM Manager or Mouser's BOM Tool (both let you match up the columns): quantity, manufacturer, MPN, Digi-Key, Mouser and LCSC part numbers, references, value, footprint, and fields you added. It uses what's on screen, drafts included. **Build qty** (how many boards you're building) multiplies the quantities; DNP parts are left out unless you tick **DNP in export**.
 
 ## Which revision
 

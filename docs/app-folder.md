@@ -35,6 +35,8 @@ In the GUI, the :material-receipt-text: log button shows the log's full path and
 | `thumbnails/` | The board pictures on the landing page, one per project | the GUI (with KiCad) |
 | `mentions-seen.json` | Which [mentions](how-to-use/reviews.md#mentions) of your discussions you've been told about, per project (for the bell) | the GUI |
 | `3d-build-times.json` | How long each board's [3D model](how-to-use/3d-view.md#making-the-model) took to make, for the progress bar | the GUI |
+| `parts-keys.json` | Your API keys for [part lookups](how-to-use/bom.md#stock-and-prices) (Mouser), readable only by you | `kigit bom --set-key` |
+| `parts-cache.json` | Mouser's answers to part lookups, used for a day (dropped after a week) | `kigit bom --lookup` |
 | `gui-env/` | The GUI's Python and packages, set up the first time you run `kigit gui` | the installed kigit |
 | `example/` | The [example project](example.md), if you tried it from the GUI | the GUI |
 
@@ -42,12 +44,12 @@ In the GUI, the :material-receipt-text: log button shows the log's full path and
 
 ## Moving it
 
-- `KIGIT_LOG_DIR` (an environment variable) moves the **logs** to that folder. The GUI then keeps `sessions.json`, `thumbnails/` and `3d-build-times.json` in the folder *above* it, so `KIGIT_LOG_DIR=D:\kigit\log` puts them in `D:\kigit`.
+- `KIGIT_LOG_DIR` (an environment variable) moves the **logs** to that folder. The GUI then keeps `sessions.json`, `thumbnails/` and `3d-build-times.json`, and the command line its `parts-*.json`, in the folder *above* it, so `KIGIT_LOG_DIR=D:\kigit\log` puts them in `D:\kigit`.
 - `--log-dir DIR` moves only the logs, for that run. `--no-log` writes none.
 
 ## Deleting it
 
-`kigit uninstall --purge` deletes it (after listing what's in it and asking). Everything in the app folder can go. Deleting it forgets your recent projects, their pictures, the 3D build times and the logs; `gui-env/` is set up again the next time you start the GUI (that takes about a minute, as on the first start). Your projects and their [reviews](how-to-use/reviews.md) aren't in it. One thing to keep in mind: the [example project](example.md), if you made it from the GUI, lives in here (`example/`), so anything you wrote in it goes too; copy it somewhere else first to keep it.
+`kigit uninstall --purge` deletes it (after listing what's in it and asking). Everything in the app folder can go. Deleting it forgets your recent projects, their pictures, the 3D build times, your parts API keys and the logs; `gui-env/` is set up again the next time you start the GUI (that takes about a minute, as on the first start). Your projects and their [reviews](how-to-use/reviews.md) aren't in it. One thing to keep in mind: the [example project](example.md), if you made it from the GUI, lives in here (`example/`), so anything you wrote in it goes too; copy it somewhere else first to keep it.
 
 ## What isn't in it
 

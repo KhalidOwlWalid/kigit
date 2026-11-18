@@ -121,6 +121,77 @@ TEST_CASE("kigit bom: the working tree, a commit, CSV and JSON") {
     CHECK(run_kigit("bom --nope").code == 2);
 }
 
+#ifndef _WIN32
+TEST_CASE("kigit bom --lookup: Mouser through curl, the key on stdin only, answers kept") {
+    TempDir tmp;
+    make_fixture_repo(tmp.path());
+    std::string board = quote((tmp / "board/demo.kicad_pcb").string());
+    fs::path bin = tmp / "bin";
+    fs::create_directories(bin);
+    // A stand-in curl: notes its arguments and the config it was given, and
+    // answers with a recorded Mouser reply.
+    json part = {{"MouserPartNumber", "603-RC0603FR-071KL"}, {"ManufacturerPartNumber", "RC0603FR-071KL"},
+                 {"Manufacturer", "YAGEO"}, {"Description", "Thick Film Resistors - SMD 1K OHM 1% 0603"},
+                 {"AvailabilityInStock", "5000"}, {"Min", "1"}, {"Mult", "1"},
+                 {"PriceBreaks", {{{"Quantity", 1}, {"Price", "$0.10"}, {"Currency", "USD"}}}}};
+    write_text(bin / "reply.json", json{{"Errors", json::array()}, {"SearchResults", {{"Parts", {part}}}}}.dump());
+    fs::path curl = bin / "curl";
+    std::ofstream(curl) << "#!/bin/sh\n"
+                           "echo \"$*\" >> \"" << (bin / "args.log").string() << "\"\n"
+                           "cat >> \"" << (bin / "config.txt").string() << "\"\n"
+                           "cat \"" << (bin / "reply.json").string() << "\"\n"
+                           "printf '\\n200'\n";
+    fs::permissions(curl, fs::perms::owner_all);
+    kigit::platform::set_env("KIGIT_CURL", curl.string());
+    kigit::platform::set_env("XDG_STATE_HOME", (tmp / "state").string());
+    kigit::platform::set_env("KIGIT_LOOKUP_PACE_MS", "0");
+    kigit::platform::set_env("KIGIT_MOUSER_API_KEY", "");
+    kigit::platform::set_env("KIGIT_LOG_DIR", ""); // else the keys go in the folder above it
+
+    // No key yet: every line skipped, and why.
+    RunResult none = run_kigit("bom --no-log --lookup --json -C " + board);
+    json j = parse(none);
+    CHECK(j["lines"][0]["sites"]["mouser"]["status"] == "skipped");
+    CHECK(none.err.find("--set-key mouser") != std::string::npos);
+
+    CHECK(parse(run_kigit("bom --no-log --keys"))["mouser"]["set"] == false);
+    RunResult set = run("printf 'MY-KEY\\n' | " + quote(KIGIT_BIN) + " bom --no-log --set-key mouser");
+    REQUIRE(set.code == 0);
+    fs::path keys = tmp / "state/kigit/parts-keys.json";
+    CHECK(json::parse(read_text(keys))["mouser"] == "MY-KEY");
+    json status = parse(run_kigit("bom --no-log --keys"));
+    CHECK(status["mouser"]["set"] == true);
+    CHECK(status.dump().find("MY-KEY") == std::string::npos);
+    CHECK((fs::status(keys).permissions() & (fs::perms::group_all | fs::perms::others_all)) == fs::perms::none);
+
+    RunResult looked = run_kigit("bom --no-log --lookup --json --boards 10 -C " + board);
+    j = parse(looked);
+    CHECK(j["summary"]["boards"] == 10);
+    CHECK(j["lines"][1]["need"] == 30); // R1 R3 R5 for 10 boards
+    CHECK(j["lines"][0]["sites"]["mouser"]["status"] == "choose");
+    CHECK(j["lines"][0]["sites"]["mouser"]["candidates"][0]["sku"] == "603-RC0603FR-071KL");
+    CHECK(read_text(bin / "config.txt").find("apiKey=MY-KEY") != std::string::npos);
+    std::string args = read_text(bin / "args.log");
+    CHECK(args.find("MY-KEY") == std::string::npos); // never on a command line
+    CHECK(args.find("-K -") != std::string::npos);
+    size_t calls = std::count(args.begin(), args.end(), '\n');
+    CHECK(calls == 4); // one per line
+
+    // Again: from the cache. --refresh asks again.
+    run_kigit("bom --no-log --lookup -C " + board);
+    args = read_text(bin / "args.log");
+    CHECK(static_cast<size_t>(std::count(args.begin(), args.end(), '\n')) == calls);
+    RunResult table = run_kigit("bom --no-log --lookup --refresh -C " + board);
+    CHECK(table.code == 0);
+    CHECK(table.out.find("choose (1 options)") != std::string::npos);
+    args = read_text(bin / "args.log");
+    CHECK(static_cast<size_t>(std::count(args.begin(), args.end(), '\n')) == 2 * calls);
+
+    CHECK(run_kigit("bom --no-log --lookup --boards 0 -C " + board).code == 2);
+    for (const char* v : {"KIGIT_CURL", "XDG_STATE_HOME", "KIGIT_LOOKUP_PACE_MS"}) kigit::platform::set_env(v, "");
+}
+#endif
+
 TEST_CASE("kigit bom --write: part information only, checked, with a backup to restore") {
     TempDir tmp;
     make_fixture_repo(tmp.path());

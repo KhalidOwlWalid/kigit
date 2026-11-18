@@ -1,9 +1,12 @@
 """The BOM page: picks kept next to the board, and the page's script."""
 
+import asyncio
 import json
+import os
 import re
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -95,3 +98,51 @@ def test_page_file_is_not_ignored_by_git() -> None:
     if r.returncode == 128:
         pytest.skip("not in a git checkout")
     assert r.returncode == 1, f"{page.name} is ignored by .gitignore"
+
+
+REPO = Path(__file__).resolve().parents[2]
+KIGIT_BIN = os.environ.get("KIGIT_BIN") or next(
+    (str(p) for p in (REPO / "build" / "kigit", REPO / "build" / "kigit.exe") if p.exists()), "")
+
+
+@pytest.mark.skipif(sys.platform == "win32" or not KIGIT_BIN, reason="needs the built kigit and a shell for the stand-in curl")
+def test_look_up_through_kigit_with_a_stand_in_curl(tmp_path: Path, monkeypatch) -> None:
+    """Look up: the key goes to kigit on stdin, the page learns only that one
+    is set, and the lookup's result and progress are kept with the job."""
+    part = {"MouserPartNumber": "603-RC0603FR-071KL", "ManufacturerPartNumber": "RC0603FR-071KL",
+            "Manufacturer": "YAGEO", "Description": "Thick Film Resistors 1K 0603", "AvailabilityInStock": "5000",
+            "Min": "1", "Mult": "1", "PriceBreaks": [{"Quantity": 1, "Price": "$0.10", "Currency": "USD"}]}
+    (tmp_path / "reply.json").write_text(json.dumps({"Errors": [], "SearchResults": {"Parts": [part]}}), encoding="utf-8")
+    curl = tmp_path / "curl"
+    curl.write_text(f'#!/bin/sh\necho "$*" >> "{tmp_path}/args.log"\ncat > /dev/null\n'
+                    f'cat "{tmp_path}/reply.json"\nprintf "\\n200"\n', encoding="utf-8")
+    curl.chmod(0o755)
+    monkeypatch.setenv("KIGIT_BIN", KIGIT_BIN)
+    monkeypatch.setenv("KIGIT_CURL", str(curl))
+    monkeypatch.setenv("KIGIT_LOOKUP_PACE_MS", "0")
+    monkeypatch.delenv("KIGIT_MOUSER_API_KEY", raising=False)
+    monkeypatch.setenv("KIGIT_LOG_DIR", str(tmp_path / "state" / "log"))  # keys and cache go in state/
+
+    from kigit_gui import kigit
+
+    assert asyncio.run(kigit.bom_keys())["mouser"] == {"set": False, "env": False}
+    asyncio.run(kigit.bom_set_key("mouser", " SECRET-1 "))
+    keys = asyncio.run(kigit.bom_keys())
+    assert keys["mouser"]["set"] and "SECRET-1" not in json.dumps(keys)
+    assert json.loads((tmp_path / "state" / "parts-keys.json").read_text(encoding="utf-8")) == {"mouser": "SECRET-1"}
+
+    board = str(REPO / "tests" / "fixtures" / "v2" / "demo.kicad_pcb")
+    job = bom.Job(board, "demo", asyncio.run(kigit.bom(board)))
+    asyncio.run(bom.run_lookup(job, 3, False))
+    state = job.lookup.state()
+    assert not state["running"] and not state["error"]
+    assert state["done"] == state["total"] == 4 and state["boards"] == 3
+    lines = {l["key"]: l for l in state["result"]["lines"]}
+    one_k = lines[bom.line_key(next(l for l in job.data["lines"] if l["value"] == "1k"))]
+    assert one_k["need"] == 9  # 3 parts x 3 boards
+    assert one_k["sites"]["mouser"]["status"] == "choose"
+    assert one_k["sites"]["mouser"]["candidates"][0]["mpn"] == "RC0603FR-071KL"
+    assert "SECRET-1" not in (tmp_path / "args.log").read_text(encoding="utf-8")
+
+    asyncio.run(kigit.bom_set_key("mouser", ""))
+    assert not asyncio.run(kigit.bom_keys())["mouser"]["set"]
