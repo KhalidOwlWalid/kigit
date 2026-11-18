@@ -711,6 +711,24 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#linking-to-a-discussion-or-a-review" class="md-nav__link">
+    <span class="md-ellipsis">
+      Linking to a discussion or a review
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mentions" class="md-nav__link">
+    <span class="md-ellipsis">
+      Mentions
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#jump-to-the-commits" class="md-nav__link">
     <span class="md-ellipsis">
       Jump to the commits
@@ -781,6 +799,27 @@
   
   <span class="md-ellipsis">
     3D View
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../bom/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Bill of Materials
   </span>
   
 
@@ -1081,6 +1120,24 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#linking-to-a-discussion-or-a-review" class="md-nav__link">
+    <span class="md-ellipsis">
+      Linking to a discussion or a review
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mentions" class="md-nav__link">
+    <span class="md-ellipsis">
+      Mentions
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#jump-to-the-commits" class="md-nav__link">
     <span class="md-ellipsis">
       Jump to the commits
@@ -1158,20 +1215,25 @@
 </figure>
 <ul>
 <li><strong>Summary:</strong> the commit as a whole.</li>
+<li><strong>Notes:</strong> click a net, footprint, part or bus in the viewer to pin it, then press <strong>+ Note</strong>: the note points at it. Click the note's chip later to show it again in the viewer. Without anything pinned, the note is a general one.</li>
+<li><strong>Titles:</strong> press <span class="twemoji"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20.71 7.04c.39-.39.39-1.04 0-1.41l-2.34-2.34c-.37-.39-1.02-.39-1.41 0l-1.84 1.83 3.75 3.75M3 17.25V21h3.75L17.81 9.93l-3.75-3.75z"/></svg></span> on a note and its title becomes a text box, like its text.</li>
 <li>
-<p><strong>Notes:</strong> click a net, footprint, part or bus in the viewer to pin it, then press <strong>+ Note</strong>: the note points at it. Click the note's chip later to show it again in the viewer. Without anything pinned, the note is a general one.</p>
+<p><strong>More than one thing, or the wrong one:</strong> pin something else in the viewer, then use <span class="twemoji"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 2c3.31 0 6 2.66 6 5.95C18 12.41 12 19 12 19S6 12.41 6 7.95C6 4.66 8.69 2 12 2m0 4a2 2 0 0 0-2 2 2 2 0 0 0 2 2 2 2 0 0 0 2-2 2 2 0 0 0-2-2m8 13c0 2.21-3.58 4-8 4s-8-1.79-8-4c0-1.29 1.22-2.44 3.11-3.17l.64.91C6.67 17.19 6 17.81 6 18.5c0 1.38 2.69 2.5 6 2.5s6-1.12 6-2.5c0-.69-.67-1.31-1.75-1.76l.64-.91C18.78 16.56 20 17.71 20 19"/></svg></span> next to the note's chips. <strong>Add what's pinned</strong> points the note at that too (a note can be about several parts, nets or footprints), <strong>Replace with what's pinned</strong> points it there instead, and <strong>Make it a general note</strong> drops them all. The ✕ on a chip takes just that one off.</p>
 <p>A note remembers the two commits it was pinned in, so it can still show a net or part that commit <strong>deleted</strong>: its chip turns red and says "removed".</p>
 </li>
 <li>
 <p>Each note shows when it was written and, if it was changed afterwards, when it was last edited.</p>
 </li>
 </ul>
-<p>Press <strong>Write</strong> (or <span class="keys"><kbd class="key-control">Ctrl</kbd><span>+</span><kbd class="key-s">S</kbd></span>) to save. Until then the panel says "Unsaved changes"; if you switch to another commit first, your edits are kept as a draft for the session, and closing the page asks before throwing them away. Reviewed commits get a <span class="twemoji"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 2H4c-1.11 0-2 .89-2 2v12a2 2 0 0 0 2 2h4v3c0 .55.45 1 1 1h.5c.25 0 .5-.1.7-.29L13.9 18H20c1.1 0 2-.9 2-2V4a2 2 0 0 0-2-2M9.08 15H7v-2.09l6.17-6.19 2.07 2.08zm7.76-7.8-1.01 1.01-2.07-2.03 1.01-1.02c.2-.21.54-.22.78 0l1.29 1.25c.21.21.22.55 0 .79"/></svg></span> mark in the commit list.</p>
+<p>Press <strong>Write</strong> (or <span class="keys"><kbd class="key-control">Ctrl</kbd><span>+</span><kbd class="key-s">S</kbd></span>) to save. Until then the panel says "Unsaved changes"; if you switch to another commit first, your edits are kept as a draft for the session, and closing the page asks before throwing them away. Reviewed commits get a <span class="twemoji"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 2H4c-1.11 0-2 .89-2 2v12a2 2 0 0 0 2 2h4v3c0 .55.45 1 1 1h.5c.25 0 .5-.1.7-.29L13.9 18H20c1.1 0 2-.9 2-2V4a2 2 0 0 0-2-2M9.08 15H7v-2.09l6.17-6.19 2.07 2.08zm7.76-7.8-1.01 1.01-2.07-2.03 1.01-1.02c.2-.21.54-.22.78 0l1.29 1.25c.21.21.22.55 0 .79"/></svg></span> mark in the commit list. Delete everything in a review (summary and notes) and Write, and its file is removed, mark and all.</p>
 <h3 id="writing-notes">Writing notes<a class="headerlink" href="#writing-notes" title="Permanent link">&para;</a></h3>
-<p>Text is Markdown: lists, code, tables, links.</p>
+<p>Text is Markdown: lists, code, tables, links. The text boxes (the summary, notes, and discussion messages) work like GitHub's comment box:</p>
 <ul>
-<li><strong>Pictures:</strong> paste or drop an image into a note. It's saved in <code>reviews/assets/</code>.</li>
-<li><strong>Links:</strong> select the words to link and press the <span class="twemoji"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7a5 5 0 0 0-5 5 5 5 0 0 0 5 5h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1M8 13h8v-2H8zm9-6h-4v1.9h4c1.71 0 3.1 1.39 3.1 3.1s-1.39 3.1-3.1 3.1h-4V17h4a5 5 0 0 0 5-5 5 5 0 0 0-5-5"/></svg></span> button in the text box (or <span class="keys"><kbd class="key-control">Ctrl</kbd><span>+</span><kbd class="key-k">K</kbd></span>), then give the address. Web addresses typed as they are (<code>https://...</code>) become links by themselves.</li>
+<li><strong>Write / Preview:</strong> Preview shows it as it will look, math included.</li>
+<li><strong>Toolbar:</strong> heading, <strong>bold</strong> (<span class="keys"><kbd class="key-control">Ctrl</kbd><span>+</span><kbd class="key-b">B</kbd></span>), <em>italic</em> (<span class="keys"><kbd class="key-control">Ctrl</kbd><span>+</span><kbd class="key-i">I</kbd></span>), quote, code, link, bulleted, numbered and task lists. Select text first to format it; press again to undo it. <span class="keys"><kbd class="key-control">Ctrl</kbd><span>+</span><kbd class="key-z">Z</kbd></span> undoes too.</li>
+<li><strong>Files:</strong> paste, drop, or click <em>Paste, drop, or click to add files</em> under the box. Pictures show in the text; any other file (a datasheet PDF, a scope capture, a log) becomes a link named after it. They're saved in <code>reviews/assets/</code>; PDFs and pictures open in the browser, other files download.</li>
+<li><strong>Pictures</strong> open full size when you click them, in kigit and on the Reviews page (click again or <span class="keys"><kbd class="key-escape">Esc</kbd></span> to close). Obsidian's <code>![[picture.png]]</code> (or <code>![[picture.png|300]]</code> for a width) works too: kigit finds the picture by name anywhere in <code>reviews/</code>.</li>
+<li><strong>Links:</strong> select the words to link and press <span class="twemoji"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7a5 5 0 0 0-5 5 5 5 0 0 0 5 5h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1M8 13h8v-2H8zm9-6h-4v1.9h4c1.71 0 3.1 1.39 3.1 3.1s-1.39 3.1-3.1 3.1h-4V17h4a5 5 0 0 0 5-5 5 5 0 0 0-5-5"/></svg></span> (or <span class="keys"><kbd class="key-control">Ctrl</kbd><span>+</span><kbd class="key-k">K</kbd></span>), then give the address. Web addresses typed as they are (<code>https://...</code>) become links by themselves.</li>
 <li><strong>Math</strong> is LaTeX, as in Obsidian: <code>$f_c = \frac{1}{2\pi RC}$</code> in a line, or <code>$$ ... $$</code> on lines of its own for a displayed equation. Prices like "$5 and $10" stay text; write <code>\$</code> for a dollar sign next to something that would look like math.</li>
 <li><strong>Tags:</strong> pick them from the dropdown: the built-in ones (reason, todo, question, risk) and any tag used elsewhere in the project. Type a new one and press Enter to add it; it's saved as one lower-case word ("Needs Review" becomes <code>needs-review</code>), as Obsidian expects.</li>
 </ul>
@@ -1184,7 +1246,7 @@
 <div class="language-text highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>reviews/
 </span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>  index.md        every review: ID, commit, date, author, subject (rebuilt on each Write)
 </span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>  3f9a1c0e.md     one review; its ID is its file name
-</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>  assets/         pasted pictures
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>  assets/         added files: pictures, datasheets, ...
 </span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>  threads/        discussions, one file each (see below)
 </span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>  decisions/      your own notes, if you like (see below)
 </span></code></pre></div>
@@ -1230,6 +1292,17 @@
 </tbody>
 </table>
 <p>Anything you type in the reply box goes along with the button you press ("Moved it 1 mm left", then <strong>Mark as done</strong>).</p>
+<p>If you opened a discussion, <span class="twemoji"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20.71 7.04c.39-.39.39-1.04 0-1.41l-2.34-2.34c-.37-.39-1.02-.39-1.41 0l-1.84 1.83 3.75 3.75M3 17.25V21h3.75L17.81 9.93l-3.75-3.75z"/></svg></span> next to its title renames it (the chat keeps the old title), and <span class="twemoji"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 2c3.31 0 6 2.66 6 5.95C18 12.41 12 19 12 19S6 12.41 6 7.95C6 4.66 8.69 2 12 2m0 4a2 2 0 0 0-2 2 2 2 0 0 0 2 2 2 2 0 0 0 2-2 2 2 0 0 0-2-2m8 13c0 2.21-3.58 4-8 4s-8-1.79-8-4c0-1.29 1.22-2.44 3.11-3.17l.64.91C6.67 17.19 6 17.81 6 18.5c0 1.38 2.69 2.5 6 2.5s6-1.12 6-2.5c0-.69-.67-1.31-1.75-1.76l.64-.91C18.78 16.56 20 17.71 20 19"/></svg></span> next to what it's about changes that, the same way as for notes: add what's pinned in the viewer, point it there instead, or make it about the commit in general; ✕ on a chip takes one off. The chat records the change ("Now about Footprint Y1, Part C5").</p>
+<p>To change something you wrote, press <span class="twemoji"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20.71 7.04c.39-.39.39-1.04 0-1.41l-2.34-2.34c-.37-.39-1.02-.39-1.41 0l-1.84 1.83 3.75 3.75M3 17.25V21h3.75L17.81 9.93l-3.75-3.75z"/></svg></span> on your message, edit it, and <strong>Save</strong>. Only your own messages have the pencil (they're signed with your git name). The message stays where it was and shows <em>edited</em>. <span class="twemoji"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 4h-3.5l-1-1h-5l-1 1H5v2h14M6 19a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V7H6z"/></svg></span> deletes one of your comments, after asking. Status changes (marked done, accepted, reopened) can't be deleted, since that would change the status; edit their text instead.</p>
+<h3 id="linking-to-a-discussion-or-a-review">Linking to a discussion or a review<a class="headerlink" href="#linking-to-a-discussion-or-a-review" title="Permanent link">&para;</a></h3>
+<p><span class="twemoji"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7a5 5 0 0 0-5 5 5 5 0 0 0 5 5h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1M8 13h8v-2H8zm9-6h-4v1.9h4c1.71 0 3.1 1.39 3.1 3.1s-1.39 3.1-3.1 3.1h-4V17h4a5 5 0 0 0 5-5 5 5 0 0 0-5-5"/></svg></span> at the top of a discussion copies a link to it, <code>[its title](threads/&lt;id&gt;.md)</code>. Paste it into a review's summary or note, or into another discussion: it shows with a 💬, and clicking it opens the discussion. On the <a href="#the-reviews-page">Reviews page</a> it goes to the discussion's page, and it's an ordinary link to the file on GitHub or in Obsidian.</p>
+<p>Discussions listed in a review (and in the header's Discussions list) have their own <span class="twemoji"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7a5 5 0 0 0-5 5 5 5 0 0 0 5 5h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1M8 13h8v-2H8zm9-6h-4v1.9h4c1.71 0 3.1 1.39 3.1 3.1s-1.39 3.1-3.1 3.1h-4V17h4a5 5 0 0 0 5-5 5 5 0 0 0-5-5"/></svg></span> button too.</p>
+<p>Reviews can be linked the same way: right-click a commit with a review in the commit list and choose <strong>Copy review link</strong> (<code>[commit message](&lt;id&gt;.md)</code>). Clicking it in a note or a discussion opens that review. The same menu has <strong>Copy review file path</strong> (the full path of its file) and <strong>Copy commit hash</strong>.</p>
+<h3 id="mentions">Mentions<a class="headerlink" href="#mentions" title="Permanent link">&para;</a></h3>
+<p>A discussion shows where it's linked from, in among its messages at the time it happened: "<em>Author B</em> mentioned this in the discussion <em>USB-C recessed</em>" (or <em>the review of ...</em>). Click it to go there. On the <a href="#the-reviews-page">Reviews page</a>, discussions and reviews have a <strong>Mentioned in</strong> list.</p>
+<p>When someone else links to a discussion you opened or wrote in, the <span class="twemoji"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 19v1H3v-1l2-2v-6c0-3.1 2.03-5.83 5-6.71V4a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.29c2.97.88 5 3.61 5 6.71v6zm-7 2a2 2 0 0 1-2 2 2 2 0 0 1-2-2"/></svg></span> shows an <strong>@</strong> and a notification says where (it also pops up). Mentions that come with a <code>git pull</code> arrive the same way, within a few seconds. kigit keeps which ones you've seen in its <a href="../../app-folder/">app folder</a>, per project; the first time it sees a project, mentions already there count as seen.</p>
+<p>Nothing is written into the linked discussion: mentions are worked out from the links themselves, so editing or deleting the message with the link takes the mention away too.</p>
+<p>If a linked discussion or review is gone (deleted, or not pulled yet), kigit warns you: when you click the link, and when you open, write or send something that links to it. The warning also goes to the session log and the <span class="twemoji"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 19v1H3v-1l2-2v-6c0-3.1 2.03-5.83 5-6.71V4a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.29c2.97.88 5 3.61 5 6.71v6zm-7 2a2 2 0 0 1-2 2 2 2 0 0 1-2-2"/></svg></span> notifications. On the Reviews page the link shows greyed out.</p>
 <h3 id="jump-to-the-commits">Jump to the commits<a class="headerlink" href="#jump-to-the-commits" title="Permanent link">&para;</a></h3>
 <p>The commit hashes in a discussion are links (dotted underline). Click one to compare the commit the discussion was opened on with that commit, and the viewer shows what the discussion points at, pinned and zoomed to:</p>
 <table>
@@ -1263,20 +1336,32 @@
 <p>Messages are only ever added at the end of the file, so two people replying to <em>different</em> discussions never conflict. If two of you reply to the same one at the same time, git shows a small conflict at its end: keep both messages.</p>
 <p>The <a href="#the-reviews-page">Reviews page</a> shows the discussions too, needing attention first.</p>
 <h2 id="the-reviews-page">The Reviews page<a class="headerlink" href="#the-reviews-page" title="Permanent link">&para;</a></h2>
-<p><strong>Reviews</strong> in the header opens all of the project's reviews and notes as one page, in a new tab.</p>
+<p><strong>Reviews</strong> in the header opens the project's reviews, notes and discussions in a new tab, laid out like a documentation site: one page each, with tabs, a sidebar and a search box.</p>
 <figure>
-  <img alt="The Reviews page: your notes, then every review as a timeline" src="../../img/gui/reviews-page.png" />
-  <figcaption>The Reviews page: a list to jump around, a search box and tag filters on the left.</figcaption>
+  <img alt="The Reviews site's home page" src="../../img/gui/reviews-page.png" />
+  <figcaption>Home: counts, open discussions, the latest reviews and recently edited notes.</figcaption>
 </figure>
 <ul>
-<li><strong>Reviews</strong> are a timeline, newest commit first. Each note is marked with what it points at (PCB or schematic; red if it was removed) and coloured by its first tag.</li>
-<li><strong>Your own notes</strong> are any other Markdown files in <code>reviews/</code> (design decisions, test results, ...), for example written in Obsidian: frontmatter shows as properties, <code>tags:</code> and <code>#tags</code> work with the filter, <code>[[links]]</code> and <code>[text](other-note.md)</code> jump to other notes or to a review (by its ID or its commit's message), links to other files in <code>reviews/</code> (a datasheet PDF, say) open them, and <code>![[picture.png]]</code> embeds a picture.</li>
-<li><span class="keys"><kbd class="key-slash">/</kbd></span> jumps to the search; the <code>#</code> next to a heading copies a link to it. It follows your system's light or dark theme, or the Theme button's choice.</li>
-<li>The pictures are inside the page, so saving it from the browser keeps a complete copy.</li>
+<li><strong>Tabs</strong> across the top: <strong>Home</strong>, <strong>Reviews</strong>, <strong>Discussions</strong>, then one tab for each folder you keep in <code>reviews/</code> (for example <code>decisions/</code> or <code>meetings/</code>), <strong>Notes</strong> for Markdown files directly in <code>reviews/</code>, and <strong>Tags</strong>.</li>
+<li>The <strong>sidebar</strong> on the left lists the pages in that tab (reviews by month, discussions by status, a folder's notes by subfolder). <strong>On this page</strong>, on the right, lists a page's notes or headings.</li>
+<li><strong>Search</strong> (or press <span class="keys"><kbd class="key-slash">/</kbd></span>) looks through every review, note in a review, note of your own and discussion as you type. Use <span class="keys"><kbd class="key-arrow-up">Up</kbd></span> / <span class="keys"><kbd class="key-arrow-down">Down</kbd></span> and <span class="keys"><kbd class="key-enter">Enter</kbd></span> to open a result.</li>
 </ul>
 <figure>
-  <img alt="A review on the Reviews page" src="../../img/gui/reviews-page-timeline.png" />
-  <figcaption>A review: its commit and author, the summary, then the notes with what they point at.</figcaption>
+  <img alt="The Reviews tab: a timeline of every review" src="../../img/gui/reviews-timeline.png" />
+  <figcaption>The Reviews tab opens on the timeline: every review, newest commit first, by month, with its summary and its notes' titles.</figcaption>
+</figure>
+<ul>
+<li><strong>Reviews</strong> have a page each: the commit and author, the summary, then every note, marked with what it points at (PCB or schematic; red if it was removed) and coloured by its first tag. <strong>Newer</strong> and <strong>Older</strong> at the bottom step through the timeline.</li>
+<li><strong>Your own notes</strong> are any other Markdown files in <code>reviews/</code> (design decisions, test results, ...), for example written in Obsidian. Frontmatter shows as properties, and <code>tags:</code> and <code>#tags</code> go to the Tags tab. <code>[[links]]</code> and <code>[text](other-note.md)</code> go to other notes, or to a review by its ID or its commit's message. Links to other files in <code>reviews/</code> (a datasheet PDF, say) open them, and <code>![[picture.png]]</code> embeds a picture.</li>
+<li>It follows your system's light or dark theme, or the Theme button's choice.</li>
+</ul>
+<figure>
+  <img alt="A review's own page" src="../../img/gui/reviews-review.png" />
+  <figcaption>A review's page: its notes, with On this page on the right.</figcaption>
+</figure>
+<figure>
+  <img alt="Searching the Reviews site" src="../../img/gui/reviews-search.png" />
+  <figcaption>Search shows matches as you type.</figcaption>
 </figure>
 <h2 id="after-a-rebase-amend-or-squash">After a rebase, amend or squash<a class="headerlink" href="#after-a-rebase-amend-or-squash" title="Permanent link">&para;</a></h2>
 <p>These replace commits with new ones (new hashes), so a review can be left pointing at a commit no branch has any more. Its file isn't touched, but the commit list no longer shows it as reviewed. A plain merge (or fast-forward) keeps the commits as they are, so nothing changes then.</p>

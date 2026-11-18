@@ -689,6 +689,24 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#notebook" class="md-nav__link">
+    <span class="md-ellipsis">
+      Notebook
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#your-activity" class="md-nav__link">
+    <span class="md-ellipsis">
+      Your activity
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#notifications" class="md-nav__link">
     <span class="md-ellipsis">
       Notifications
@@ -757,6 +775,27 @@
   
   <span class="md-ellipsis">
     3D View
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../bom/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Bill of Materials
   </span>
   
 
@@ -1056,6 +1095,24 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#notebook" class="md-nav__link">
+    <span class="md-ellipsis">
+      Notebook
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#your-activity" class="md-nav__link">
+    <span class="md-ellipsis">
+      Your activity
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#notifications" class="md-nav__link">
     <span class="md-ellipsis">
       Notifications
@@ -1105,7 +1162,7 @@
 </span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>kigit<span class="w"> </span>gui<span class="w"> </span>~/path/to/board<span class="w">  </span><span class="c1"># or any folder</span>
 </span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>kigit<span class="w"> </span>gui<span class="w"> </span>--port<span class="w"> </span><span class="m">9000</span><span class="w">      </span><span class="c1"># on a port of your choice</span>
 </span></code></pre></div>
-<p>On Windows the GUI opens in its own window (Edge WebView2, built into Windows 10/11); on Linux it opens in your web browser. <code>--native</code> and <code>--browser</code> choose; if a window can't be opened, it says why and uses the browser. It only listens on 127.0.0.1, so it isn't reachable from the network.</p>
+<p>The GUI opens in your web browser, on Windows and Linux alike. <code>kigit gui --native</code> opens it in its own window instead (Edge WebView2 on Windows); if a window can't be opened, it says why and uses the browser. It only listens on 127.0.0.1, so it isn't reachable from the network.</p>
 <p>It serves on port 8765, or the next free one when another kigit GUI already has it, so you can run several at once (say, one per project); the address it uses is printed when it starts. <code>--port N</code> picks the port yourself, and stops with a message if it's taken. Panel widths and other display settings are remembered per port.</p>
 <p>This page covers opening a project and comparing commits. <a href="../reviews/">Reviews</a> and the <a href="../3d-view/">3D view</a> have pages of their own.</p>
 <h2 id="landing-page">Landing page<a class="headerlink" href="#landing-page" title="Permanent link">&para;</a></h2>
@@ -1116,7 +1173,7 @@
 </figure>
 <p>Each card shows:</p>
 <ul>
-<li><strong>A picture of the board</strong>, rendered by KiCad (<code>kicad-cli pcb render</code>, a few seconds, in the background) when you open the project, and again once the board file has changed. Without KiCad the card shows an icon.</li>
+<li><strong>A picture of the board</strong>, rendered by KiCad (<code>kicad-cli pcb render</code>, a few seconds, in the background) when you open the project, and again once the board file has changed. KiCad 8 has no 3D render, so with it the picture is a 2D drawing of the board's top instead. Without KiCad the card shows an icon.</li>
 <li><strong>When you last opened it</strong>, and the <strong>last two commits you compared</strong> there.</li>
 <li><strong>Open</strong> opens the project; <strong>Resume</strong> opens it and compares those commits again; the cross takes it off the list (the project itself is untouched). A project whose folder has gone is shown greyed out.</li>
 </ul>
@@ -1209,7 +1266,7 @@
 <tr>
 <td>Review panel</td>
 <td><span class="twemoji"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M8.59 16.58 13.17 12 8.59 7.41 10 6l6 6-6 6z"/></svg></span> folds it to a <strong>Review</strong> rail on the right edge; nothing is lost, and pressing Review again shows it</td>
-<td><span class="twemoji"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M14 3v2h3.59l-9.83 9.83 1.41 1.41L19 6.41V10h2V3m-2 16H5V5h7V3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7h-2z"/></svg></span> opens the <a href="../reviews/">Reviews page</a> at this review, as last written</td>
+<td><span class="twemoji"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M14 3v2h3.59l-9.83 9.83 1.41 1.41L19 6.41V10h2V3m-2 16H5V5h7V3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7h-2z"/></svg></span> opens this review's page on the <a href="../reviews/#the-reviews-page">Reviews site</a>, as last written</td>
 </tr>
 <tr>
 <td>The comparison's sidebar</td>
@@ -1234,6 +1291,30 @@
 </tbody>
 </table>
 <p>Hidden or not is remembered, like the sizes.</p>
+<h2 id="notebook">Notebook<a class="headerlink" href="#notebook" title="Permanent link">&para;</a></h2>
+<p><strong>Notebook</strong> in the header is for everything that isn't about one commit: design decisions, research, how a part of the board works, a log of what you did. Notes are plain Markdown files in the project's <code>reviews/</code> folder, in folders as deep as you like, so an <a href="https://obsidian.md">Obsidian</a> vault there works as it is (same files, <code>[[links]]</code>, pictures), and they go into git with the project.</p>
+<p>The Notebook opens on the right without covering the viewer, so you can keep clicking parts while you write:</p>
+<ul>
+<li><strong>Your folders and notes</strong>, browsed like files: click a folder to go into it, <span class="twemoji"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg></span> or the path above the list to go back. New notes and folders go where you are. A search box looks through all of them.</li>
+<li><strong>Rename or delete</strong> a note or folder from its <span class="twemoji"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 16a2 2 0 0 1 2 2 2 2 0 0 1-2 2 2 2 0 0 1-2-2 2 2 0 0 1 2-2m0-6a2 2 0 0 1 2 2 2 2 0 0 1-2 2 2 2 0 0 1-2-2 2 2 0 0 1 2-2m0-6a2 2 0 0 1 2 2 2 2 0 0 1-2 2 2 2 0 0 1-2-2 2 2 0 0 1 2-2"/></svg></span> menu (a note's title box renames it too). Deleting asks first and says what goes: how many notes and other files a folder holds, and whether any of it has changes git doesn't have yet (those can't be brought back).</li>
+<li><strong>The note</strong>, in the same editor as reviews. It's saved as you type.</li>
+<li><strong>Pins:</strong> pin a part, net or footprint in the viewer, then <strong>Pin it here</strong>. Unlike a review note, a note isn't tied to a commit: a pin remembers where it was pinned, so clicking it later shows it in the comparison on screen, or opens the one it came from. ✕ unpins.</li>
+<li><strong>Notes about what's pinned:</strong> pin something in the viewer and the Notebook lists every note that pins it (on the PCB or the schematic: footprint C2 and part C2 are the same thing) or mentions it by name. The <strong>Notebook</strong> button shows how many.</li>
+<li><span class="keys"><kbd class="key-n">N</kbd></span> anywhere (outside a text box): a new note about what's pinned, pinned already.</li>
+<li><span class="twemoji"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M14 3v2h3.59l-9.83 9.83 1.41 1.41L19 6.41V10h2V3m-2 16H5V5h7V3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7h-2z"/></svg></span> opens the Notebook in a browser tab of its own, laid out wide (your folders on the left, the note on the right). It still works with kigit's tab: what you pin in the viewer there shows up in the Notebook's tab (for <strong>Pin it here</strong> and the notes about it), and clicking a pin in the Notebook's tab shows it in kigit's. The side panel closes, so a note is only open in one place.</li>
+<li><span class="twemoji"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M7 10h5v5H7m12 4H5V8h14m0-5h-1V1h-2v2H8V1H6v2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2"/></svg></span> <strong>Today's log</strong>: one line, added to <code>Logs.md</code> in the folder you're in, under today's date (<code>## 16th November 2026</code>), with the time, what's pinned and the commit you're on.</li>
+</ul>
+<p>kigit keeps the pins as one comment at the end of the note, which Obsidian and GitHub don't show; everything else in the file is yours, and opening a note doesn't change it. On the <a href="../reviews/#the-reviews-page">Reviews page</a>, each top folder is a tab and the folders inside it are rows of sub-tabs, as deep as they go.</p>
+<h2 id="your-activity">Your activity<a class="headerlink" href="#your-activity" title="Permanent link">&para;</a></h2>
+<p>The <span class="twemoji"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9 10v2H7v-2zm4 0v2h-2v-2zm4 0v2h-2v-2zm2-7a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h1V1h2v2h8V1h2v2zm0 16V8H5v11zM9 14v2H7v-2zm4 0v2h-2v-2zm4 0v2h-2v-2z"/></svg></span> button next to the bell shows your year in this project as a heatmap, like GitHub's contribution graph: one square a day, brighter for busier days (hover one for what you did). Below it: your current and longest streak (days in a row), active days, your busiest day, and how many of each you did:</p>
+<ul>
+<li>comparisons,</li>
+<li>reviews written,</li>
+<li>discussions opened,</li>
+<li>discussion replies (and marking done, accepting, reopening),</li>
+<li>3D views.</li>
+</ul>
+<p>It's kept in the project, in <code>reviews/activity/&lt;you&gt;/&lt;this computer&gt;.json</code>, so commit it and it goes with the project: on another laptop, your activity there is added to it. Each computer writes only its own file, so two laptops never get a git conflict over it. <strong>You / Everyone</strong> switches between yours and everyone's in the project.</p>
 <h2 id="notifications">Notifications<a class="headerlink" href="#notifications" title="Permanent link">&para;</a></h2>
 <p>The <span class="twemoji"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 19v1H3v-1l2-2v-6c0-3.1 2.03-5.83 5-6.71V4a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.29c2.97.88 5 3.61 5 6.71v6zm-7 2a2 2 0 0 1-2 2 2 2 0 0 1-2-2"/></svg></span> bell in the header keeps this session's warnings and errors, so you can read them after their pop-up is gone. It shows a red <strong>!</strong> while any are unread.</p>
 <figure>

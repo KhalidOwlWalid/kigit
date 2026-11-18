@@ -18,7 +18,7 @@
         <link rel="prev" href="../reviews/">
       
       
-        <link rel="next" href="../command-line/">
+        <link rel="next" href="../bom/">
       
       
       <link rel="icon" href="../../assets/images/favicon.png">
@@ -722,6 +722,15 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#3d-diff-beta" class="md-nav__link">
+    <span class="md-ellipsis">
+      3D diff (beta)
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#if-it-feels-slow" class="md-nav__link">
     <span class="md-ellipsis">
       If it feels slow
@@ -743,6 +752,27 @@
   
 </nav>
       
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../bom/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Bill of Materials
+  </span>
+  
+
+      </a>
     </li>
   
 
@@ -1029,6 +1059,15 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#3d-diff-beta" class="md-nav__link">
+    <span class="md-ellipsis">
+      3D diff (beta)
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#if-it-feels-slow" class="md-nav__link">
     <span class="md-ellipsis">
       If it feels slow
@@ -1069,6 +1108,29 @@
 <div class="admonition note">
 <p class="admonition-title">Needs KiCad 8 or newer</p>
 <p>KiCad makes the 3D model (<code>kicad-cli pcb export glb</code>); kigit only shows it. kigit finds <code>kicad-cli</code> on your PATH or where the KiCad installer puts it; if it's somewhere else, set <code>KIGIT_KICAD_CLI</code> to its path.</p>
+<table>
+<thead>
+<tr>
+<th>KiCad</th>
+<th>What you get</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>9, 10</td>
+<td>The full board: copper, pads, solder mask, silkscreen and parts</td>
+</tr>
+<tr>
+<td>8</td>
+<td>Copper (tracks and zones) and parts, without pads, solder mask or silkscreen (KiCad 8 can't export those); kigit says so</td>
+</tr>
+<tr>
+<td>7 or older</td>
+<td>No 3D view: KiCad 7 can't export a model kigit can show</td>
+</tr>
+</tbody>
+</table>
+<p>A board saved by a newer KiCad than the one kigit finds (say, saved in KiCad 9, with KiCad 8 installed) can't be opened by it; kigit says so. If you have several KiCads, kigit uses the newest it finds (or <code>KIGIT_KICAD_CLI</code>).</p>
 </div>
 <h2 id="one-commit">One commit<a class="headerlink" href="#one-commit" title="Permanent link">&para;</a></h2>
 <p>In the <a href="../gui/">GUI</a>, pick <strong>one</strong> commit (or the working tree at the top) and press <strong>3D</strong>.</p>
@@ -1102,7 +1164,7 @@
 </figure>
 <p>Their models are made at the same time.</p>
 <h2 id="beside-a-comparison">Beside a comparison<a class="headerlink" href="#beside-a-comparison" title="Permanent link">&para;</a></h2>
-<p>While comparing two commits, press <strong>3D</strong> in the header to dock the board in 3D next to the diff, so you can look at both. <strong>New</strong>, <strong>Old</strong> or <strong>Both</strong> (side by side, views linked) picks which.</p>
+<p>While comparing two commits, press <strong>3D</strong> in the header to dock the board in 3D next to the diff, so you can look at both. <strong>New</strong>, <strong>Old</strong> or <strong>Both</strong> (side by side, views linked) picks which. It works for <a href="../../examples/without-git/">Compare folders</a> too, with no git: each folder's board as it is on disk.</p>
 <figure>
   <img alt="A comparison with the 3D dock" src="../../img/gui/3d-dock.png" />
   <figcaption>The 3D dock. When the commit list and the review panel are open too, it goes below the comparison.</figcaption>
@@ -1116,6 +1178,23 @@
   <img alt="The dock while its 3D view is in another tab" src="../../img/gui/3d-popped.png" />
   <figcaption>In another tab: only the dock's bar stays, at the bottom.</figcaption>
 </figure>
+<h2 id="3d-diff-beta">3D diff (beta)<a class="headerlink" href="#3d-diff-beta" title="Permanent link">&para;</a></h2>
+<p><strong>3D diff</strong> <small>beta</small> in the header (next to <strong>3D</strong>, while a comparison shows) opens what changed between the two boards in 3D, in a tab of its own. It's new and not fully tested: the 3D view above is unchanged, and is still the quick, reliable one.</p>
+<figure>
+  <img alt="The 3D diff of two commits of the example project" src="../../img/gui/3d-diff.png" />
+  <figcaption>The 3D diff, from the top: added parts and tracks in green, changed in amber, a moved part in blue (its old place as a faint ghost), removed copper and a removed test point in red.</figcaption>
+</figure>
+<ul>
+<li><strong>Parts</strong>: added in green, changed in amber, moved in blue with a ghost where it was, removed as a red ghost (taken from the older board's model). A part without a 3D model, like a test point, gets an outline around its pads instead.</li>
+<li><strong>Hover a part</strong> to see what it is: its reference, value and footprint, whether it was added, changed, moved or removed, and what changed (a field's old and new value, moved, pads, graphics). The part gets a white box around it. Ghosts tell you they're an old place. Parts on the far side of the board don't answer through it.</li>
+<li><strong>Copper</strong>: added, removed and changed tracks, arcs and vias as coloured strips on the copper (top or bottom; inner layers drawn fainter on top).</li>
+<li>The legend in the corner counts them. <strong>Changes</strong> (<span class="keys"><kbd class="key-c">C</kbd></span>) hides or shows the marks, <strong>Fade others</strong> (<span class="keys"><kbd class="key-u">U</kbd></span>) fades the parts that didn't change, and Mask, Silk and Parts (<span class="keys"><kbd class="key-m">M</kbd></span>, <span class="keys"><kbd class="key-k">K</kbd></span>, <span class="keys"><kbd class="key-p">P</kbd></span>) work as in the 3D view.</li>
+<li>It uses the same models as the 3D view, so a board already made there isn't made again. The tab waits while KiCad makes them.</li>
+<li>The bottom corner says which <strong>graphics chip</strong> draws the page: a dedicated GPU (fine), built-in graphics (the GPU inside the processor, sharing its memory and power: fine for most boards, big ones may lag), or none, where your CPU draws everything in software and it will be slow. It's the chip your <em>browser</em> uses: laptops with a dedicated GPU often run the browser on the built-in one to save battery. To change that on Windows, go to Settings → System → Display → Graphics, add your browser and pick High performance (or use the NVIDIA Control Panel). On Linux, start the browser with <code>prime-run</code> or <code>DRI_PRIME=1</code>. <code>chrome://gpu</code> shows which chip is in use. With weak graphics, kigit draws at a lower resolution to keep it moving.</li>
+<li><span class="keys"><kbd class="key-s">S</kbd></span> shows the same <a href="#if-it-feels-slow">render stats</a> as the 3D view, plus what the diff added (changed parts kept apart, ghosts, strips) and how long it took to load (data, models, building the scene).</li>
+<li>Zones, silkscreen and the schematic aren't marked in 3D: the 2D comparison shows those.</li>
+</ul>
+<p>It works for <a href="../../examples/without-git/">Compare folders</a> too. If no tab opens, allow pop-ups for the kigit page.</p>
 <h2 id="if-it-feels-slow">If it feels slow<a class="headerlink" href="#if-it-feels-slow" title="Permanent link">&para;</a></h2>
 <p>Press <span class="keys"><kbd class="key-s">S</kbd></span> in the 3D view for render stats: how long after your input a frame is drawn, how long each redraw takes (CPU, and GPU where the browser can time it), the gaps between frames while you drag, dropped frames, draw calls and triangles, each as p50 / p95. <strong>Copy</strong> puts them on the clipboard as JSON, handy for a bug report.</p>
 <figure>

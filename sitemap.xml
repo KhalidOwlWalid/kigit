@@ -2,70 +2,74 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
     <url>
          <loc>https://khalidowlwalid.github.io/kigit/</loc>
-         <lastmod>2026-11-15</lastmod>
+         <lastmod>2026-11-18</lastmod>
     </url>
     <url>
          <loc>https://khalidowlwalid.github.io/kigit/app-folder/</loc>
-         <lastmod>2026-11-15</lastmod>
+         <lastmod>2026-11-18</lastmod>
     </url>
     <url>
          <loc>https://khalidowlwalid.github.io/kigit/architecture/</loc>
-         <lastmod>2026-11-15</lastmod>
+         <lastmod>2026-11-18</lastmod>
     </url>
     <url>
          <loc>https://khalidowlwalid.github.io/kigit/example/</loc>
-         <lastmod>2026-11-15</lastmod>
+         <lastmod>2026-11-18</lastmod>
     </url>
     <url>
          <loc>https://khalidowlwalid.github.io/kigit/installation/</loc>
-         <lastmod>2026-11-15</lastmod>
+         <lastmod>2026-11-18</lastmod>
     </url>
     <url>
          <loc>https://khalidowlwalid.github.io/kigit/introduction/</loc>
-         <lastmod>2026-11-15</lastmod>
+         <lastmod>2026-11-18</lastmod>
     </url>
     <url>
          <loc>https://khalidowlwalid.github.io/kigit/examples/compare-two-commits/</loc>
-         <lastmod>2026-11-15</lastmod>
+         <lastmod>2026-11-18</lastmod>
     </url>
     <url>
          <loc>https://khalidowlwalid.github.io/kigit/examples/moved-board/</loc>
-         <lastmod>2026-11-15</lastmod>
+         <lastmod>2026-11-18</lastmod>
     </url>
     <url>
          <loc>https://khalidowlwalid.github.io/kigit/examples/without-git/</loc>
-         <lastmod>2026-11-15</lastmod>
+         <lastmod>2026-11-18</lastmod>
     </url>
     <url>
          <loc>https://khalidowlwalid.github.io/kigit/how-to-use/3d-view/</loc>
-         <lastmod>2026-11-15</lastmod>
+         <lastmod>2026-11-18</lastmod>
+    </url>
+    <url>
+         <loc>https://khalidowlwalid.github.io/kigit/how-to-use/bom/</loc>
+         <lastmod>2026-11-18</lastmod>
     </url>
     <url>
          <loc>https://khalidowlwalid.github.io/kigit/how-to-use/command-line/</loc>
-         <lastmod>2026-11-15</lastmod>
+         <lastmod>2026-11-18</lastmod>
     </url>
     <url>
          <loc>https://khalidowlwalid.github.io/kigit/how-to-use/gui/</loc>
-         <lastmod>2026-11-15</lastmod>
+         <lastmod>2026-11-18</lastmod>
     </url>
     <url>
          <loc>https://khalidowlwalid.github.io/kigit/how-to-use/overview/</loc>
-         <lastmod>2026-11-15</lastmod>
+         <lastmod>2026-11-18</lastmod>
     </url>
     <url>
          <loc>https://khalidowlwalid.github.io/kigit/how-to-use/pcb-viewer/</loc>
-         <lastmod>2026-11-15</lastmod>
+         <lastmod>2026-11-18</lastmod>
     </url>
     <url>
          <loc>https://khalidowlwalid.github.io/kigit/how-to-use/reviews/</loc>
-         <lastmod>2026-11-15</lastmod>
+         <lastmod>2026-11-18</lastmod>
     </url>
     <url>
          <loc>https://khalidowlwalid.github.io/kigit/how-to-use/schematic-viewer/</loc>
-         <lastmod>2026-11-15</lastmod>
+         <lastmod>2026-11-18</lastmod>
     </url>
     <url>
          <loc>https://khalidowlwalid.github.io/kigit/how-to-use/source-panel/</loc>
-         <lastmod>2026-11-15</lastmod>
+         <lastmod>2026-11-18</lastmod>
     </url>
 </urlset>

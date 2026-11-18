@@ -731,6 +731,27 @@
   
   
     <li class="md-nav__item">
+      <a href="../how-to-use/bom/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Bill of Materials
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../how-to-use/command-line/" class="md-nav__link">
         
   
@@ -1062,9 +1083,24 @@
 <td>the GUI (with KiCad)</td>
 </tr>
 <tr>
+<td><code>mentions-seen.json</code></td>
+<td>Which <a href="../how-to-use/reviews/#mentions">mentions</a> of your discussions you've been told about, per project (for the bell)</td>
+<td>the GUI</td>
+</tr>
+<tr>
 <td><code>3d-build-times.json</code></td>
 <td>How long each board's <a href="../how-to-use/3d-view/#making-the-model">3D model</a> took to make, for the progress bar</td>
 <td>the GUI</td>
+</tr>
+<tr>
+<td><code>parts-keys.json</code></td>
+<td>Your keys for <a href="../how-to-use/bom/#keys">part lookups</a> (Mouser's API key, Digi-Key's client ID and secret), readable only by you</td>
+<td><code>kigit bom --set-key</code></td>
+</tr>
+<tr>
+<td><code>parts-cache.json</code></td>
+<td>Mouser's and Digi-Key's answers to part lookups, used for a day (dropped after a week)</td>
+<td><code>kigit bom --lookup</code></td>
 </tr>
 <tr>
 <td><code>gui-env/</code></td>
@@ -1081,11 +1117,11 @@
 <p><code>gui-env/</code> is only there for an installed kigit (the Windows installer or zip, the Linux download); one built from source uses <code>gui/.venv</code> in the source folder instead.</p>
 <h2 id="moving-it">Moving it<a class="headerlink" href="#moving-it" title="Permanent link">&para;</a></h2>
 <ul>
-<li><code>KIGIT_LOG_DIR</code> (an environment variable) moves the <strong>logs</strong> to that folder. The GUI then keeps <code>sessions.json</code>, <code>thumbnails/</code> and <code>3d-build-times.json</code> in the folder <em>above</em> it, so <code>KIGIT_LOG_DIR=D:\kigit\log</code> puts them in <code>D:\kigit</code>.</li>
+<li><code>KIGIT_LOG_DIR</code> (an environment variable) moves the <strong>logs</strong> to that folder. The GUI then keeps <code>sessions.json</code>, <code>thumbnails/</code> and <code>3d-build-times.json</code>, and the command line its <code>parts-*.json</code>, in the folder <em>above</em> it, so <code>KIGIT_LOG_DIR=D:\kigit\log</code> puts them in <code>D:\kigit</code>.</li>
 <li><code>--log-dir DIR</code> moves only the logs, for that run. <code>--no-log</code> writes none.</li>
 </ul>
 <h2 id="deleting-it">Deleting it<a class="headerlink" href="#deleting-it" title="Permanent link">&para;</a></h2>
-<p>Everything in the app folder can go. Deleting it forgets your recent projects, their pictures, the 3D build times and the logs; <code>gui-env/</code> is set up again the next time you start the GUI (that takes about a minute, as on the first start). Your projects and their <a href="../how-to-use/reviews/">reviews</a> aren't in it.</p>
+<p><code>kigit uninstall --purge</code> deletes it (after listing what's in it and asking). Everything in the app folder can go. Deleting it forgets your recent projects, their pictures, the 3D build times, your parts API keys and the logs; <code>gui-env/</code> is set up again the next time you start the GUI (that takes about a minute, as on the first start). Your projects and their <a href="../how-to-use/reviews/">reviews</a> aren't in it. One thing to keep in mind: the <a href="../example/">example project</a>, if you made it from the GUI, lives in here (<code>example/</code>), so anything you wrote in it goes too; copy it somewhere else first to keep it.</p>
 <h2 id="what-isnt-in-it">What isn't in it<a class="headerlink" href="#what-isnt-in-it" title="Permanent link">&para;</a></h2>
 <table>
 <thead>
@@ -1095,6 +1131,10 @@
 </tr>
 </thead>
 <tbody>
+<tr>
+<td>Your <a href="../how-to-use/gui/#your-activity">activity</a> (the heatmap)</td>
+<td><code>reviews/activity/&lt;you&gt;/&lt;computer&gt;.json</code> in each project</td>
+</tr>
 <tr>
 <td>Comparison pages made by the command line</td>
 <td><code>.kigit/</code> next to the board (or wherever <code>-o</code> says)</td>
