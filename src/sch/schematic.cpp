@@ -458,6 +458,9 @@ private:
         if (const Node* u = n.child("unit")) s.unit = static_cast<int>(u->num(0, 1));
         if (const Node* ob = n.child("on_board")) s.on_board = ob->arg(0) != "no";
         if (const Node* ex = n.child("exclude_from_board")) s.on_board = ex->arg(0) != "yes";
+        if (const Node* b = n.child("in_bom")) s.in_bom = b->arg(0) != "no";
+        if (const Node* b = n.child("exclude_from_bom")) s.in_bom = b->arg(0) != "yes";
+        if (const Node* d = n.child("dnp")) s.dnp = d->arg(0) == "yes";
         int style = 1;
         if (const Node* b = n.child("body_style")) style = static_cast<int>(b->num(0, 1));
         else if (const Node* b2 = n.child("convert")) style = static_cast<int>(b2->num(0, 1));

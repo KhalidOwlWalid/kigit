@@ -90,6 +90,37 @@ TEST_CASE("--log: all commits, tags, filters and the renamed folder") {
     CHECK(dirty["local"]["pcb"] == true);
 }
 
+TEST_CASE("kigit bom: the working tree, a commit, CSV and JSON") {
+    TempDir tmp;
+    make_fixture_repo(tmp.path());
+    std::string board = quote((tmp / "board/demo.kicad_pcb").string());
+
+    RunResult table = run_kigit("bom --no-log -C " + board);
+    REQUIRE(table.code == 0);
+    CHECK(table.out.find("R1 R3 R5") != std::string::npos);
+    CHECK(table.out.find("4 lines, 6 parts") != std::string::npos);
+
+    json j = parse(run_kigit("bom --no-log --json HEAD -C " + board));
+    CHECK(j["meta"]["rev"]["local"] == false);
+    CHECK(j["summary"]["parts"] == 6);
+    CHECK(j["lines"][0]["links"]["digikey"].get<std::string>().starts_with("https://www.digikey.com/"));
+
+    RunResult csv = run_kigit("bom --no-log --csv -C " + board);
+    CHECK(csv.out.starts_with("Qty,References,Value,"));
+    CHECK(csv.err.empty()); // stdout has the data, nothing else goes there
+
+    // Outside git: the files on disk, but no revisions.
+    TempDir elsewhere; // not inside the fixture repo
+    fs::path loose = elsewhere / "loose";
+    fs::create_directories(loose);
+    fs::copy_file(fixture("v1/demo.kicad_sch"), loose / "demo.kicad_sch");
+    CHECK(run_kigit("bom --no-log " + quote((loose / "demo.kicad_sch").string())).code == 0);
+    RunResult no_git = run_kigit("bom --no-log HEAD " + quote((loose / "demo.kicad_sch").string()));
+    CHECK(no_git.code == 1);
+    CHECK(no_git.err.find("not in a git repository") != std::string::npos);
+    CHECK(run_kigit("bom --nope").code == 2);
+}
+
 TEST_CASE("--rewritten: where an amended commit went") {
     TempDir tmp;
     make_fixture_repo(tmp.path());

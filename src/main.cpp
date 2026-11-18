@@ -19,6 +19,15 @@ using namespace kigit;
 namespace {
 
 int run(int argc, char** argv) {
+    if (argc >= 2 && std::string(argv[1]) == "bom") {
+        try {
+            return cmd::run_bom(argc - 2, argv + 2);
+        } catch (const std::exception& e) {
+            std::cerr << "kigit: " << e.what() << "\n";
+            spdlog::error("{}", e.what());
+            return 1;
+        }
+    }
     cmd::Options o;
     if (auto code = cmd::parse_options(argc, argv, o)) return *code;
     try {

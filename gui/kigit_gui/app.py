@@ -42,7 +42,7 @@ from .md_editor import Editors
 from .notebook_panel import NotebookPanel, notebook_page
 from .panels import Panels
 from .resize import Resizer
-from . import board3d, board3d_diff, review_doc  # noqa: F401  (register the /board3d and /reviews-doc pages)
+from . import board3d, board3d_diff, bom, review_doc  # noqa: F401  (register the /board3d and /reviews-doc pages)
 from .review_panel import BRIDGE_JS, ReviewPanel, focus_script, project_key
 
 LOCAL = "LOCAL"
@@ -356,6 +356,9 @@ def build(start_folder: str):
             ui.tooltip("New and not fully tested: the comparison's changes on the board in 3D (added, changed, "
                        "moved and removed parts; tracks), in a new tab")
         diff3d_btn.set_visibility(False)
+        bom_btn = ui.button("BOM", icon="receipt_long").props("flat dense").tooltip(
+            "The bill of materials in a new tab: part numbers, Digi-Key / Mouser / LCSC search, CSV export "
+            "(the working tree, or the one commit ticked)").mark("bom-button")
         with ui.button("Notebook", icon="edit_note", on_click=lambda: notes.show()).props("flat dense").mark(
                 "notebook-button"):
             notes_badge = ui.badge("", color="amber-8").props("floating rounded").mark("notebook-badge")
@@ -1672,6 +1675,36 @@ body.kigit-dragging iframe { pointer-events: none; }  /* else the frames swallow
         window.kigitDiffTab = window.open("about:blank", "_blank");
         emit();
     }""")
+
+    bom_btn.on("click", lambda: open_bom(), js_handler="""() => {
+        window.kigitBomTab = window.open("about:blank", "_blank");
+        emit();
+    }""")
+
+    async def open_bom() -> None:
+        """The BOM page for the working tree, or for the one commit ticked."""
+        def tab(url: str | None) -> None:  # the tab opened in the click: to the page, or closed
+            ui.run_javascript(f"""(() => {{ const w = window.kigitBomTab; window.kigitBomTab = null;
+                if (!{json.dumps(url)}) {{ w && w.close(); return; }}
+                if (w && !w.closed) w.location.href = {json.dumps(url)}; else window.open({json.dumps(url)}, "_blank"); }})()""")
+        board = state.get("board")
+        if not board:
+            tab(None)
+            notify("Open a KiCad project first", type="warning")
+            return
+        picked = table.selected if len(table.selected) == 1 else []
+        rev = picked[0]["hash"] if picked else LOCAL
+        name = state.get("name") or Path(board).stem
+        try:
+            data = await kigit.bom(board, rev)
+        except kigit.KigitError as e:
+            tab(None)
+            notify(f"Couldn't make the BOM: {e}", type="warning")
+            return
+        title = f"{name} · {'working tree' if rev == LOCAL else short_rev(rev)}"
+        key = bom.new_job(bom.Job(board, title, data))
+        logs.log.info("bom of %s at %s (job %s)", board, short_rev(rev), key)
+        tab(f"/bom/{key}")
 
     async def open_3d_diff() -> None:
         """The 3D diff (beta) of the comparison on screen, in a new tab: it

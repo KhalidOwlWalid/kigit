@@ -15,6 +15,7 @@ add_executable(kigit_tests
   cpp/test_board.cpp
   cpp/test_diff.cpp
   cpp/test_schematic.cpp
+  cpp/test_bom.cpp
   cpp/test_sch_diff.cpp
   cpp/test_git.cpp
   cpp/test_cli.cpp

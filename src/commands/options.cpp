@@ -18,6 +18,7 @@ USAGE
     kigit [OPTIONS] --files OLD.kicad_pcb NEW.kicad_pcb      (no git needed)
     kigit --3d [REV] [-o BOARD.glb]                          (3D board, via kicad-cli)
     kigit --3d --disk BOARD.kicad_pcb [-o BOARD.glb]         (3D board of a file, no git)
+    kigit bom [REV] [PATH] [--json | --csv]                  (bill of materials; kigit bom --help)
     kigit example [DIR]                                      (an example project to try kigit on)
     kigit uninstall [--yes] [--purge]                        (remove this installed kigit)
 

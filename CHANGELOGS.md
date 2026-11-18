@@ -4,6 +4,10 @@ All notable changes to kigit, newest first. The format follows [Keep a Changelog
 
 ## [Unreleased]
 
+### Added
+
+- **Bill of materials**: `kigit bom` and the GUI's **BOM** button, only when you ask. Parts grouped into lines with their part numbers (read from the usual field names: MPN, Manufacturer, DigiKey, Mouser, LCSC Part #...), DNP and excluded parts handled, and Digi-Key, Mouser and LCSC search links per line (by part number, or "10k 0603 resistor" for passives). In the GUI, put the part number you chose for a line that has none (kept in `kigit-bom.json` next to the board, for git), and export a CSV for Digi-Key's or Mouser's BOM upload, times the number of boards. Also `--csv` and `--json`.
+
 ## [0.2.3] - 2026-11-18
 
 ### Added

@@ -81,6 +81,7 @@ add_library(kigit_core STATIC
   src/sch/schematic.cpp
   src/sch/sch_diff.cpp
   src/sch/netcheck.cpp
+  src/sch/bom.cpp
   src/git/git.cpp
   src/git/locate.cpp
   src/report/html.cpp
@@ -101,6 +102,7 @@ add_executable(kigit
   src/commands/board3d.cpp
   src/commands/example.cpp
   src/commands/uninstall.cpp
+  src/commands/bom.cpp
   src/commands/projects.cpp
   src/commands/gui.cpp
 )

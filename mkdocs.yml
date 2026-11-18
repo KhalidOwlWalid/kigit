@@ -48,6 +48,7 @@ nav:
     - GUI: how-to-use/gui.md
     - Reviews: how-to-use/reviews.md
     - 3D View: how-to-use/3d-view.md
+    - Bill of Materials: how-to-use/bom.md
     - Command Line: how-to-use/command-line.md
     - PCB Viewer: how-to-use/pcb-viewer.md
     - Schematic Viewer: how-to-use/schematic-viewer.md

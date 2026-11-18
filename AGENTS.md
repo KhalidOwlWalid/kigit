@@ -57,9 +57,9 @@ Pieces:
 | `utils/` | `platform` (processes, paths, browser, env, app-data dirs: all OS code), `log` (spdlog session logs), `sexpr` (S-expression parser for KiCad files) |
 | `git/` | `git` (log, show, resolve revisions, changed files), `locate` (find a board that moved or was renamed in history; skipped folders like `.history`) |
 | `pcb/` | `board` (load `.kicad_pcb`: items, footprints, zones, silkscreen), `diff` (PCB diff) |
-| `sch/` | `schematic` (load `.kicad_sch` hierarchy, compute nets and buses), `sch_diff` (schematic diff), `netcheck` (compare with a KiCad netlist) |
+| `sch/` | `schematic` (load `.kicad_sch` hierarchy, compute nets and buses), `sch_diff` (schematic diff), `netcheck` (compare with a KiCad netlist), `bom` (bill of materials: lines, part number fields, search queries and links) |
 | `report/` | `html` (JSON for the viewer and `--json`; embeds the viewer), `viewer_template.hpp.in` |
-| `commands/` | the CLI: `options` (parsing, `--help`), `common` (shared helpers: board paths, warnings, output paths, `git_board`), `summary` (terminal summary), `diff` (compare, also `--check-netlist`), `history` (`--log`, `--rewritten`), `board3d` (`--3d`), `example` (`kigit example`), `uninstall` (`kigit uninstall`), `projects` (`--projects`), `gui` (`kigit gui`) |
+| `commands/` | the CLI: `options` (parsing, `--help`), `common` (shared helpers: board paths, warnings, output paths, `git_board`), `summary` (terminal summary), `diff` (compare, also `--check-netlist`), `history` (`--log`, `--rewritten`), `board3d` (`--3d`), `example` (`kigit example`), `uninstall` (`kigit uninstall`), `bom` (`kigit bom`), `projects` (`--projects`), `gui` (`kigit gui`) |
 | `src/main.cpp` | starts the session log, then runs the command |
 
 Everything except `commands/` and `main.cpp` builds into the `kigit_core`
@@ -236,6 +236,19 @@ at once. localStorage settings are per origin, so per port.
   first `parent`, the real one even when filtered), `--projects`
   (`--depth`).
 - `--check-netlist FILE`: compare kigit's nets with a KiCad netlist.
+- `kigit bom [REV] [PATH] [--json | --csv] [-o FILE]` (`commands/bom.cpp`,
+  `sch/bom`): a subcommand with its own options (like `uninstall`), run
+  from `run()` in main.cpp so it's logged. Default the working tree, read
+  from disk (works outside git); REV reads git. PATH: .kicad_sch, .kicad_pro,
+  .kicad_pcb or a folder (its board's schematic, else its only .kicad_pro's).
+  Lines: same value, footprint, MPN, manufacturer, Digi-Key, Mouser, LCSC
+  and DNP; skips power, `#` refs, `in_bom no` / `exclude_from_bom yes`;
+  multi-unit parts once (by ref). Part numbers by normalised field name
+  (`key_of`: lower case, letters and digits only; `kMpn`, `kLcsc`, ...).
+  DNP: the flag, a `DNP` field, or value "DNP" (KiCad 6). `query`: the MPN,
+  else for passives the value (`ohms()`: 10kR -> 10k, 5k1 -> 5.1k) +
+  package (0402.., from the footprint name after `_` or `-`) + a word;
+  `search_url` per site prefers that site's own number.
 - Logging: every run writes a session log
   (`kigit_<date>_<time>_<pid>.log`) in `$KIGIT_LOG_DIR` or the app data
   folder (`%LOCALAPPDATA%`, `~/Library/Application Support`, or
@@ -478,6 +491,16 @@ at once. localStorage settings are per origin, so per port.
   has the counts. Per-part objects are gone, so anything per part (picking,
   highlighting) would need a part id per vertex. Headless
   Chrome renders big models in software and slowly.
+- BOM (`bom.py`): the header's BOM button (opens its tab in the click,
+  `window.kigitBomTab`) runs `kigit bom --json` for the working tree or the
+  one ticked commit and shows `/bom/{key}` (`bom.jobs`, in memory). Picks
+  (MPN, manufacturer, note) are posted to `/bom/{key}/picks` and kept in
+  `<board folder>/kigit-bom.json` (`{"version": 1, "picks": {"value|footprint":
+  {...}}}`, re-read before each write, removed when empty); a schematic's
+  own part number wins. Export CSV is made in the page (quantities x
+  Boards, DNP left out unless ticked). Only on request: no background
+  lookups. Planned step 2: Digi-Key / Mouser API lookups (stock, price,
+  lifecycle, alternatives), keys in the app folder.
 - 3D diff (beta, `board3d_diff.py`): separate from the 3D view, which
   stays as it is. The header's "3D diff" button (`diff3d_btn`, a "beta"
   badge; shown with `dock_btn`) opens a blank tab in its click

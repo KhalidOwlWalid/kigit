@@ -230,6 +230,13 @@ async def diff_html(project: str, old: str, new: str, out_file: Path, silkscreen
     return [line.removeprefix("warning: ") for line in err.splitlines() if line.startswith("warning:")]
 
 
+async def bom(board: str, rev: str = "LOCAL") -> dict:
+    """kigit bom --json: the bill of materials of the board's schematic at
+    `rev` (LOCAL: the files on disk)."""
+    out, _ = await _run("bom", "--json", *([] if rev == "LOCAL" else [rev]), board)
+    return json.loads(out)
+
+
 async def diff_json(project: str, old: str, new: str, out_file: Path) -> None:
     """The comparison as kigit's JSON (what changed, where) for old..new, or
     two boards on disk ("disk:<board>", Compare folders). For the 3D diff."""

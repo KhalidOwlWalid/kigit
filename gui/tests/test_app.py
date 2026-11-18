@@ -925,6 +925,37 @@ async def test_3d_diff_beta(user: User, monkeypatch) -> None:
     assert "statsTable" in page and "kigit3dStats" in page  # render stats (S)
 
 
+async def test_bom_page(user: User, monkeypatch) -> None:
+    """BOM: the working tree's bill of materials (kigit bom) in a new tab,
+    or the one commit ticked."""
+    from kigit_gui import bom
+
+    await open_at(user, monkeypatch, PROJECT)
+    await user.should_see("Pick two commits on the left", retries=50)
+    before = set(bom.jobs)
+    user.find(marker="bom-button").click()
+    for _ in range(100):
+        made = [bom.jobs[k] for k in set(bom.jobs) - before]
+        if made:
+            break
+        await asyncio.sleep(0.1)
+    job = made[0]
+    assert "working tree" in job.title and job.data["summary"]["parts"] > 0
+    assert all("links" in line for line in job.data["lines"])
+
+    rows = commit_table(user).rows
+    await select(user, [rows[1]])
+    before = set(bom.jobs)
+    user.find(marker="bom-button").click()
+    for _ in range(100):
+        made = [bom.jobs[k] for k in set(bom.jobs) - before]
+        if made:
+            break
+        await asyncio.sleep(0.1)
+    assert rows[1]["short"] in made[0].title
+    assert made[0].data["meta"]["rev"]["hash"] == rows[1]["hash"]
+
+
 async def test_3d_build_shows_progress(user: User, monkeypatch, tmp_path: Path) -> None:
     """kicad-cli reports no progress: the GUI shows time against the board's
     last build, and remembers this one."""

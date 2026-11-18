@@ -46,6 +46,14 @@ kigit example [DIR]
 
 Makes the [example project](../example.md) (a git repository) in DIR (default: `./kigit-example`) and prints its project folder. It won't write over an existing folder.
 
+## Bill of materials
+
+```sh
+kigit bom [REV] [PATH] [--json | --csv] [-o FILE]
+```
+
+The bill of materials of the schematic (the working tree, or REV): a line per part, with part numbers and Digi-Key, Mouser and LCSC search links. See [Bill of Materials](bom.md).
+
 ## Uninstalling
 
 ```sh

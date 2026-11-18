@@ -79,6 +79,8 @@ struct SchSymbol {
     bool power = false;              // power symbol (GND, +3.3V, ...)
     bool on_board = true;            // false: not placed on the PCB ("Exclude from board"); left
                                      // out of nets' pin lists, like KiCad's netlist
+    bool in_bom = true;              // false: "Exclude from bill of materials"
+    bool dnp = false;                // "Do not populate"
     std::vector<SchPin> pins;
     std::string def;                 // key into Schematic::defs (drawing)
     std::vector<SchText> visible_fields; // reference, value, ... as shown on the sheet
