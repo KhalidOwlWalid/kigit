@@ -146,3 +146,17 @@ def test_look_up_through_kigit_with_a_stand_in_curl(tmp_path: Path, monkeypatch)
 
     asyncio.run(kigit.bom_set_key("mouser", ""))
     assert not asyncio.run(kigit.bom_keys())["mouser"]["set"]
+
+
+def test_every_panel_and_column_can_be_hidden() -> None:
+    """Each panel has a header toggle (and the side panes a Hide of their
+    own); columns are found by id and class, not by position."""
+    page = _page()
+    for button in ("showlist", "show2d", "show3d", "colsbtn"):
+        assert f'id="{button}"' in page
+    assert 'data-hide="show2d"' in page and 'data-hide="show3d"' in page
+    assert 'const PANES = ["showlist", "show2d", "show3d"]' in page
+    for col in ('id: "qty"', 'id: "value"', 'id: "f:" + c.name', 'id: "mouser"', 'id: "price"', 'id: "search"'):
+        assert col in page
+    assert 'id: "refs", label: "References", fixed: true' in page  # always shown
+    assert "children[1]" not in page and "lastElementChild" not in page  # cells by class, so hidden columns don't shift them

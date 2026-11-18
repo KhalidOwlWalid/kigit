@@ -15,7 +15,8 @@ On the right, the board twice: **PCB** (drawn from the board file itself: outlin
 - **Hover a part** on either: its line lights up (the list scrolls to it), with a tooltip saying what it is.
 - **Click a line** to keep its parts lit while you look around (click again to let go); the PCB zooms to them if they're off screen.
 - PCB: scroll to zoom, drag to pan, **Top** / **Bottom** show or hide each side, **Fit**. 3D: drag to turn, as in the 3D view.
-- **PCB** and **3D** in the header hide either pane (remembered).
+- **List**, **PCB** and **3D** in the header show or hide each panel, and **Hide** on a pane's own bar hides it too. One always stays shown (the list alone, the board alone, any mix). Remembered in your browser.
+- **Columns** picks which columns the list shows: Qty, Value, each part number field, Mouser and Price (after Look up) and the search links. References always stays. The button is lit while some are hidden; **Show all** brings them back. Remembered too.
 
 The PCB shows straight away. KiCad makes the 3D model after the page opens (seconds on a small board, a minute or more on a big one; a board already made is reused), with its progress in the pane. Without KiCad, the 3D pane says so and the rest works.
 

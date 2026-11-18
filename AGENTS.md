@@ -572,6 +572,13 @@ at once. localStorage settings are per origin, so per port.
   `kigit bom --keys` (set/env only), POST -> `--set-key` with the key on
   stdin (`_run(input=)`); never logged. Parts files follow
   `KIGIT_LOG_DIR`'s parent like the GUI's, so GUI tests stay in temp.
+  Layout: panels List/PCB/3D (`PANES`, header buttons + `[data-hide]`
+  on pane bars; the last shown one can't be hidden), `kigit.bomPanes`
+  {list, two, three}. Columns: `tableCols()` is every column ({id, th,
+  td}; ids `qty`, `refs` (fixed), `value`, `f:<field name>`, `mouser`,
+  `price`, `search`), `visibleCols()` drops `hiddenCols`
+  (`kigit.bomHiddenCols`); the Columns button opens `#colmenu`. Code
+  finds cells by class (`td.refs`, `td.links`), never by position.
 - 3D diff (beta, `board3d_diff.py`): separate from the 3D view, which
   stays as it is. The header's "3D diff" button (`diff3d_btn`, a "beta"
   badge; shown with `dock_btn`) opens a blank tab in its click
