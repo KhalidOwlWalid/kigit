@@ -9,6 +9,11 @@ All notable changes to kigit, newest first. The format follows [Keep a Changelog
 - **3D diff (beta)**: a new header button beside **3D**, while a comparison shows. It opens the comparison in 3D in its own tab: parts added (green), changed (amber), moved (blue, with a ghost of the old place) and removed (a red ghost), and added, removed and changed tracks and vias as coloured strips. It says which graphics chip draws it and warns when that's built-in laptop graphics or none (the CPU draws it all). Hover a part to see what it is (reference, value, footprint) and what changed. Render stats with S, as in the 3D view. Separate from the 3D view, which is unchanged.
 - **3D for Compare folders**: the 3D dock works without git too, showing each folder's board as it is on disk (New, Old or Both). `kigit --3d --disk BOARD.kicad_pcb` does the same from the command line.
 
+### Fixed
+
+- Schematics saved by KiCad 6 (HackRF One's, say) failed with " is not a KiCad schematic": KiCad 6 named a sheet's properties "Sheet name" / "Sheet file", which kigit didn't read.
+- Nets now match KiCad in two more cases: a local label and a global label with the same name on the same sheet are one net, and a `/` in a sheet name is written `{slash}` in net names.
+
 ## [0.2.3] - 2026-11-16
 
 ### Added

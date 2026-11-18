@@ -4,7 +4,11 @@
 #include <doctest/doctest.h>
 
 #include <map>
+#include <optional>
 #include <set>
+#include <string>
+#include <tuple>
+#include <vector>
 
 using namespace kigit;
 using namespace kigit::test;
@@ -129,6 +133,80 @@ TEST_CASE("hierarchy and two top-level sheets: same as KiCad") {
     CHECK(nets_of(s) == expected);
     CHECK(s.sheets.size() == 3); // hier, its Child, extra
     CHECK(s.warnings.empty());
+}
+
+// The hier fixture with text changed on the way in: (file, from, to).
+FileReader edited_hier(std::vector<std::tuple<std::string, std::string, std::string>> edits) {
+    FileReader dir = folder_reader(fixture("hier"));
+    return [=](const std::string& rel) -> std::optional<std::string> {
+        auto text = dir(rel);
+        if (!text) return text;
+        for (const auto& [file, from, to] : edits) {
+            if (file != rel) continue;
+            auto at = text->find(from);
+            REQUIRE(at != std::string::npos);
+            text->replace(at, from.size(), to);
+        }
+        return text;
+    };
+}
+
+std::string resistor(const std::string& ref, int x, int y, int rot, const std::string& path) {
+    return "(symbol (lib_id \"Device:R\") (at " + std::to_string(x) + " " + std::to_string(y) + " " +
+           std::to_string(rot) + ") (unit 1) (uuid \"u-" + ref + "\")\n" + "(property \"Reference\" \"" + ref +
+           "\" (at 0 0 0)) (property \"Value\" \"1k\" (at 0 0 0))\n" + "(instances (project \"hier\" (path \"" +
+           path + "\" (reference \"" + ref + "\") (unit 1)))))\n";
+}
+
+TEST_CASE("KiCad 6 sheet properties, and a / in a sheet name: same as KiCad") {
+    // KiCad 6 wrote "Sheet name" / "Sheet file" (HackRF One's schematic did);
+    // KiCad writes a "/" in a sheet name as {slash} in net names.
+    Schematic s = load_schematic("hier.kicad_sch", edited_hier({
+        {"hier.kicad_sch", "\"Sheetname\" \"Child\"", "\"Sheet name\" \"A/B\""},
+        {"hier.kicad_sch", "\"Sheetfile\"", "\"Sheet file\""},
+    }));
+    NetMap expected = {
+        {"/extra/Y", {"R3.1"}},
+        {"/hier/A{slash}B/X", {"R1.2", "R2.1"}},
+        {"GND", {"R1.1", "R2.2"}},
+        {"unconnected-(R3-Pad2)", {"R3.2"}},
+    };
+    CHECK(nets_of(s) == expected);
+    CHECK(s.warnings.empty());
+}
+
+TEST_CASE("a local label joins a global label of the same name on its sheet only: same as KiCad") {
+    // Root: R13 has local "A" on one pin and global "A" on the other (one net).
+    // Child: R14 has local "B"; root: R15 has global "B" (two nets).
+    std::string root = resistor("R13", 120, 50, 0, "/hier-root") +
+                       "(wire (pts (xy 120 46.19) (xy 120 40)) (uuid \"t-w1\"))\n"
+                       "(label \"A\" (at 120 40 0))\n"
+                       "(wire (pts (xy 120 53.81) (xy 120 60)) (uuid \"t-w2\"))\n"
+                       "(global_label \"A\" (shape input) (at 120 60 270))\n" +
+                       resistor("R15", 150, 50, 0, "/hier-root") +
+                       "(wire (pts (xy 150 46.19) (xy 150 40)) (uuid \"t-w3\"))\n"
+                       "(global_label \"B\" (shape input) (at 150 40 90))\n";
+    std::string child = resistor("R14", 60, 80, 90, "/hier-root/sheet-child") +
+                        "(wire (pts (xy 63.81 80) (xy 70 80)) (uuid \"t-w4\"))\n"
+                        "(label \"B\" (at 70 80 0))\n";
+    Schematic s = load_schematic("hier.kicad_sch", edited_hier({
+        {"hier.kicad_sch", "(instances (project \"hier\" (path \"/hier-root\" (page \"2\"))))\n\t)",
+         "(instances (project \"hier\" (path \"/hier-root\" (page \"2\"))))\n\t)\n" + root},
+        {"child.kicad_sch", "(instances (project \"hier\" (path \"/hier-root/sheet-child\" (reference \"#PWR02\") (unit 1))))\n\t)",
+         "(instances (project \"hier\" (path \"/hier-root/sheet-child\" (reference \"#PWR02\") (unit 1))))\n\t)\n" + child},
+    }));
+    NetMap expected = {
+        {"/extra/Y", {"R3.1"}},
+        {"/hier/Child/B", {"R14.2"}},
+        {"/hier/Child/X", {"R1.2", "R2.1"}},
+        {"A", {"R13.1", "R13.2"}},
+        {"B", {"R15.1"}},
+        {"GND", {"R1.1", "R2.2"}},
+        {"unconnected-(R3-Pad2)", {"R3.2"}},
+        {"unconnected-(R14-Pad1)", {"R14.1"}},
+        {"unconnected-(R15-Pad2)", {"R15.2"}},
+    };
+    CHECK(nets_of(s) == expected);
 }
 
 TEST_CASE("buses across the hierarchy: same as KiCad") {

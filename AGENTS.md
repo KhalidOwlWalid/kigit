@@ -165,9 +165,16 @@ ctest --test-dir build -L gui     # GUI (needs uv)
   runtime. MinGW links `-static`.
 
 Useful real projects for manual checks (on the user's machine):
-`~/Documents/Kicad/owl/owl_v1` (74 nets), `~/Documents/Kicad/learn/CM5-SODIMM-Carrier`
-(308), `~/Documents/Kicad/learn/CM5_MINIMA_REV2` (211, buses),
-`~/Documents/Kicad/learn/jetson-nano-baseboard`. kigit matches KiCad on all of them.
+`~/Documents/Kicad/owl/OwlKit/owl_v1.kicad_pcb` (74 nets),
+`~/Documents/Kicad/learn/CM5-SODIMM-Carrier/PCB/carrier.kicad_pcb` (308),
+`~/Documents/Kicad/learn/CM5_MINIMA_REV2` (211, buses),
+`~/Documents/Kicad/learn/hackrf/hardware/hackrf-one` (379; KiCad 6 files,
+a sheet named `mcu/usb/power`), `~/Documents/Kicad/learn/jetson-nano-baseboard`.
+kigit matches KiCad 10.0.7 on all but Jetson, where 49 of 487 nets have the
+right pins but another name (multi-unit parts: KiCad 10 writes
+`Net-(J15B-...)` with the unit letter; and `unconnected-(D8-Pad5)`).
+When checking by hand, use kicad-cli's default netlist format:
+`--format kicadxml` unescapes names (`{slash}` shows as `/`).
 
 ## CLI at a glance
 
@@ -260,7 +267,10 @@ at once. localStorage settings are per origin, so per port.
 - Wires connect at endpoints and junctions; wires that merely cross don't.
   A label touching a wire mid-way joins it.
 - Labels: local (per sheet), global, hierarchical, joined to sheet pins in
-  the parent.
+  the parent. A local label also joins a global label of the same name on
+  the same sheet (not on other sheets).
+- Sheets: `Sheetname`/`Sheetfile`, or KiCad 6's `Sheet name`/`Sheet file`.
+  A `/` in a sheet name is `{slash}` in net names.
 - `power_in` pins that are hidden, or on power symbols, make global nets.
   `PWR_FLAG` is `power_out` and joins nothing.
 - Unnamed nets: `Net-(U1-IN)` (ref and pin name, else pad number). Single-pin

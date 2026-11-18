@@ -156,6 +156,17 @@ std::string property(const Node& n, std::string_view key) {
     return out;
 }
 
+// KiCad escapes "/" in names it builds net names from ("/" separates sheet
+// paths in net names).
+std::string escape_slash(const std::string& s) {
+    std::string out;
+    for (char c : s) {
+        if (c == '/') out += "{slash}";
+        else out += c;
+    }
+    return out;
+}
+
 // "C_1_1" -> unit 1, style 1. The base name may itself contain underscores.
 void unit_and_style(const std::string& name, int& unit, int& style) {
     unit = 0;
@@ -282,7 +293,11 @@ private:
         const Node* top = nullptr;
         for (const Node& c : doc.children)
             if (c.is_list && c.name() == "kicad_sch") top = &c;
-        if (!top) throw std::runtime_error(sch_.sheets[index].file + " is not a KiCad schematic");
+        if (!top) {
+            const std::string& file = sch_.sheets[index].file;
+            throw std::runtime_error(file.empty() ? "a sheet in the schematic names no file"
+                                                  : file + " is not a KiCad schematic");
+        }
 
         if (sch_.sheets[index].parent < 0) {
             // A top-level sheet. With several of them (KiCad 10), net names
@@ -293,7 +308,7 @@ private:
                 if (auto slash = root.name.rfind('/'); slash != std::string::npos) root.name = root.name.substr(slash + 1);
                 if (auto dot = root.name.rfind(".kicad_sch"); dot != std::string::npos) root.name = root.name.substr(0, dot);
             }
-            root.path = multiple_roots ? "/" + root.name + "/" : "/";
+            root.path = multiple_roots ? "/" + escape_slash(root.name) + "/" : "/";
             if (const Node* u = top->child("uuid")) root.uuid_path = "/" + sexpr::unescape(u->arg(0));
         }
 
@@ -346,10 +361,13 @@ private:
                 sch_.labels.push_back(std::move(l));
             } else if (kind == "sheet") {
                 SheetInstance child;
+                // KiCad 6 wrote "Sheet name" / "Sheet file"; 7 and later drop the space.
                 child.name = property(n, "Sheetname");
+                if (child.name.empty()) child.name = property(n, "Sheet name");
                 child.file = property(n, "Sheetfile");
+                if (child.file.empty()) child.file = property(n, "Sheet file");
                 child.parent = index;
-                child.path = sheet.path + child.name + "/";
+                child.path = sheet.path + escape_slash(child.name) + "/";
                 std::string uuid;
                 if (const Node* u = n.child("uuid")) uuid = sexpr::unescape(u->arg(0));
                 child.uuid_path = sheet.uuid_path + "/" + uuid;
@@ -583,17 +601,6 @@ bool is_power_pin(const SchSymbol& s, const SchPin& p) {
 // pins on ordinary parts after the pin name.
 std::string power_net(const SchSymbol& s, const SchPin& p) { return s.power ? s.value : p.name; }
 
-// KiCad escapes "/" in names it builds net names from ("/" separates sheet
-// paths in net names).
-std::string escape_slash(const std::string& s) {
-    std::string out;
-    for (char c : s) {
-        if (c == '/') out += "{slash}";
-        else out += c;
-    }
-    return out;
-}
-
 // A pin name that says something: not empty, not "~", not just the number again.
 bool has_real_name(const SchPin& p) { return !p.name.empty() && p.name != "~" && p.name != p.number; }
 
@@ -734,7 +741,12 @@ void connect(Schematic& sch, const std::unordered_map<size_t, bool>& local_power
         if (l.bus) continue;
         int id = point(l.sheet, l.at);
         switch (l.kind) {
-        case LabelKind::Global: ds.join(id, name_node("G:" + l.text)); break;
+        case LabelKind::Global:
+            ds.join(id, name_node("G:" + l.text));
+            // A local label of the same name on the same sheet joins it too
+            // (KiCad does; on other sheets it doesn't).
+            ds.join(id, name_node("L:" + std::to_string(l.sheet) + ":" + l.text));
+            break;
         case LabelKind::Local: ds.join(id, name_node("L:" + std::to_string(l.sheet) + ":" + l.text)); break;
         case LabelKind::Hierarchical: ds.join(id, name_node("H:" + std::to_string(l.sheet) + ":" + l.text)); break;
         case LabelKind::SheetPin: ds.join(id, name_node("H:" + std::to_string(l.child) + ":" + l.text)); break;
