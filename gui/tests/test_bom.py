@@ -48,10 +48,15 @@ def test_page_has_the_data_and_no_html_injection() -> None:
 
 
 @pytest.mark.skipif(not shutil.which("node"), reason="needs Node.js to check the script")
-def test_page_script_parses(tmp_path: Path) -> None:
-    scripts = re.findall(r"<script>(.*?)</script>", _page(), re.S)
-    assert len(scripts) == 1
-    f = tmp_path / "page.js"
-    f.write_text(scripts[0], encoding="utf-8")
-    r = subprocess.run(["node", "--check", str(f)], capture_output=True, text=True)
-    assert r.returncode == 0, r.stderr
+def test_page_scripts_parse(tmp_path: Path) -> None:
+    page = _page()
+    plain = re.findall(r"<script>(.*?)</script>", page, re.S)
+    module = re.findall(r'<script type="module">(.*?)</script>', page, re.S)
+    assert len(plain) == 1 and len(module) == 1  # the list and 2D board; the 3D board
+    # The module's imports are resolved by the importmap; node only needs to parse.
+    module = [re.sub(r'^import .*? from "\w+";$', "", module[0], flags=re.M)]
+    for name, text in (("page.js", plain[0]), ("page3d.mjs", module[0])):
+        f = tmp_path / name
+        f.write_text(text, encoding="utf-8")
+        r = subprocess.run(["node", "--check", str(f)], capture_output=True, text=True)
+        assert r.returncode == 0, f"{name}: {r.stderr}"

@@ -499,7 +499,18 @@ at once. localStorage settings are per origin, so per port.
   {...}}}`, re-read before each write, removed when empty); a schematic's
   own part number wins. Export CSV is made in the page (quantities x
   Boards, DNP left out unless ticked). Only on request: no background
-  lookups. Planned step 2: Digi-Key / Mouser API lookups (stock, price,
+  lookups. The page is `bom_page.html` (a plain file, read at import: no
+  Python escaping), placeholders `%%KEY%%` etc. Beside the list: a 2D
+  board drawn from `kigit --json REV..REV` (`kigit.board_json`, in CACHE
+  as `<3d name>-board.json`, served by `/bom/{key}/board.json`; pads keep
+  `data-ref`, a box per ref from its pads) and a 3D board (the 3D view's
+  model, `build_models` after the tab opens; `/bom/{key}/status` for the
+  wait). `light(refs, one)` lights a line's parts in both (`board2d.light`,
+  `window.bom3d.light`: tinted copies of the part's meshes + a Box3Helper,
+  other parts faded); hovering a pad or a part (box picking, as in the 3D
+  diff) calls `window.bomHover(ref)`. The 3D code is a trimmed copy of the
+  3D diff's (merge by material, materials, picking), sized to its pane
+  (ResizeObserver). Planned step 2: Digi-Key / Mouser API lookups (stock, price,
   lifecycle, alternatives), keys in the app folder.
 - 3D diff (beta, `board3d_diff.py`): separate from the 3D view, which
   stays as it is. The header's "3D diff" button (`diff3d_btn`, a "beta"

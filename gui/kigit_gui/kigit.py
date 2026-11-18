@@ -237,6 +237,12 @@ async def bom(board: str, rev: str = "LOCAL") -> dict:
     return json.loads(out)
 
 
+async def board_json(board: str, rev: str, out_file: Path) -> None:
+    """One revision's board as kigit's viewer data (outline, tracks, pads with
+    their parts, zones): kigit --json REV..REV. For the BOM page's 2D view."""
+    await _run("-n", "-q", "--json", "-o", str(out_file), f"{rev}..{rev}", board)
+
+
 async def diff_json(project: str, old: str, new: str, out_file: Path) -> None:
     """The comparison as kigit's JSON (what changed, where) for old..new, or
     two boards on disk ("disk:<board>", Compare folders). For the 3D diff."""

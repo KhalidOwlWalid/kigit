@@ -4,8 +4,20 @@ kigit makes your board's bill of materials when you ask for it: in the GUI with 
 
 <figure markdown="span">
   ![The BOM page for owl_v1](../img/gui/bom.png)
-  <figcaption>The BOM page: a line per part, its part number (or a note that it has none), searches on Digi-Key, Mouser and LCSC, and the part number you chose.</figcaption>
+  <figcaption>The BOM page with U1 hovered: lit on the board in 2D and in 3D.</figcaption>
 </figure>
+
+## The board beside the list
+
+On the right, the board twice: **PCB** (drawn from the board file itself: outline, copper on each layer, pours, tracks, vias and pads) and **3D** (the same model as the 3D view).
+
+- **Hover a line**: its parts light up on both, with a box around each, and the rest fades.
+- **Hover a part** on either: its line lights up (the list scrolls to it), with a tooltip saying what it is.
+- **Click a line** to keep its parts lit while you look around (click again to let go); the PCB zooms to them if they're off screen.
+- PCB: scroll to zoom, drag to pan, **Top** / **Bottom** show or hide each side, **Fit**. 3D: drag to turn, as in the 3D view.
+- **PCB** and **3D** in the header hide either pane (remembered).
+
+The PCB shows straight away. KiCad makes the 3D model after the page opens (seconds on a small board, a minute or more on a big one; a board already made is reused), with its progress in the pane. Without KiCad, the 3D pane says so and the rest works.
 
 ## What's on a line
 

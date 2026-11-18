@@ -1695,16 +1695,34 @@ body.kigit-dragging iframe { pointer-events: none; }  /* else the frames swallow
         picked = table.selected if len(table.selected) == 1 else []
         rev = picked[0]["hash"] if picked else LOCAL
         name = state.get("name") or Path(board).stem
-        try:
-            data = await kigit.bom(board, rev)
-        except kigit.KigitError as e:
+        # The board for the 2D view: kept per revision (LOCAL: by the board's time and size).
+        glb = board3d_name(board, rev)
+        board_data = Path(glb).stem + "-board.json"
+        data, made = await asyncio.gather(kigit.bom(board, rev), kigit.board_json(board, rev, CACHE / board_data),
+                                          return_exceptions=True)
+        if isinstance(data, BaseException):
             tab(None)
-            notify(f"Couldn't make the BOM: {e}", type="warning")
+            notify(f"Couldn't make the BOM: {data}", type="warning")
             return
+        if isinstance(made, BaseException):  # the list still works without the 2D board
+            logs.log.warning("bom: no board data: %s", made)
+            board_data = ""
         title = f"{name} · {'working tree' if rev == LOCAL else short_rev(rev)}"
-        key = bom.new_job(bom.Job(board, title, data))
+        todo = not (CACHE / glb).exists()
+        job = bom.Job(board, title, data, board_json=board_data, glb=glb,
+                      expected=buildtime.estimate(board, 1) if todo else 1.0)
+        key = bom.new_job(job)
         logs.log.info("bom of %s at %s (job %s)", board, short_rev(rev), key)
         tab(f"/bom/{key}")
+        # Then the 3D model, while the page shows the list and the 2D board.
+        try:
+            failed = await build_models({rev: glb})
+            if failed:
+                job.model_error = str(failed[0][1])
+            else:
+                job.model_ready = True
+        except (kigit.KigitError, OSError) as e:
+            job.model_error = str(e)
 
     async def open_3d_diff() -> None:
         """The 3D diff (beta) of the comparison on screen, in a new tab: it

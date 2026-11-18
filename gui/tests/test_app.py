@@ -942,6 +942,13 @@ async def test_bom_page(user: User, monkeypatch) -> None:
     job = made[0]
     assert "working tree" in job.title and job.data["summary"]["parts"] > 0
     assert all("links" in line for line in job.data["lines"])
+    board = json.loads((app.CACHE / job.board_json).read_text(encoding="utf-8"))  # the 2D board
+    assert any(it["k"] == "p" and it.get("ref") for it in board["items"])
+    for _ in range(100):  # the 3D model: no KiCad in the tests, so it fails, said on the page
+        if job.model_ready or job.model_error:
+            break
+        await asyncio.sleep(0.1)
+    assert job.model_error and not job.model_ready
 
     rows = commit_table(user).rows
     await select(user, [rows[1]])
