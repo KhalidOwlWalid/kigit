@@ -287,6 +287,14 @@ def test_builds_on_the_page() -> None:
     assert '%%' not in page.split("<script>")[0] and 'BOARDID = "' in page and 'BOARDID = ""' not in page
 
 
+def test_hidden_panes_fit_the_board_when_shown() -> None:
+    """A PCB or 3D pane hidden when the page opened measures as nothing:
+    the board is fitted (2D) or framed (3D) once the pane is shown."""
+    page = _page()
+    assert 'addEventListener("resize", () => { if (drawn && !full && measure()) fit(); })' in page
+    assert 'if (model && !framed) { framed = true; view("iso"); }' in page
+
+
 def test_trackers_on_the_page() -> None:
     page = _page()
     assert 'id="addtracker"' in page

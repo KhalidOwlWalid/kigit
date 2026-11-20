@@ -1617,11 +1617,21 @@ const board2d = (() => {
       const r = el.dataset.ref; if (!r) return;
       if (!padsOf.has(r)) padsOf.set(r, []); padsOf.get(r).push(el);
     });
-    const bb = svg.getElementById("content").getBBox(), m = Math.max(bb.width, bb.height) * 0.04;
-    full = { x: bb.x - m, y: bb.y - m, w: bb.width + 2 * m, h: bb.height + 2 * m };
-    fit();
+    drawn = true;
+    if (measure()) fit();
     $("msg2d").remove();
   }
+  // The board's size, to fit it in view. A hidden pane (PCB off when the page
+  // opened) measures as nothing, so it's measured again once it's shown.
+  let drawn = false;
+  function measure() {
+    const bb = svg.getElementById("content")?.getBBox();
+    if (!bb || (!bb.width && !bb.height)) return false;
+    const m = Math.max(bb.width, bb.height) * 0.04;
+    full = { x: bb.x - m, y: bb.y - m, w: bb.width + 2 * m, h: bb.height + 2 * m };
+    return true;
+  }
+  addEventListener("resize", () => { if (drawn && !full && measure()) fit(); });  // panes() sends one when a pane is shown
   function setVb(v) { vb = v; svg.setAttribute("viewBox", `${v.x} ${v.y} ${v.w} ${v.h}`); }
   function fit() { if (full) setVb({ ...full }); }
   function light(refs, one) {
@@ -1647,7 +1657,7 @@ const board2d = (() => {
   const pt = (e) => { const r = svg.getBoundingClientRect(), s = Math.max(vb.w / r.width, vb.h / r.height);
     return { x: vb.x + (e.clientX - r.left - (r.width - vb.w / s) / 2) * s, y: vb.y + (e.clientY - r.top - (r.height - vb.h / s) / 2) * s, s }; };
   svg.addEventListener("wheel", (e) => {
-    if (!vb) return; e.preventDefault();
+    if (!vb || !full) return; e.preventDefault();
     const p = pt(e), k = Math.exp(e.deltaY * 0.0015), w = Math.min(Math.max(vb.w * k, full.w / 200), full.w * 4), f = w / vb.w;
     setVb({ x: p.x - (p.x - vb.x) * f, y: p.y - (p.y - vb.y) * f, w, h: vb.h * f });
   }, { passive: false });
@@ -1719,9 +1729,12 @@ controls.enableDamping = true; controls.dampingFactor = 0.12; controls.screenSpa
 let pending = false;
 function redraw() { if (pending) return; pending = true; requestAnimationFrame(() => { pending = false; if (controls.update()) redraw(); renderer.render(scene, camera); }); }
 controls.addEventListener("change", redraw);
+let framed = false;  // the board framed at the pane's real size (a hidden pane has none)
 function resize() {
   const w = host.clientWidth, h = host.clientHeight; if (!w || !h) return;
-  renderer.setSize(w, h); camera.aspect = w / h; camera.updateProjectionMatrix(); redraw();
+  renderer.setSize(w, h); camera.aspect = w / h; camera.updateProjectionMatrix();
+  if (model && !framed) { framed = true; view("iso"); }  // the 3D pane was hidden when the model loaded
+  redraw();
 }
 new ResizeObserver(resize).observe(host);
 
@@ -1892,7 +1905,7 @@ function load(url) {
     controls.minDistance = size / 50; controls.maxDistance = size * 10;
     const c = box.getCenter(new THREE.Vector3());
     sun.position.copy(c).add(new THREE.Vector3(size, size * 2, size)); under.position.copy(c).add(new THREE.Vector3(-size, -size * 2, -size));
-    msg.remove(); host.prepend(renderer.domElement); resize(); view("iso");
+    msg.remove(); host.prepend(renderer.domElement); resize();  // frames it, if the pane has a size yet
     window.kigitBom3dReady = { parts: nodes.size };
     window.bom3d.light(window.kigitBom?.lit?.() ?? null);
     // The carts' colours: asked for now (the page may have asked before this module existed).

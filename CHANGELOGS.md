@@ -24,6 +24,7 @@ All notable changes to kigit, newest first. The format follows [Keep a Changelog
 
 ### Fixed
 
+- BOM page: with the PCB pane hidden when the page opened, showing it showed nothing (and zooming found the board far away); the board is now fitted when the pane is shown. The 3D pane likewise frames the board when it's first shown.
 - A two-line error (like "the 3D view needs KiCad's kicad-cli... Install KiCad...") showed its second line twice in the GUI: errors are now logged on one line.
 
 ## [0.2.3] - 2026-11-18
