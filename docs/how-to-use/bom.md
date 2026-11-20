@@ -113,6 +113,23 @@ Why did you pick that regulator, that crystal, that 0603 over a 0402? **+ Notes*
 - **Commit** adds a line to the note for a commit you pick from the history (its short hash, date and subject): when the part changed, when it was ordered... In the note's **Preview**, click the hash to see that commit's changes in kigit's tab (see the [Notebook](gui.md#notebook)).
 - **↗ New tab** opens the notes in a tab of their own, laid out wide; the panel closes, and **+ Notes** on the BOM page then goes to that tab. **Hide** (or the **Notes** button) hides the panel.
 
+## What's ordered: importing carts
+
+Fill your carts at Mouser and LCSC (the CSVs from **Export CSV** upload straight into their BOM tools), then export each cart and bring it back: **Import cart ▾** → **Mouser cart…** or **LCSC cart…**.
+
+- **Files:** Mouser's cart export (**.xls**), LCSC's (**.csv**), or either saved as .xlsx or .csv. Columns are found by name, and title and totals rows are skipped.
+- **Matching a cart row to a line:**
+  1. By the **references** in its *Customer #*: kigit's own export puts them there, so this is the surest.
+  2. By the **site's part number** (Mouser or LCSC).
+  3. By the **MPN**.
+
+  Part numbers you typed but haven't written count too.
+- **Ordered** column: what the carts have for each line against what you need (quantity × **Build qty**): **green** when it's enough, **red** when it isn't, with each site's share ("Mouser 10 · LCSC 5"). Its **▾** filters: *Enough*, *Not enough*, *Not in a cart*, *In the Mouser cart*, *In the LCSC cart*.
+- **Rows that match no line** (most often, passives without a part number yet): **Import cart ▾** → **Carts and unmatched rows…** lists them; give each its line, and (ticked by default) keep its MPN, manufacturer and site number as that line's drafts, to write into the schematic. **Let go** undoes it.
+- **On the board:** **Ordered** on the PCB and 3D panes colours every part **green** if the carts cover it and **red** if not, so you can see at a glance that everything's ordered before you check out. Parts without a 3D model show as a flat tile over their pads.
+- **Not enough for every position:** each board needs the line's parts once, so a cart of *c* parts for *b* boards fills ⌊*c* / *b*⌋ of the line's positions on every board: the first ones by reference (C1, C2, C3...) are green, the rest red. For example, 10 capacitors for a line of four (C1 to C4) on 3 boards: C1, C2 and C3 green (3 per board), C4 red.
+- Carts are kept in `kigit-bom.json` next to the board, one per site; importing a site's cart again replaces it. **Remove** in the carts dialog forgets one.
+
 ## Filtering
 
 Every column you can filter has a **▾** in its header; filters add up, so *Placed: not done* plus *Carted: done* plus *Mouser: short of stock* shows exactly those lines.

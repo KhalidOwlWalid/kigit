@@ -136,6 +136,23 @@ th:hover .fbtn { border-color: var(--line); } th .fbtn.on { color: var(--accent)
 #fmenu label { display: flex; gap: 8px; align-items: center; padding: 2px 0; cursor: pointer; }
 #fmenu input[type=text] { width: 100%; margin: 4px 0; } #fmenu .row { display: flex; justify-content: flex-end; margin-top: 6px; }
 #clearf { border-color: var(--accent); color: var(--accent); }
+/* carts: what's ordered */
+#cmenu { position: fixed; z-index: 8; display: none; background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
+  box-shadow: 0 6px 18px rgba(0,0,0,.35); padding: 4px; width: 18rem; }
+#cmenu.on { display: block; }
+#cmenu button { display: block; width: 100%; text-align: left; border: 0; background: none; padding: 6px 10px; border-radius: 6px; }
+#cmenu button:hover { background: var(--hl); } #cmenu small { display: block; color: var(--muted); font-size: 11.5px; }
+td.ordered { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.oq { font-weight: 600; } .oq.ok { color: var(--ok); } .oq.short { color: var(--bad); }
+.osite { display: inline-block; font-size: 11px; color: var(--muted); margin-right: 6px; }
+#cartdlg { max-width: min(62rem, 94vw); width: 62rem; }
+#cartdlg table { font-size: 12px; } #cartdlg td, #cartdlg th { padding: 4px 6px; }
+#cartdlg select { max-width: 16rem; font-size: 12px; }
+#svg.marking .trk, #svg.marking .zone, #svg.marking .via { opacity: .12; }
+#svg.marking .pad { opacity: .25; }
+#svg .pad.mok { opacity: 1; fill: #3fb950; } #svg .pad.mshort { opacity: 1; fill: #f85149; }
+.pane-head button.ordbtn.on { border-color: var(--ok); color: var(--ok); }
+.legend { font-size: 11px; } .legend .g { color: #3fb950; } .legend .r { color: #f85149; }
 #xmenu { position: fixed; z-index: 8; display: none; background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
   box-shadow: 0 6px 18px rgba(0,0,0,.35); padding: 4px; width: 20rem; }
 #xmenu.on { display: block; }
@@ -176,6 +193,8 @@ dialog a { color: var(--link); }
     <button id="addfield" title="Add a column for another part information field (e.g. Tolerance, Supplier): written into the schematic">+ Field</button>
     <button id="addtracker" title="Add a tick column to track a build: Carted, Ordered, Received, Placed... Kept in kigit-bom.json, never in the schematic">+ Tracker</button>
     <button id="export" class="primary" title="A CSV for LCSC's or Mouser's BOM upload, or with every column">Export CSV &#9662;</button>
+    <button id="cartbtn" title="Import a cart exported from Mouser or LCSC: what's ordered, line by line, and on the board">Import cart &#9662;</button>
+    <input type="file" id="cartfile" accept=".csv,.xls,.xlsx" hidden>
     <button id="lookup" title="Ask Mouser and Digi-Key (those you have a key for) for stock, prices and lifecycle, for Build qty boards (answers are kept a day; Shift+click asks again)">Look up</button>
     <button id="keybtn" title="Your Mouser and Digi-Key keys">Keys</button>
     <span id="lookstate"></span>
@@ -212,12 +231,14 @@ design before saving. The search links only open the distributors' sites; kigit 
   <section class="pane" id="pane2d">
     <div class="pane-head"><b>PCB</b><button id="front" class="on" title="The top side">Top</button>
       <button id="back" class="on" title="The bottom side">Bottom</button><button id="fit2d" title="Fit the board">Fit</button>
+      <button class="ordbtn" data-ordered hidden title="Colour each part by whether the imported carts cover it: green ordered, red not">Ordered</button>
       <button data-hide="show2d" title="Hide this panel (the PCB button above brings it back)">Hide</button></div>
     <div class="view"><svg id="svg" xmlns="http://www.w3.org/2000/svg"></svg><div class="msg" id="msg2d">Loading the board...</div></div>
   </section>
   <section class="pane" id="pane3d">
     <div class="pane-head"><b>3D</b><button data-view="top">Top</button><button data-view="bottom">Bottom</button>
       <button data-view="iso">3D</button><button id="parts3d" class="on" title="Parts' 3D models">Parts</button>
+      <button class="ordbtn" data-ordered hidden title="Colour each part by whether the imported carts cover it: green ordered, red not">Ordered</button>
       <button data-hide="show3d" title="Hide this panel (the 3D button above brings it back)">Hide</button></div>
     <div class="view" id="gl"><div class="msg" id="msg3d">KiCad is making the 3D model...<div class="bar"><i id="fill3d"></i></div></div></div>
   </section>
@@ -226,6 +247,12 @@ design before saving. The search links only open the distributors' sites; kigit 
 <div id="tip"></div>
 <div id="colmenu" role="menu" aria-label="Columns"></div>
 <div id="fmenu" role="dialog" aria-label="Filter"></div>
+<div id="cmenu" role="menu" aria-label="Import cart">
+  <button data-cart="mouser" role="menuitem"><b>Mouser cart&hellip;</b><small>Cart &rarr; Export (the .xls), or .xlsx / .csv</small></button>
+  <button data-cart="lcsc" role="menuitem"><b>LCSC cart&hellip;</b><small>Cart &rarr; Export (the .csv), or .xlsx</small></button>
+  <button data-cart="show" role="menuitem" id="cartshow"><b>Carts and unmatched rows&hellip;</b><small>What was imported; give rows kigit couldn't match to a line</small></button>
+</div>
+<dialog id="cartdlg"><div id="cartbody"></div><div class="row"><button id="cartclose" class="primary">Done</button></div></dialog>
 <div id="xmenu" role="menu" aria-label="Export CSV">
   <div id="xrule"></div>
   <button data-export="lcsc" role="menuitem"><b>LCSC</b> BOM tool<small>Quantity, Manufacture Part Number, LCSC Part Number, Package...
@@ -359,6 +386,8 @@ let colFilters = {};  // column id -> {mode, q}
 const FILTERS = {
   track: [["done", "Done"], ["not", "Not done"], ["some", "Partly done"]],
   text: [["has", "Contains..."], ["filled", "Not empty"], ["empty", "Empty"]],
+  ordered: [["enough", "Enough in the carts"], ["short", "Not enough"], ["none", "Not in a cart"],
+    ["from:mouser", "In the Mouser cart"], ["from:lcsc", "In the LCSC cart"]],
   site: [["ok", "Found"], ["short", "Short of stock"], ["ending", "Ending (obsolete, last buy...)"], ["choose", "To choose"],
     ["not_found", "Not found"], ["error", "Error or skipped"]],
 };
@@ -371,6 +400,12 @@ function passes(col, f, l) {
     if (l.dnp) return false;  // not bought: not part of a build's progress
     const st = trackState(l, col.tracker);
     return f.mode === "done" ? st === "all" : f.mode === "not" ? st !== "all" : st === "some";
+  }
+  if (col.filter === "ordered") {
+    if (l.dnp) return false;
+    const o = orderedOf(l);
+    if (f.mode.startsWith("from:")) return !!o.qty[f.mode.slice(5)];
+    return f.mode === "none" ? !o.total : f.mode === "enough" ? !!o.total && o.enough : !!o.total && !o.enough;
   }
   if (col.filter === "text") {
     const t = String(col.text(l) || "").trim();
@@ -468,6 +503,9 @@ function tableCols() {
       filter: "text", text: (l) => shown(l, c),
       th: `<th title="${esc(c.name)}${c.kind ? "" : " (double-click to rename)"}"${c.kind ? "" : ` data-rename="f:${esc(c.name)}"`}>${esc(c.label)}</th>`,
       td: (l, i) => `<td>${cell(l, c, i, ci)}</td>` })),
+    ...(hasCarts() ? [{ id: "ordered", label: "Ordered (carts)", filter: "ordered",
+      th: `<th title="What the imported carts have for each line, against what you need (Build qty boards)">Ordered</th>`,
+      td: (l) => orderedCell(l) }] : []),
     ...trackers().map((name) => {
       const [done, all] = trackCount(name);
       return { id: "t:" + name, label: `${name} (tracker)`, tracker: name, filter: "track",
@@ -536,6 +574,7 @@ function defaultWidth(id) {
   if (id === "value") return 150;
   if (id === "search") return 84;
   if (id.startsWith("price:")) return 120;
+  if (id === "ordered") return 150;
   if (id.startsWith("t:")) return Math.max(100, 56 + 8 * id.length);  // title, count and filter button on one line
   if (id.startsWith("site:")) return 210;
   return id === "f:" + (columns()[0]?.name) ? 200 : 170;  // MPN a bit wider than the other fields
@@ -811,6 +850,7 @@ async function post(path, body) {
   const r = await fetch(`/bom/${KEY}/${path}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}) });
   const j = await r.json().catch(() => ({}));
   if (!r.ok) { const e = new Error(j.error || r.status); e.info = j; throw e; }
+  if (hasCarts() && /^(drafts|write|undo)$/.test(path)) refreshCart();  // part numbers changed: match the carts again
   return j;
 }
 // Enter leaves the box (fields are one line); the text still wraps to show it all.
@@ -942,6 +982,128 @@ $("addtracker").addEventListener("click", async () => {
 });
 $("filter").addEventListener("input", render);
 $("show").addEventListener("change", render);
+// ------------------------------------------------------------------ carts
+// Carts exported from Mouser or LCSC, read and matched to the lines by the
+// GUI (bom.py match_carts: by the references in Customer #, else the site's
+// number, else the MPN, drafts included). The Ordered column, its filter,
+// and the board coloured by what's covered.
+let CART = { match: { lines: {}, unmatched: [], carts: {} } };
+const hasCarts = () => Object.keys(CART.match.carts || {}).length > 0;
+const SITE_NAME = { mouser: "Mouser", lcsc: "LCSC" };
+// What the carts have for a line: per site, the total, and whether it covers
+// the line's quantity for Build qty boards.
+function orderedOf(l) {
+  const m = CART.match.lines[lineKey(l)], qty = m ? m.qty : {}, total = Object.values(qty).reduce((a, b) => a + b, 0);
+  const need = l.qty * buildQty();
+  return { qty, total, need, enough: total >= need, rows: m ? m.rows : [] };
+}
+// Which parts the carts cover on the board: each board needs the line's
+// parts once, so a cart of c parts for b boards fills floor(c / b) of the
+// line's positions on every board: the first ones (R1, R2...) are green,
+// the rest red. A line with no cart is all red.
+function orderedMarks() {
+  const out = {}, b = buildQty();
+  for (const l of DATA.lines) {
+    if (l.dnp) continue;
+    const covered = Math.min(l.refs.length, Math.floor(orderedOf(l).total / b));
+    l.refs.forEach((r, k) => (out[r] = k < covered ? "ok" : "short"));
+  }
+  return out;
+}
+function orderedCell(l) {
+  if (l.dnp) return `<td class="ordered"><span class="faint">&ndash;</span></td>`;
+  const o = orderedOf(l);
+  if (!o.total) return `<td class="ordered"><span class="faint" title="In none of the imported carts">not in a cart</span></td>`;
+  const per = Math.min(l.refs.length, Math.floor(o.total / buildQty()));
+  const how = o.rows.map((r) => `${SITE_NAME[r.site]} ${r.sku || r.mpn}: ${r.qty} (by ${r.by})`).join("\n");
+  return `<td class="ordered" title="${esc(how)}${o.enough ? "" : `\n${per} of ${l.refs.length} positions on each of ${buildQty()} board(s)`}">` +
+    `<span class="oq ${o.enough ? "ok" : "short"}">${o.total} / ${o.need}</span><br>` +
+    Object.entries(o.qty).map(([s, n]) => `<span class="osite">${SITE_NAME[s]} ${n}</span>`).join("") + `</td>`;
+}
+async function refreshCart() {
+  try { CART = await (await fetch(`/bom/${KEY}/cart`)).json(); } catch { return; }
+  render(); markBoards();
+}
+let marking = false;
+function markBoards() {
+  document.querySelectorAll("[data-ordered]").forEach((b) => { b.classList.toggle("on", marking); b.hidden = !hasCarts(); });
+  const marks = marking && hasCarts() ? orderedMarks() : null;
+  board2d.mark(marks); window.bom3d?.mark(marks);
+}
+document.querySelectorAll("[data-ordered]").forEach((b) => b.addEventListener("click", () => { marking = !marking; markBoards(); }));
+$("boards").addEventListener("input", () => { if (hasCarts()) { render(); markBoards(); } });
+let cartSite = "";
+$("cartbtn").addEventListener("click", (e) => {
+  e.stopPropagation();
+  const m = $("cmenu"), r = $("cartbtn").getBoundingClientRect();
+  $("cartshow").hidden = !hasCarts();
+  m.classList.toggle("on"); m.style.top = r.bottom + 4 + "px";
+  m.style.left = Math.max(8, Math.min(r.left, innerWidth - m.offsetWidth - 8)) + "px";
+});
+$("cmenu").addEventListener("click", (e) => {
+  e.stopPropagation();
+  const b = e.target.closest("[data-cart]"); if (!b) return;
+  $("cmenu").classList.remove("on");
+  if (b.dataset.cart === "show") { cartDialog(); return; }
+  cartSite = b.dataset.cart; $("cartfile").value = ""; $("cartfile").click();
+});
+document.addEventListener("click", () => $("cmenu").classList.remove("on"));
+$("cartfile").addEventListener("change", async () => {
+  const f = $("cartfile").files[0]; if (!f || !cartSite) return;
+  const el = $("lookstate");
+  try {
+    const r = await fetch(`/bom/${KEY}/cart/${cartSite}?name=${encodeURIComponent(f.name)}`, { method: "POST", body: f });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.error || r.status);
+    CART = j; drafts = j.drafts;
+    const site = SITE_NAME[cartSite], c = j.match.carts[cartSite], left = j.match.unmatched.filter((u) => u.site === cartSite).length;
+    el.className = left ? "err" : "";
+    el.textContent = `${site} cart: ${c.rows} rows, ${c.rows - left} matched to lines` + (left ? `; ${left} not: Import cart ▾ → Carts to give them a line.` : ".");
+    if (!marking) marking = true;  // show it on the board straight away
+    render(); markBoards();
+  } catch (err) { el.className = "err"; el.textContent = `Couldn't read the ${SITE_NAME[cartSite]} cart: ${err.message}`; }
+});
+// The carts dialog: each cart, and the rows that aren't a line yet (give them one).
+function cartDialog() {
+  const m = CART.match, lineOpts = DATA.lines.filter((l) => !l.dnp)
+    .map((l) => `<option value="${esc(l.refs.join(" "))}">${esc(l.value)} · ${esc(l.refs.join(", ").slice(0, 40))}</option>`).join("");
+  const rowHtml = (u, assigned) => `<tr><td>${SITE_NAME[u.site]}</td><td class="num">${esc(u.sku)}</td><td class="num">${esc(u.mpn)}` +
+    `<div class="faint">${esc(u.manufacturer)}</div></td><td>${esc(u.description)}</td><td class="qty">${u.qty}</td><td>` +
+    (assigned ? `${esc((u.assigned || []).join(", "))} <button data-unassign="${u.site}|${u.i}">Let go</button>`
+      : `<select data-assign="${u.site}|${u.i}"><option value="">Give it a line&hellip;</option>${lineOpts}</select>`) + `</td></tr>`;
+  const assigned = Object.values(m.lines).flatMap((x) => x.rows).filter((r) => r.by === "assigned");
+  const head = `<tr><th>Site</th><th>Site's number</th><th>MPN</th><th>Description</th><th class="qty">Qty</th><th>Line</th></tr>`;
+  $("cartbody").innerHTML = `<b>Imported carts</b>` +
+    Object.entries(m.carts).map(([s, c]) => `<p class="sub">${SITE_NAME[s]}: <b>${esc(c.file)}</b>, ${esc(c.time)}, ${c.rows} rows ` +
+      `<button data-rmcart="${s}">Remove</button></p>`).join("") +
+    (m.unmatched.length ? `<p class="sub">These rows match no line (no references, and no line has their part number). Give each its line; ` +
+      `<label><input type="checkbox" id="cartkeep" checked> and keep its part numbers as the line's drafts</label>.</p>` +
+      `<table>${head}${m.unmatched.map((u) => rowHtml(u, false)).join("")}</table>` : `<p class="sub">Every row matches a line.</p>`) +
+    (assigned.length ? `<p class="sub">Given a line by hand:</p><table>${head}${assigned.map((u) => rowHtml(u, true)).join("")}</table>` : "");
+  if (!$("cartdlg").open) $("cartdlg").showModal();
+}
+$("cartclose").addEventListener("click", () => $("cartdlg").close());
+$("cartbody").addEventListener("change", async (e) => {
+  const sel = e.target.closest("select[data-assign]"); if (!sel || !sel.value) return;
+  const [site, i] = sel.dataset.assign.split("|");
+  try {
+    const r = await post(`cart/${site}/edit`, { row: +i, refs: sel.value.split(" "), keep: $("cartkeep")?.checked });
+    CART = r; drafts = r.drafts; render(); markBoards(); cartDialog();
+  } catch (err) { alert(err.message); }
+});
+$("cartbody").addEventListener("click", async (e) => {
+  const un = e.target.closest("[data-unassign]"), rm = e.target.closest("[data-rmcart]");
+  try {
+    if (un) { const [site, i] = un.dataset.unassign.split("|"); CART = await post(`cart/${site}/edit`, { row: +i, refs: null }); }
+    else if (rm) {
+      if (!confirm(`Forget the ${SITE_NAME[rm.dataset.rmcart]} cart?`)) return;
+      CART = await post(`cart/${rm.dataset.rmcart}/edit`, { remove: true });
+    } else return;
+    drafts = CART.drafts; render(); markBoards();
+    if (hasCarts()) cartDialog(); else $("cartdlg").close();
+  } catch (err) { alert(err.message); }
+});
+
 // ------------------------------------------------------------- exporting
 // Export CSV ▾: LCSC's BOM tool, Mouser's BOM tool (each in its own
 // template's columns, so they map by themselves), or every column. The
@@ -1246,11 +1408,19 @@ const board2d = (() => {
     svg.querySelectorAll(`.layer[data-side="${side}"]`).forEach((g) => (g.style.display = sides[side] ? "" : "none"));
   });
   fetch(`/bom/${KEY}/board.json`).then((r) => { if (!r.ok) throw new Error("no board data"); return r.json(); })
-    .then(draw).catch((e) => { $("msg2d").textContent = "Couldn't show the board: " + e.message; $("msg2d").classList.add("err"); });
-  return { light, zoomTo, fit, refs: () => [...padsOf.keys()] };
+    .then((B) => { draw(B); window.kigitBomMarked?.(); }).catch((e) => { $("msg2d").textContent = "Couldn't show the board: " + e.message; $("msg2d").classList.add("err"); });
+  // Parts coloured by the carts: {ref: "ok" | "short"}, or null for none.
+  function mark(marks) {
+    svg.classList.toggle("marking", !!marks);
+    svg.querySelectorAll(".pad.mok, .pad.mshort").forEach((el) => el.classList.remove("mok", "mshort"));
+    for (const [r, st] of Object.entries(marks || {})) (padsOf.get(r) || []).forEach((el) => el.classList.add(st === "ok" ? "mok" : "mshort"));
+  }
+  return { light, mark, zoomTo, fit, refs: () => [...padsOf.keys()], box: (r) => boxOf.get(r) };
 })();
-window.kigitBom = { csv, csvLcsc, csvMouser, ruleLines, setExportRule: (r) => (exportRule = r), drafts: () => drafts, pending, light, board2d, lit: () => lit, look: () => LOOK,
+window.kigitBom = { cart: () => CART, orderedMarks, csv, csvLcsc, csvMouser, ruleLines, setExportRule: (r) => (exportRule = r), drafts: () => drafts, pending, light, board2d, lit: () => lit, look: () => LOOK,
   columns: () => visibleCols().map((c) => c.id) };  // for scripted checks
+window.kigitBomMarked = () => markBoards();
+refreshCart();  // carts imported before (kept in kigit-bom.json)
 pollLookup();  // a Look up from before (this page reloaded), or one still running
 fetch(`/bom/${KEY}/drafts`).then((r) => r.json()).then((d) => { drafts = d; render(); }).catch(() => render());
 </script>
@@ -1343,10 +1513,42 @@ scene.add(litGroup);
 
 // Light up parts: drawn again in the highlight colour with a box around
 // each; the other parts fade so these stand out.
+// Parts fade while some are lit or coloured by the carts.
+let litOn = false, markOn = false;
+function fade() {
+  const on = litOn || markOn;
+  for (const m of partMats) { m.transparent = on || m.userData.wasTransparent; m.opacity = on ? 0.25 : m.userData.opacity; m.depthWrite = !on; m.needsUpdate = true; }
+}
+const markGroup = new THREE.Group();
+scene.add(markGroup);
+const okMat = new THREE.MeshStandardMaterial({ color: 0x3fb950, emissive: 0x3fb950, emissiveIntensity: 0.45, roughness: 0.5,
+  polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
+const shortMat = okMat.clone(); shortMat.color.set(0xf85149); shortMat.emissive.set(0xf85149);
+// The carts on the board: each part drawn again in green (covered) or red.
+function mark(marks) {
+  markGroup.clear();
+  markOn = !!marks; fade();
+  for (const [r, st] of Object.entries(marks || {})) {
+    const mat = st === "ok" ? okMat : shortMat, n = nodes.get(r);
+    if (n) {
+      n.traverse((o) => { if (!o.isMesh) return; const c = new THREE.Mesh(o.geometry, mat);
+        o.matrixWorld.decompose(c.position, c.quaternion, c.scale); markGroup.add(c); });
+      continue;
+    }
+    // No 3D model: a flat tile over its pads (from the 2D board), on the board's top.
+    // KiCad's glb is in the board's own coordinates: x = X / 1000, z = Y / 1000 (mm to m).
+    const b = window.kigitBom?.board2d?.box?.(r);
+    if (!b || !board) continue;
+    const w = Math.max(b[2] - b[0], 0.3) / 1000, d = Math.max(b[3] - b[1], 0.3) / 1000;
+    const tile = new THREE.Mesh(new THREE.BoxGeometry(w, 0.0003, d), mat);
+    tile.position.set((b[0] + b[2]) / 2000, board.max.y + 0.00015, (b[1] + b[3]) / 2000);
+    markGroup.add(tile);
+  }
+  redraw();
+}
 function light(refs) {
   litGroup.clear();
-  const on = !!(refs && refs.length);
-  for (const m of partMats) { m.transparent = on || m.userData.wasTransparent; m.opacity = on ? 0.25 : m.userData.opacity; m.depthWrite = !on; m.needsUpdate = true; }
+  litOn = !!(refs && refs.length); fade();
   for (const r of refs || []) {
     const n = nodes.get(r); if (!n) continue;
     n.traverse((o) => { if (!o.isMesh) return; const c = new THREE.Mesh(o.geometry, hlMat); o.matrixWorld.decompose(c.position, c.quaternion, c.scale); litGroup.add(c); });
@@ -1355,7 +1557,9 @@ function light(refs) {
   }
   redraw();
 }
-window.bom3d = { light: (refs) => model && light(refs), pick: (x, y) => at(x, y), lit: () => litGroup.children.length };
+let pendingMarks = null;
+window.bom3d = { light: (refs) => model && light(refs), mark: (m) => { pendingMarks = m; if (model) mark(m); },
+  pick: (x, y) => at(x, y), lit: () => litGroup.children.length, marked: () => markGroup.children.length };
 
 // Hovering a part: the ray against each part's box (cheap on big boards);
 // of the boxes it's in at once, the smallest; not through the board.
@@ -1430,6 +1634,8 @@ function load(url) {
     msg.remove(); host.prepend(renderer.domElement); resize(); view("iso");
     window.kigitBom3dReady = { parts: nodes.size };
     window.bom3d.light(window.kigitBom?.lit?.() ?? null);
+    // The carts' colours: asked for now (the page may have asked before this module existed).
+    if (window.kigitBomMarked) window.kigitBomMarked(); else if (pendingMarks) mark(pendingMarks);
   }, undefined, (err) => { msg.className = "msg err"; msg.textContent = "Couldn't load the 3D model: " + (err?.message || err); });
 }
 // Wait for KiCad to make the model (seconds to a minute or two on a big board).

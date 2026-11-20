@@ -578,6 +578,32 @@ at once. localStorage settings are per origin, so per port.
   uses) | "not:<tracker>" (non-DNP lines that tracker doesn't have all
   of; falls back to all if the tracker is gone), in
   `kigit.bomExportRule`; all three CSVs loop over `ruleLines()`.
+  Carts (`cart.py`, `bom.py`): Import cart ▾ posts the file (raw body) to
+  `/bom/{key}/cart/{site}?name=` -> `cart.parse_cart` (`.xls` via xlrd,
+  the GUI's one dependency for this; `.xlsx` via zipfile + XML; CSV
+  sniffed; header row = first of the first 30 rows with a qty column and a
+  part number column; roles by `_key`ed name: sku (starts with the site),
+  mpn, manufacturer, description, qty, refs (starts with "customer"); rows
+  without qty or any of sku/mpn/refs dropped: titles, totals) ->
+  `import_cart` keeps `{file, time, rows}` under `"carts"[site]` in
+  kigit-bom.json (`_carts` cleans it). `match_carts(job.data, state)`:
+  per row, its `assigned` or `refs` (line with the most of them), else
+  `shown_number(site)`, else MPN (drafts count; `_norm`); DNP lines never;
+  -> `{lines: {line key: {qty: {site: n}, rows}}, unmatched, carts}`.
+  GET `/bom/{key}/cart`; `/cart/{site}/edit` {remove} or {row, refs|null,
+  keep} (`assign_row`; keep = the row's mpn/manufacturer/sku as drafts
+  where the line has none). The page (`CART`): `post()` refetches after
+  drafts/write/undo. Ordered column (`orderedCell`, need = qty x Build
+  qty), filter kind "ordered". Board: `[data-ordered]` toggles in both
+  pane bars (`marking`, `markBoards`): `orderedMarks()` = per line
+  `covered = min(n, floor(total / boards))`, refs[0..covered) "ok", the
+  rest "short"; `board2d.mark` (pad classes mok/mshort), `bom3d.mark`
+  (tinted copies; no model: a tile from `board2d.box(ref)` at x = X/1000,
+  z = Y/1000 on the board top). The module loads after the page, so on
+  model load it calls `window.kigitBomMarked` to fetch the marks (a request
+  made before it existed was lost). Tests: gui/tests/test_cart.py uses the
+  real exports in tests/test_examples/exported_boms_from_distributor
+  (owl board's; the BOM in the test is made up to meet them).
   Only on request: no background
   lookups. The page is `bom_page.html` (a plain file, read at import: no
   Python escaping), placeholders `%%KEY%%` etc. Beside the list: a 2D

@@ -13,6 +13,10 @@ Edits are drafts until you write them, kept next to the board in
 kigit-bom.json (in git, so they go with the project): {"version": 2,
 "drafts": {line key: {field name: value}}, "columns": [added fields],
 "tracking": {"columns": [tracker names], "done": {name: [refs]}}}.
+Carts exported from Mouser or LCSC (cart.py) are kept there too, one per
+site: "carts": {site: {"file", "time", "rows": [{sku, mpn, manufacturer,
+description, qty, refs, assigned?}]}}, and matched to the BOM's lines
+(match_carts) for the Ordered column and the board view.
 Trackers ("Carted", "Placed"...) are your own tick columns for a build:
 never written into the schematic, ticked per part reference (so they
 survive a line's part number changing or lines regrouping).
@@ -107,6 +111,30 @@ def _tracking(data: dict) -> dict:
     return {"columns": names, "done": {n: sorted({r for r in refs if isinstance(r, str)}) for n, refs in ticked.items()}}
 
 
+def _carts(data: dict) -> dict:
+    from .cart import SITES
+    carts = data.get("carts") if isinstance(data.get("carts"), dict) else {}
+    out = {}
+    for site, c in carts.items():
+        if site not in SITES or not isinstance(c, dict) or not isinstance(c.get("rows"), list):
+            continue
+        rows = []
+        for r in c["rows"]:
+            if not isinstance(r, dict):
+                continue
+            row = {k: str(r.get(k, "")) for k in ("sku", "mpn", "manufacturer", "description")}
+            try:
+                row["qty"] = max(0, int(r.get("qty", 0)))
+            except (TypeError, ValueError):
+                row["qty"] = 0
+            row["refs"] = [x for x in r.get("refs", []) if isinstance(x, str)] if isinstance(r.get("refs"), list) else []
+            if isinstance(r.get("assigned"), list):
+                row["assigned"] = [x for x in r["assigned"] if isinstance(x, str)]
+            rows.append(row)
+        out[site] = {"file": str(c.get("file", "")), "time": str(c.get("time", "")), "rows": rows}
+    return out
+
+
 def load_drafts(board: str | Path) -> dict:
     """{"drafts": {line key: {field: value}}, "columns": [field, ...],
     "tracking": {"columns": [...], "done": {name: [refs]}}}. A version 1
@@ -132,20 +160,23 @@ def load_drafts(board: str | Path) -> dict:
         for k, d in (data.get("drafts") or {}).items():
             if isinstance(d, dict):
                 drafts[k] = {str(f): str(v) for f, v in d.items()}
-    return {"drafts": drafts, "columns": columns, "tracking": _tracking(data)}
+    return {"drafts": drafts, "columns": columns, "tracking": _tracking(data), "carts": _carts(data)}
 
 
 def save_drafts(board: str | Path, state: dict) -> None:
     drafts = {k: dict(sorted(d.items())) for k, d in sorted(state["drafts"].items()) if d}
     columns = list(dict.fromkeys(state.get("columns", [])))
     tracking = _tracking({"tracking": state.get("tracking") or {}})
+    carts = _carts({"carts": state.get("carts") or {}})
     path = drafts_path(board)
-    if not drafts and not columns and not tracking["columns"]:
+    if not drafts and not columns and not tracking["columns"] and not carts:
         path.unlink(missing_ok=True)
         return
     out = {"version": 2, "drafts": drafts, "columns": columns}
     if tracking["columns"]:
         out["tracking"] = tracking
+    if carts:
+        out["carts"] = carts
     text = json.dumps(out, indent=2, ensure_ascii=False) + "\n"
     tmp = path.with_suffix(".json.tmp")
     tmp.write_text(text, encoding="utf-8", newline="\n")
@@ -223,6 +254,101 @@ def set_tracked(board: str | Path, name: str, refs: list[str], done: bool) -> di
     have = set(t["done"].get(name, []))
     have = have | set(refs) if done else have - set(refs)
     t["done"][name] = sorted(have)
+    save_drafts(board, state)
+    return load_drafts(board)
+
+
+# ------------------------------------------------------------------ carts
+_LABELS = {"mpn": "MPN", "manufacturer": "Manufacturer", "digikey": "Digi-Key", "mouser": "Mouser", "lcsc": "LCSC"}
+
+
+def _norm(pn: str) -> str:
+    return re.sub(r"[^A-Z0-9]", "", (pn or "").upper())
+
+
+def shown_number(line: dict, kind: str, drafts: dict, field_names: dict) -> str:
+    """A line's part number as the page shows it: a draft if there is one."""
+    name = field_names.get(kind) or _LABELS[kind]
+    d = drafts.get(line_key(line), {})
+    return (d[name] if name in d else line.get(kind, "")) or ""
+
+
+def match_carts(data: dict, state: dict) -> dict:
+    """Which cart rows are which BOM line: by the references in the row (its
+    Customer # from kigit's export, or a line you assigned it to), else the
+    site's own part number, else the MPN (both compared as letters and
+    digits). {"lines": {line key: {"qty": {site: n}, "rows": [...]}},
+    "unmatched": [...], "carts": {site: {file, time, rows}}}."""
+    lines = [l for l in data.get("lines", []) if not l.get("dnp")]
+    fn, drafts = data.get("field_names") or {}, state.get("drafts") or {}
+    by_ref = {r: l for l in lines for r in l["refs"]}
+    out: dict = {"lines": {}, "unmatched": [], "carts": {}}
+    for site, c in (state.get("carts") or {}).items():
+        out["carts"][site] = {"file": c["file"], "time": c["time"], "rows": len(c["rows"])}
+        sku_of = {_norm(shown_number(l, site, drafts, fn)): l for l in lines if shown_number(l, site, drafts, fn)}
+        mpn_of = {_norm(shown_number(l, "mpn", drafts, fn)): l for l in lines if shown_number(l, "mpn", drafts, fn)}
+        for i, row in enumerate(c["rows"]):
+            line, by = None, ""
+            refs = row.get("assigned") or row.get("refs") or []
+            if refs:
+                # The line with most of these parts (lines may have regrouped since the export).
+                hits = [by_ref[r] for r in refs if r in by_ref]
+                if hits:
+                    line = max(hits, key=lambda l: sum(r in refs for r in l["refs"]))
+                    by = "assigned" if row.get("assigned") else "references"
+            if line is None and row["sku"] and _norm(row["sku"]) in sku_of:
+                line, by = sku_of[_norm(row["sku"])], f"{SITE_NAMES.get(site, site)} number"
+            if line is None and row["mpn"] and _norm(row["mpn"]) in mpn_of:
+                line, by = mpn_of[_norm(row["mpn"])], "MPN"
+            entry = {**row, "site": site, "i": i, "by": by}
+            if line is None:
+                out["unmatched"].append(entry)
+                continue
+            m = out["lines"].setdefault(line_key(line), {"qty": {}, "rows": []})
+            m["qty"][site] = m["qty"].get(site, 0) + row["qty"]
+            m["rows"].append(entry)
+    return out
+
+
+SITE_NAMES = {"mouser": "Mouser", "lcsc": "LCSC"}
+
+
+def import_cart(board: str | Path, site: str, filename: str, data: bytes) -> dict:
+    """Reads a cart file and keeps it (replacing that site's last one)."""
+    from .cart import parse_cart
+    rows = parse_cart(data, filename, site)
+    state = load_drafts(board)
+    state["carts"][site] = {"file": Path(filename).name[:200], "time": time.strftime("%Y-%m-%d %H:%M"), "rows": rows}
+    save_drafts(board, state)
+    return load_drafts(board)
+
+
+def remove_cart(board: str | Path, site: str) -> dict:
+    state = load_drafts(board)
+    state["carts"].pop(site, None)
+    save_drafts(board, state)
+    return load_drafts(board)
+
+
+def assign_row(board: str | Path, data: dict, site: str, i: int, refs: list[str] | None, keep: bool) -> dict:
+    """A cart row given to a line by hand (refs), or let go (None). keep:
+    also make its part numbers the line's drafts where the line has none."""
+    state = load_drafts(board)
+    rows = state["carts"].get(site, {}).get("rows", [])
+    if not 0 <= i < len(rows):
+        raise ValueError("no such cart row")
+    row = rows[i]
+    if refs:
+        row["assigned"] = list(refs)
+    else:
+        row.pop("assigned", None)
+    if refs and keep:
+        line = next((l for l in data.get("lines", []) if set(refs) & set(l["refs"])), None)
+        if line is not None:
+            fn, d = data.get("field_names") or {}, state["drafts"].setdefault(line_key(line), {})
+            for kind, value in (("mpn", row["mpn"]), ("manufacturer", row["manufacturer"]), (site, row["sku"])):
+                if value and not shown_number(line, kind, state["drafts"], fn):
+                    d[fn.get(kind) or _LABELS[kind]] = value
     save_drafts(board, state)
     return load_drafts(board)
 
@@ -370,6 +496,57 @@ async def _notes(key: str) -> Response:
     if job is None:
         return JSONResponse({"error": "gone"}, status_code=404)
     return JSONResponse(await asyncio.to_thread(notebook.counts_by_part, Path(job.board).parent))
+
+
+def _cart_answer(job: Job, state: dict) -> JSONResponse:
+    return JSONResponse({"match": match_carts(job.data, state), "drafts": state})
+
+
+@app.get("/bom/{key}/cart")
+async def _cart(key: str) -> Response:
+    job = _job(key)
+    if job is None:
+        return JSONResponse({"error": "gone"}, status_code=404)
+    return _cart_answer(job, load_drafts(job.board))
+
+
+@app.post("/bom/{key}/cart/{site}")
+async def _import_cart(key: str, site: str, request: Request, name: str = "cart.csv") -> Response:
+    """A cart file (the request's body), from Mouser or LCSC."""
+    from .cart import MAX_BYTES, CartError
+    job = _job(key)
+    if job is None:
+        return JSONResponse({"error": "gone"}, status_code=404)
+    data = await request.body()
+    if len(data) > MAX_BYTES:
+        return JSONResponse({"error": "the file is too big for a cart (over 5 MB)"}, status_code=400)
+    try:
+        state = await asyncio.to_thread(import_cart, job.board, site, name, data)
+    except CartError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    except OSError as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+    logs.log.info("bom: %s cart %s imported (%d rows)", site, name, len(state["carts"].get(site, {}).get("rows", [])))
+    return _cart_answer(job, state)
+
+
+@app.post("/bom/{key}/cart/{site}/edit")
+async def _edit_cart(key: str, site: str, request: Request) -> Response:
+    """{remove: true}, or {row, refs (null: unassign), keep}."""
+    job = _job(key)
+    if job is None:
+        return JSONResponse({"error": "gone"}, status_code=404)
+    body = await request.json()
+    try:
+        if body.get("remove"):
+            state = remove_cart(job.board, site)
+        else:
+            refs = body.get("refs")
+            refs = [str(r) for r in refs if isinstance(r, str)] if isinstance(refs, list) else None
+            state = assign_row(job.board, job.data, site, int(body.get("row", -1)), refs, bool(body.get("keep")))
+    except (ValueError, TypeError) as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    return _cart_answer(job, state)
 
 
 @app.get("/bom/{key}/keys")

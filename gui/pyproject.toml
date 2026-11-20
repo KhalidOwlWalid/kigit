@@ -9,6 +9,7 @@ dependencies = [
     "nicegui>=2.10,<3",
     "markdown2>=2.4",  # the reviews page (NiceGUI uses it too)
     "latex2mathml>=3.77",  # $math$ in reviews, as MathML (no JavaScript, works offline)
+    "xlrd>=2.0.1",  # carts exported from Mouser as old Excel .xls (pure Python; .xlsx is read without it)
     # The GUI's own window (Windows, via Edge WebView2). Elsewhere it opens in
     # the browser; `kigit gui --native` falls back to that when pywebview or a
     # window system is missing.

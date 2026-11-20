@@ -22,7 +22,7 @@ DATA = {"lines": [{"refs": ["R1", "R2"], "qty": 2, "value": "10k", "footprint": 
 
 def test_drafts_kept_next_to_the_board(tmp_path: Path) -> None:
     board = tmp_path / "x.kicad_pcb"
-    assert bom.load_drafts(board) == {"drafts": {}, "columns": [], "tracking": {"columns": [], "done": {}}}
+    assert bom.load_drafts(board) == {"drafts": {}, "columns": [], "tracking": {"columns": [], "done": {}}, "carts": {}}
     state = bom.set_draft(board, "10k|R_0603", "MPN", " RC0603FR-0710KL ")
     assert state["drafts"]["10k|R_0603"]["MPN"] == "RC0603FR-0710KL"
     saved = json.loads((tmp_path / bom.DRAFTS).read_text(encoding="utf-8"))
@@ -94,7 +94,7 @@ def test_version_1_picks_are_read_as_drafts(tmp_path: Path) -> None:
 
 def test_broken_drafts_file_is_ignored(tmp_path: Path) -> None:
     (tmp_path / bom.DRAFTS).write_text("{not json", encoding="utf-8")
-    assert bom.load_drafts(tmp_path / "x.kicad_pcb") == {"drafts": {}, "columns": [], "tracking": {"columns": [], "done": {}}}
+    assert bom.load_drafts(tmp_path / "x.kicad_pcb") == {"drafts": {}, "columns": [], "tracking": {"columns": [], "done": {}}, "carts": {}}
 
 
 def test_line_key() -> None:
@@ -262,6 +262,20 @@ def test_export_for_lcsc_and_mouser() -> None:
     assert 'id="xrule"' in page and '["shown", "Only the lines shown' in page and "`not:${t}`" in page
     assert page.count("for (const l of ruleLines()) {") == 3
     assert '"kigit.bomExportRule"' in page
+
+
+def test_carts_on_the_page() -> None:
+    """Import cart (Mouser, LCSC), the Ordered column and its filter, the
+    carts dialog, and the board coloured by what's covered, per board."""
+    page = _page()
+    assert 'id="cartbtn"' in page and 'data-cart="mouser"' in page and 'data-cart="lcsc"' in page
+    assert 'accept=".csv,.xls,.xlsx"' in page and 'id="cartdlg"' in page
+    assert 'id: "ordered", label: "Ordered (carts)", filter: "ordered"' in page
+    assert '["from:mouser", "In the Mouser cart"]' in page
+    assert page.count("data-ordered hidden") == 2  # PCB and 3D panes
+    # The rule for a line the carts don't fully cover: floor(cart / boards) positions, first refs first.
+    assert "Math.min(l.refs.length, Math.floor(orderedOf(l).total / b))" in page
+    assert "function mark(marks)" in page and "window.kigitBomMarked" in page
 
 
 def test_trackers_on_the_page() -> None:
