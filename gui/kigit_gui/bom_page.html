@@ -159,7 +159,24 @@ td.placed button { padding: 0 6px; font-size: 11px; margin-left: 2px; }
   box-shadow: 0 6px 18px rgba(0,0,0,.35); padding: 4px; width: 18rem; }
 #cmenu.on { display: block; }
 #cmenu button { display: block; width: 100%; text-align: left; border: 0; background: none; padding: 6px 10px; border-radius: 6px; }
-#cmenu [hidden], #xmenu [hidden] { display: none; }  /* display: block above would show them anyway */
+#cmenu [hidden], #xmenu [hidden] { display: none; }
+/* the bell: kigit's notifications (notices.py), on this page too */
+#bell { position: relative; padding: 4px 8px; }
+#bellbadge { position: absolute; top: -6px; right: -6px; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 8px;
+  font-size: 11px; line-height: 16px; font-weight: 700; color: #fff; background: var(--bad); }
+#bellbadge.mention { background: #a371f7; }
+#nmenu { position: fixed; z-index: 9; display: none; right: 12px; top: 56px; width: min(30rem, 94vw); max-height: 70vh; overflow: auto;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 6px 18px rgba(0,0,0,.35); }
+#nmenu.on { display: block; }
+#nmenu .nhead { display: flex; gap: 10px; align-items: baseline; padding: 8px 12px; border-bottom: 1px solid var(--line);
+  position: sticky; top: 0; background: var(--panel); }
+#nmenu .nhead .sub { margin-right: auto; } #nmenu a { color: var(--link); text-decoration: none; font-size: 12px; }
+#nlist .n { padding: 6px 12px; border-bottom: 1px solid var(--line); border-left: 3px solid transparent; }
+#nlist .n.error { border-left-color: var(--bad); } #nlist .n.warning { border-left-color: var(--warn); }
+#nlist .n.info { border-left-color: var(--line); } #nlist .n.mention { border-left-color: #a371f7; }
+#nlist .n.unread { background: var(--hl); }
+#nlist .n small { color: var(--faint); margin-left: 6px; } #nlist .n div { color: var(--muted); font-size: 12px; white-space: pre-wrap; }
+#nlist table { font-size: 11.5px; margin-top: 4px; } #nlist td, #nlist th { padding: 1px 6px 1px 0; }  /* display: block above would show them anyway */
 #cmenu button:hover { background: var(--hl); } #cmenu button:disabled { opacity: .45; cursor: default; background: none; } #cmenu small { display: block; color: var(--muted); font-size: 11.5px; }
 #invdlg { max-width: min(64rem, 94vw); width: 64rem; }
 #invdlg table { font-size: 12px; } #invdlg td, #invdlg th { padding: 3px 6px; }
@@ -240,8 +257,15 @@ dialog a { color: var(--link); }
     <button id="show2d" class="on" title="The board in 2D beside the list">PCB</button>
     <button id="show3d" class="on" title="The board in 3D beside the list">3D</button>
     <button id="shownotes" title="Notes about the BOM's lines (+ Notes on a line): why a part was chosen">Notes</button>
+    <button id="bell" title="Notifications: what went wrong, and what was done (the same as kigit's bell)">&#128276;<span id="bellbadge" hidden></span></button>
+    <button id="logbtn" title="kigit's session log, live, in a tab of its own">Log</button>
   </div>
 </header>
+<div id="nmenu" role="dialog" aria-label="Notifications">
+  <div class="nhead"><b>Notifications</b><span class="sub">this session</span>
+    <a href="/notices" target="_blank" rel="noopener">All</a><a href="/log" target="_blank" rel="noopener">Session log</a></div>
+  <div id="nlist"></div>
+</div>
 <div id="asmbar" hidden>
   <b>Board</b> <select id="boardsel" aria-label="Board"></select>
   <span id="boardprog" class="sub"></span>
@@ -1923,6 +1947,61 @@ const board2d = (() => {
 })();
 window.kigitBom = { boards: () => BOARDS, board: () => BOARD, view: () => VIEW, stock: () => STOCK, build: () => BUILD, builds: () => BUILDS, cart: () => CART, orderedMarks, csv, csvLcsc, csvMouser, ruleLines, setExportRule: (r) => (exportRule = r), drafts: () => drafts, pending, light, board2d, lit: () => lit, look: () => LOOK,
   columns: () => visibleCols().map((c) => c.id) };  // for scripted checks
+// ----------------------------------------------- notifications and the log
+// kigit's notification centre (notices.py: /notices.json), as the main GUI's
+// bell shows it: a red count while problems are unread (purple "@" for
+// mentions); opening it marks them read everywhere. Log opens the session log.
+let NOTICES = { version: -1, items: [] };
+async function pollNotices() {
+  if (!document.hidden) {
+    try {
+      const r = await (await fetch("/notices.json", { cache: "no-store" })).json();
+      if (r.version !== NOTICES.version) { NOTICES = r; bellBadge(); if ($("nmenu").classList.contains("on")) noticeList(); }
+    } catch {}
+  }
+  setTimeout(pollNotices, 3000);
+}
+function bellBadge() {
+  const unread = NOTICES.items.filter((n) => !n.read);
+  const problems = unread.filter((n) => n.level === "error" || n.level === "warning").length;
+  const mentions = unread.filter((n) => n.level === "mention").length;
+  const b = $("bellbadge");
+  b.hidden = !problems && !mentions;
+  b.textContent = problems ? (problems > 9 ? "9+" : String(problems)) : "@";
+  b.classList.toggle("mention", !problems && !!mentions);
+  $("bell").title = problems ? `${problems} problem${problems === 1 ? "" : "s"} not seen yet: click to see` : "Notifications: what went wrong, and what was done";
+}
+function noticeList() {
+  const items = NOTICES.items.slice(0, 40);
+  $("nlist").innerHTML = items.map((n) => `<div class="n ${esc(n.level)}${n.read ? "" : " unread"}"><b>${esc(n.title)}</b><small>${esc(n.when)}</small>` +
+    (n.detail ? `<div>${esc(n.detail)}</div>` : "") +
+    (n.rows && n.rows.length ? `<table><tr>${n.headers.map((h) => `<th>${esc(h)}</th>`).join("")}</tr>` +
+      n.rows.slice(0, 20).map((r) => `<tr>${r.map((c) => `<td>${esc(c)}</td>`).join("")}</tr>`).join("") + `</table>` : "") + `</div>`).join("") ||
+    `<div class="n"><div>Nothing yet this session.</div></div>`;
+}
+$("bell").addEventListener("click", async (e) => {
+  e.stopPropagation();
+  const m = $("nmenu"), open = !m.classList.contains("on");
+  m.classList.toggle("on", open);
+  if (!open) return;
+  noticeList();
+  if (NOTICES.items.some((n) => !n.read)) {
+    try { await fetch("/notices/read", { method: "POST" }); } catch {}
+    NOTICES.items.forEach((n) => (n.read = true)); bellBadge();  // the list keeps showing what was new until it's closed
+  }
+});
+$("nmenu").addEventListener("click", (e) => e.stopPropagation());
+document.addEventListener("click", () => $("nmenu").classList.remove("on"));
+addEventListener("keydown", (e) => { if (e.key === "Escape") $("nmenu").classList.remove("on"); });
+$("logbtn").addEventListener("click", () => window.open("/log", "_blank", "noopener"));
+// This page's own script errors: into the session log too.
+function reportError(message) {
+  try { navigator.sendBeacon?.(`/bom/${KEY}/clientlog`, new Blob([JSON.stringify({ message })], { type: "application/json" })); } catch {}
+}
+addEventListener("error", (e) => reportError(`${e.message} at ${(e.filename || "").split("/").pop()}:${e.lineno}`));
+addEventListener("unhandledrejection", (e) => reportError(`unhandled: ${e.reason?.message || e.reason}`));
+pollNotices();
+
 window.kigitBomMarked = () => markBoards();
 loadBuilds();  // the build picked last time on this board
 refreshCart();  // carts imported before (kept in kigit-bom.json)

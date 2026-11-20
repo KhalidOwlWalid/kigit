@@ -229,6 +229,14 @@ Trackers belong to the [build](#builds) you've picked: they're kept in its `kigi
 - **Not Carted yet** (one for each of your trackers): to order just what isn't in the cart, or hasn't arrived.
 
 Each shows how many lines it has. They use what's on screen, drafts included, and **Build qty** (how many boards you're building) multiplies the quantities. LCSC's and Mouser's files leave DNP parts out; **DNP in export** puts them in **All columns**. Both sites let you check the columns when you upload, if one isn't picked up by itself.
+## Notifications and the log
+
+The BOM page has kigit's **bell** (🔔) and **Log** too, at the end of its header, so you see what's happening without going back to kigit's window.
+
+- Anything that goes wrong (a cart file that can't be read, the inventory locked by a spreadsheet, a write the schematic refused, a Look up that stopped) is a notification, "BOM: ..." with why, as well as the message on the page. The bell shows how many you haven't seen, the same count as kigit's own bell; opening it on either page marks them seen on both.
+- What got done is listed too, without counting as a problem: a cart imported (and rows that matched no line, with the table), a cart received, part numbers written into the schematic, a Look up finished, a board done, a build made.
+- **Log** opens kigit's session log, live, in a tab of its own. Everything above is in it, with the BOM page's own script errors if it ever has any, for reporting a problem.
+
 ## Which revision
 
 The working tree by default (the files on disk, saved or not committed). Tick one commit in the commit list first to get that commit's BOM instead.

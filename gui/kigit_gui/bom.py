@@ -517,11 +517,34 @@ def place_parts(board: str | Path, build: str, data: dict, n: int, refs: list[st
     done = bool(every) and every <= have
     if done and b["status"] != "done":
         b["status"], b["finished"] = "done", time.strftime("%Y-%m-%d %H:%M")
+        _done(f"board #{n} of build {build} is done", "every part placed")
     elif not done and b["status"] == "done":
         b["status"], b["finished"] = "in progress", ""
     logs.log.info("bom: build %s board #%d: %s %d part(s), %d from the inventory", build, n,
                   "placed" if placed else "took off", len(refs), len(deltas))
     return builds.save_board(board, build, b)
+
+
+# ------------------------------------------------------- log and the bell
+def _err(message: str, status: int, what: str = "", **extra) -> JSONResponse:
+    """An error answer for the page, also in the session log and, unless it's
+    just a page left open after kigit restarted (404), in the notification
+    bell (the GUI's and the BOM page's), so it isn't only a passing alert."""
+    message = str(message)
+    if status == 404:
+        logs.log.info("bom: %s", message)
+    else:
+        logs.log.warning("bom: %s%s", f"{what}: " if what else "", message)
+        from . import notices
+        notices.add("error" if status >= 500 else "warning", f"BOM: {message}", what)
+    return JSONResponse({"error": message, **extra}, status_code=status)
+
+
+def _done(title: str, detail: str = "") -> None:
+    """Something worth knowing happened (a cart imported, a board done): the log and the bell's list."""
+    from . import notices
+    logs.log.info("bom: %s%s", title, f" ({detail})" if detail else "")
+    notices.add("info", f"BOM: {title}", detail)
 
 
 def _job(key: str) -> Job | None:
@@ -543,7 +566,7 @@ async def _board(key: str) -> Response:
 
     job = _job(key)
     if job is None or not job.board_json or not (CACHE / job.board_json).is_file():
-        return JSONResponse({"error": "no board data"}, status_code=404)
+        return _err("no board data", 404)
     return FileResponse(CACHE / job.board_json, media_type="application/json")
 
 
@@ -551,7 +574,7 @@ async def _board(key: str) -> Response:
 async def _status(key: str) -> Response:
     job = _job(key)
     if job is None:
-        return JSONResponse({"error": "gone"}, status_code=404)
+        return _err("gone", 404)
     return JSONResponse({"ready": job.model_ready, "error": job.model_error, "glb": f"/diffs/{job.glb}",
                          "elapsed": time.monotonic() - job.started, "expected": job.expected})
 
@@ -576,7 +599,7 @@ async def _set_draft(key: str, request: Request) -> Response:
     from .builds import BuildError
     job = _job(key)
     if job is None:
-        return JSONResponse({"error": "gone"}, status_code=404)
+        return _err("gone", 404)
     body = await request.json()
     build = str(body.get("build") or "")
     try:
@@ -585,7 +608,7 @@ async def _set_draft(key: str, request: Request) -> Response:
         elif body.get("rename_column") or body.get("rename_tracker"):  # {rename_column | rename_tracker, to}
             new = str(body.get("to", "")).strip()[:100]
             if not new or any(ch in new for ch in "\r\n"):
-                return JSONResponse({"error": "a column needs a name (one line)"}, status_code=400)
+                return _err("a column needs a name (one line)", 400)
             if body.get("rename_tracker"):
                 return JSONResponse(rename_tracker(job.board, build, str(body["rename_tracker"]), new[:60]))
             rename_column(job.board, str(body["rename_column"]), new)
@@ -600,14 +623,14 @@ async def _set_draft(key: str, request: Request) -> Response:
         else:
             line, name = str(body.get("key", "")), str(body.get("field", ""))
             if not line or not name:
-                return JSONResponse({"error": "no line or field"}, status_code=400)
+                return _err("no line or field", 400)
             value = body.get("value")
             set_draft(job.board, line, name, None if value is None else str(value))
         return JSONResponse(state(job.board, build))
     except (NoBuild, BuildError) as e:
-        return JSONResponse({"error": str(e)}, status_code=400)
+        return _err(str(e), 400)
     except OSError as e:
-        return JSONResponse({"error": str(e)}, status_code=500)
+        return _err(str(e), 500)
 
 
 async def _refresh(job: Job) -> None:
@@ -622,9 +645,9 @@ async def _write(key: str, request: Request) -> Response:
 
     job = _job(key)
     if job is None:
-        return JSONResponse({"error": "gone"}, status_code=404)
+        return _err("gone", 404)
     if job.rev != "LOCAL":
-        return JSONResponse({"error": "only the working tree can be written"}, status_code=400)
+        return _err("only the working tree can be written", 400)
     body = await request.json()
     refs = {line_key(l): l["refs"] for l in job.data.get("lines", [])}
     every_ref = [r for l in job.data.get("lines", []) for r in l["refs"]]
@@ -632,21 +655,21 @@ async def _write(key: str, request: Request) -> Response:
     for rn in body.get("renames", []):  # a field column's new title: the field renamed on every part that has it
         old, new = str(rn.get("from", "")), str(rn.get("to", "")).strip()
         if not old or not new:
-            return JSONResponse({"error": "a rename needs both names"}, status_code=400)
+            return _err("a rename needs both names", 400)
         edits.append({"refs": every_ref, "field": old, "rename": new})
         renames.append((old, new))
     for c in body.get("cells", []):
         k, name, value = str(c.get("key", "")), str(c.get("field", "")), str(c.get("value", ""))
         if k not in refs or not name:
-            return JSONResponse({"error": f"no such line: {k}"}, status_code=400)
+            return _err(f"no such line: {k}", 400)
         edits.append({"refs": refs[k], "field": name, "value": value})
         cells.append((k, name))
     if not edits:
-        return JSONResponse({"error": "nothing to write"}, status_code=400)
+        return _err("nothing to write", 400)
     try:
         result = await kigit.bom_write(job.board, edits, CACHE / f"bom-edits-{key}.json", bool(body.get("force")))
     except kigit.KigitError as e:
-        return JSONResponse({"error": str(e), "locked": "KiCad has" in str(e)}, status_code=409)
+        return _err(str(e), 409, "writing part numbers into the schematic", locked="KiCad has" in str(e))
     job.backup = result.get("backup") or job.backup
     left = load_drafts(job.board)
     for k, name in cells:
@@ -655,7 +678,8 @@ async def _write(key: str, request: Request) -> Response:
     for old, new in renames:
         rename_column(job.board, old, new)
     await _refresh(job)
-    logs.log.info("bom: wrote %s fields into %s", result.get("fields"), ", ".join(result.get("written", [])))
+    _done(f"wrote {result.get('fields')} field(s) into the schematic", ", ".join(result.get("written", [])) +
+          (f"; backup in {result['backup']}" if result.get("backup") else ""))
     try:
         answer = state(job.board, str(body.get("build") or ""))
     except ValueError:
@@ -667,14 +691,14 @@ async def _write(key: str, request: Request) -> Response:
 async def _undo(key: str) -> Response:
     job = _job(key)
     if job is None or not job.backup:
-        return JSONResponse({"error": "nothing to undo"}, status_code=400)
+        return _err("nothing to undo", 400)
     try:
         result = await kigit.bom_restore(job.backup)
     except kigit.KigitError as e:
-        return JSONResponse({"error": str(e)}, status_code=500)
+        return _err(str(e), 500)
     job.backup = ""
     await _refresh(job)
-    logs.log.info("bom: undid the last write (%s)", ", ".join(result.get("restored", [])))
+    _done("put the schematic back as it was before the last write", ", ".join(result.get("restored", [])))
     return JSONResponse({"result": result, "data": job.data})
 
 
@@ -684,7 +708,7 @@ async def _notes(key: str) -> Response:
     from . import notebook
     job = _job(key)
     if job is None:
-        return JSONResponse({"error": "gone"}, status_code=404)
+        return _err("gone", 404)
     return JSONResponse(await asyncio.to_thread(notebook.counts_by_part, Path(job.board).parent))
 
 
@@ -698,7 +722,7 @@ async def _cart(key: str, build: str = "") -> Response:
     from .builds import BuildError
     job = _job(key)
     if job is None:
-        return JSONResponse({"error": "gone"}, status_code=404)
+        return _err("gone", 404)
     try:
         return _cart_answer(job, state(job.board, build))
     except BuildError:
@@ -712,20 +736,30 @@ async def _import_cart(key: str, site: str, request: Request, name: str = "cart.
     from .cart import MAX_BYTES, CartError
     job = _job(key)
     if job is None:
-        return JSONResponse({"error": "gone"}, status_code=404)
+        return _err("gone", 404)
     data = await request.body()
     if len(data) > MAX_BYTES:
-        return JSONResponse({"error": "the file is too big for a cart (over 5 MB)"}, status_code=400)
+        return _err("the file is too big for a cart (over 5 MB)", 400)
     try:
         if not build:
             raise NoBuild("pick or make a build first: a cart belongs to a build")
         st = await asyncio.to_thread(import_cart, job.board, build, site, name, data)
     except (CartError, NoBuild, BuildError) as e:
-        return JSONResponse({"error": str(e)}, status_code=400)
+        return _err(str(e), 400)
     except OSError as e:
-        return JSONResponse({"error": str(e)}, status_code=500)
-    logs.log.info("bom: %s cart %s imported into %s (%d rows)", site, name, build, len(st["carts"].get(site, {}).get("rows", [])))
-    return _cart_answer(job, st)
+        return _err(str(e), 500)
+    answer = _cart_answer(job, st)
+    m = match_carts(job.data, st)
+    left = sum(1 for u in m["unmatched"] if u["site"] == site)
+    rows = len(st["carts"].get(site, {}).get("rows", []))
+    _done(f"{SITE_NAMES.get(site, site)} cart imported into build {build}",
+          f"{name}: {rows} rows" + (f", {left} not matched to a line (Import cart, Carts)" if left else ", all matched"))
+    if left:
+        from . import notices
+        notices.add("warning", f"BOM: {left} {SITE_NAMES.get(site, site)} cart row(s) match no line",
+                    "Give them a line in Import cart, Carts and unmatched rows",
+                    ("Site's number", "MPN", "Qty"), [(u["sku"], u["mpn"], str(u["qty"])) for u in m["unmatched"] if u["site"] == site])
+    return answer
 
 
 @app.post("/bom/{key}/cart/{site}/edit")
@@ -736,7 +770,7 @@ async def _edit_cart(key: str, site: str, request: Request) -> Response:
     from .inventory import InventoryError
     job = _job(key)
     if job is None:
-        return JSONResponse({"error": "gone"}, status_code=404)
+        return _err("gone", 404)
     body = await request.json()
     build = str(body.get("build") or "")
     try:
@@ -745,13 +779,16 @@ async def _edit_cart(key: str, site: str, request: Request) -> Response:
         if body.get("remove"):
             st = remove_cart(job.board, build, site)
         elif body.get("receive") or body.get("unreceive"):
-            st = await asyncio.to_thread(receive_cart, job.board, build, job.data, site, bool(body.get("unreceive")))
+            undo = bool(body.get("unreceive"))
+            st = await asyncio.to_thread(receive_cart, job.board, build, job.data, site, undo)
+            _done(f"{SITE_NAMES.get(site, site)} cart of build {build} " +
+                  ("taken back out of your inventory" if undo else "received into your inventory"))
         else:
             refs = body.get("refs")
             refs = [str(r) for r in refs if isinstance(r, str)] if isinstance(refs, list) else None
             st = assign_row(job.board, build, job.data, site, int(body.get("row", -1)), refs, bool(body.get("keep")))
     except (ValueError, TypeError, InventoryError, BuildError) as e:
-        return JSONResponse({"error": str(e)}, status_code=400)
+        return _err(str(e), 400)
     return _cart_answer(job, st)
 
 
@@ -760,7 +797,7 @@ async def _builds(key: str) -> Response:
     from . import builds
     job = _job(key)
     if job is None:
-        return JSONResponse({"error": "gone"}, status_code=404)
+        return _err("gone", 404)
     return JSONResponse({"builds": [b.to_dict() for b in builds.all_builds(job.board)]})
 
 
@@ -771,25 +808,25 @@ async def _edit_builds(key: str, request: Request) -> Response:
     from . import builds
     job = _job(key)
     if job is None:
-        return JSONResponse({"error": "gone"}, status_code=404)
+        return _err("gone", 404)
     body = await request.json()
     action = body.get("action")
     try:
         if action == "new":
             b = builds.new(job.board, str(body.get("name", "")), body.get("boards", 1), job.rev)
-            logs.log.info("bom: new build %s (%d boards)", b.id, b.boards)
+            _done(f"new build {b.name}", f"{b.boards} boards, kigit-builds/{b.id}")
         elif action == "update":
             b = builds.update(job.board, str(body.get("id", "")), body.get("name"), body.get("boards"))
         elif action == "delete":
             builds.delete(job.board, str(body.get("id", "")))
-            logs.log.info("bom: deleted build %s", body.get("id"))
+            _done(f"deleted build {body.get('id')}")
             b = None
         else:
-            return JSONResponse({"error": f"unknown action {action}"}, status_code=400)
+            return _err(f"unknown action {action}", 400)
     except builds.BuildError as e:
-        return JSONResponse({"error": str(e)}, status_code=400)
+        return _err(str(e), 400)
     except OSError as e:
-        return JSONResponse({"error": str(e)}, status_code=500)
+        return _err(str(e), 500)
     return JSONResponse({"build": b.to_dict() if b else None,
                          "builds": [x.to_dict() for x in builds.all_builds(job.board)]})
 
@@ -798,7 +835,7 @@ async def _edit_builds(key: str, request: Request) -> Response:
 async def _stock(key: str) -> Response:
     job = _job(key)
     if job is None:
-        return JSONResponse({"error": "gone"}, status_code=404)
+        return _err("gone", 404)
     return await asyncio.to_thread(_stock_answer, job)
 
 
@@ -809,7 +846,7 @@ async def _edit_inventory(key: str, request: Request) -> Response:
     from . import inventory
     job = _job(key)
     if job is None:
-        return JSONResponse({"error": "gone"}, status_code=404)
+        return _err("gone", 404)
     body = await request.json()
     action = body.get("action")
 
@@ -820,7 +857,8 @@ async def _edit_inventory(key: str, request: Request) -> Response:
                 raise inventory.InventoryError("give the file's full path")
             inv = inventory.create(path) if action == "new" else inventory.read(path)
             inventory.remember(path, inv)
-            logs.log.info("inventory: %s %s (%d parts)", "made" if action == "new" else "chose", path, len(inv.rows))
+            _done(f"inventory {'made' if action == 'new' else 'chosen'}: {path.name}",
+                  f"{path} ({len(inv.rows)} parts" + (f", {len(inv.problems)} rows kigit can't use" if inv.problems else "") + ")")
         elif action == "forget":
             inventory.remember(None)
             logs.log.info("inventory: forgot the file (it stays where it is)")
@@ -846,9 +884,9 @@ async def _edit_inventory(key: str, request: Request) -> Response:
     try:
         await asyncio.to_thread(run)
     except inventory.InventoryError as e:
-        return JSONResponse({"error": str(e)}, status_code=400)
+        return _err(str(e), 400)
     except (TypeError, ValueError) as e:
-        return JSONResponse({"error": f"not a number: {e}"}, status_code=400)
+        return _err(f"not a number: {e}", 400)
     return await asyncio.to_thread(_stock_answer, job)
 
 
@@ -858,14 +896,14 @@ async def _browse(key: str, dir: str = "") -> Response:
     (a web page can't ask for a path). Only names, nothing read."""
     from . import inventory
     if _job(key) is None:
-        return JSONResponse({"error": "gone"}, status_code=404)
+        return _err("gone", 404)
     where = inventory.location()
     d = Path(dir).expanduser() if dir else (where.parent if where else Path.home())
     try:
         d = d.resolve()
         entries = sorted(d.iterdir(), key=lambda p: p.name.lower())
     except OSError as e:
-        return JSONResponse({"error": f"can't open {d}: {e}"}, status_code=400)
+        return _err(f"can't open {d}: {e}", 400)
     folders = [p.name for p in entries if p.is_dir() and not p.name.startswith(".")]
     files = [p.name for p in entries if p.is_file() and p.suffix.lower() == ".csv"]
     return JSONResponse({"dir": str(d), "parent": str(d.parent) if d.parent != d else "", "folders": folders,
@@ -878,7 +916,7 @@ async def _boards(key: str, build: str = "") -> Response:
     from . import builds
     job = _job(key)
     if job is None:
-        return JSONResponse({"error": "gone"}, status_code=404)
+        return _err("gone", 404)
     try:
         return JSONResponse({"boards": builds.boards(job.board, build) if build else []})
     except builds.BuildError:
@@ -892,7 +930,7 @@ async def _edit_boards(key: str, request: Request) -> Response:
     from . import builds, inventory
     job = _job(key)
     if job is None:
-        return JSONResponse({"error": "gone"}, status_code=404)
+        return _err("gone", 404)
     body = await request.json()
     build, action = str(body.get("build") or ""), body.get("action")
 
@@ -923,27 +961,39 @@ async def _edit_boards(key: str, request: Request) -> Response:
     try:
         b = await asyncio.to_thread(run)
     except (NoBuild, builds.BuildError, inventory.InventoryError) as e:
-        return JSONResponse({"error": str(e)}, status_code=400)
+        return _err(str(e), 400)
     except (TypeError, ValueError) as e:
-        return JSONResponse({"error": f"not a board number: {e}"}, status_code=400)
+        return _err(f"not a board number: {e}", 400)
     return JSONResponse({"board": b, "boards": builds.boards(job.board, build)})
+
+
+@app.post("/bom/{key}/clientlog")
+async def _clientlog(key: str, request: Request) -> Response:
+    """Something went wrong in the BOM page itself (a script error): into the
+    session log, so it can be traced afterwards."""
+    try:
+        body = await request.json()
+    except ValueError:
+        body = {}
+    logs.log.warning("bom page (browser): %s", str(body.get("message", ""))[:2000])
+    return JSONResponse({})
 
 
 @app.get("/bom/{key}/keys")
 async def _keys(key: str) -> Response:
     if _job(key) is None:
-        return JSONResponse({"error": "gone"}, status_code=404)
+        return _err("gone", 404)
     try:
         return JSONResponse(await kigit.bom_keys())
     except kigit.KigitError as e:
-        return JSONResponse({"error": str(e)}, status_code=500)
+        return _err(str(e), 500)
 
 
 @app.post("/bom/{key}/keys")
 async def _set_key(key: str, request: Request) -> Response:
     """Saves (or with "" removes) a site's API key, through kigit."""
     if _job(key) is None:
-        return JSONResponse({"error": "gone"}, status_code=404)
+        return _err("gone", 404)
     body = await request.json()
     site = str(body.get("site", ""))
     if site == "mouser":
@@ -953,15 +1003,15 @@ async def _set_key(key: str, request: Request) -> Response:
         lines = [cid] if not cid.strip() else [cid, str(body.get("client_secret", "")),
                                                f"{body.get('locale_site', 'US')} {body.get('currency', 'USD')}"]
     else:
-        return JSONResponse({"error": f"kigit has no lookups for {site}"}, status_code=400)
+        return _err(f"kigit has no lookups for {site}", 400)
     if any(len(x) > 300 or "\n" in x or "\r" in x for x in lines):
-        return JSONResponse({"error": "not a key kigit can keep"}, status_code=400)
+        return _err("not a key kigit can keep", 400)
     try:
         await kigit.bom_set_key(site, *lines)
         logs.log.info("bom: %s key %s", site, "saved" if lines[0].strip() else "removed")  # never the key
         return JSONResponse(await kigit.bom_keys())
     except kigit.KigitError as e:
-        return JSONResponse({"error": str(e)}, status_code=500)
+        return _err(str(e), 500)
 
 
 async def run_lookup(job: Job, boards: int, refresh: bool) -> None:
@@ -979,14 +1029,24 @@ async def run_lookup(job: Job, boards: int, refresh: bool) -> None:
     try:
         look.result = await kigit.bom_lookup(job.board, job.rev, boards, refresh, progress)
         look.done = look.total
+        from . import notices
         for site, info in look.result.get("sites", {}).items():
             if info.get("error"):
                 logs.log.warning("bom lookup: %s: %s", site, info["error"])
+                notices.add("warning", f"BOM: Look up at {info.get('name', site)} stopped", info["error"])
+        names = [i.get("name", s) for s, i in look.result.get("sites", {}).items() if not i.get("error")]
+        if names:
+            _done(f"Look up done at {' and '.join(names)}", f"{look.total} lines, {boards} board(s)")
     except kigit.KigitError as e:
         look.error = str(e)
+        logs.log.warning("bom lookup failed: %s", e)
+        from . import notices
+        notices.add("warning", "BOM: Look up failed", str(e))
     except (OSError, ValueError) as e:
         look.error = f"Couldn't look up: {e}"
         logs.log.warning("bom lookup failed: %s", e)
+        from . import notices
+        notices.add("warning", "BOM: Look up failed", str(e))
     finally:
         look.running = False
 
@@ -995,7 +1055,7 @@ async def run_lookup(job: Job, boards: int, refresh: bool) -> None:
 async def _start_lookup(key: str, request: Request) -> Response:
     job = _job(key)
     if job is None:
-        return JSONResponse({"error": "gone"}, status_code=404)
+        return _err("gone", 404)
     if job.lookup.running:
         return JSONResponse(job.lookup.state())
     body = await request.json()
@@ -1012,7 +1072,7 @@ async def _start_lookup(key: str, request: Request) -> Response:
 async def _lookup_state(key: str) -> Response:
     job = _job(key)
     if job is None:
-        return JSONResponse({"error": "gone"}, status_code=404)
+        return _err("gone", 404)
     return JSONResponse(job.lookup.state())
 
 

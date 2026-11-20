@@ -100,6 +100,13 @@ async def _notices_json() -> Response:
     return JSONResponse({"version": version, "items": [n.to_dict() for n in items]})
 
 
+@app.post("/notices/read")
+async def _notices_read() -> Response:
+    """Seen (the BOM page's bell was opened): the badges go everywhere."""
+    mark_read()
+    return JSONResponse({"version": version})
+
+
 @app.get("/log")
 async def _log_page() -> Response:
     return HTMLResponse(_PAGE.replace("%%TITLE%%", "kigit session log").replace("%%KIND%%", "log"))

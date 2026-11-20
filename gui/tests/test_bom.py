@@ -343,3 +343,32 @@ def test_trackers_on_the_page() -> None:
     assert 'id: "t:" + name' in page and "data-track=" in page  # a column like the others: hide, resize
     assert 'filter: "track"' in page  # filtered from its header
     assert "...trackers()]" in page  # and the CSV has them
+
+
+def test_bom_problems_go_to_the_log_and_the_bell() -> None:
+    """A BOM error answer is a warning in the session log and the bell (not
+    a 404: a page left open after a restart); things done are info notices."""
+    from kigit_gui import notices
+    before = len(notices.items)
+    r = bom._err("can't write inventory.csv: is it open in a spreadsheet?", 400, "inventory")
+    assert r.status_code == 400 and json.loads(r.body) == {"error": "can't write inventory.csv: is it open in a spreadsheet?"}
+    n = notices.items[0]
+    assert (n.level, n.title, n.detail) == ("warning", "BOM: can't write inventory.csv: is it open in a spreadsheet?", "inventory")
+    assert not n.read and notices.unread_problems() >= 1
+    assert json.loads(bom._err("x", 409, locked=True).body) == {"error": "x", "locked": True}
+    assert notices.items[0].level == "warning"
+    assert bom._err("boom", 500).status_code == 500 and notices.items[0].level == "error"
+    count = len(notices.items)
+    bom._err("gone", 404)                          # just the log
+    assert len(notices.items) == count
+    bom._done("board #1 of build run is done", "every part placed")
+    assert notices.items[0].level == "info" and notices.items[0].title == "BOM: board #1 of build run is done"
+    assert len(notices.items) == before + 4  # 400, 409, 500 and the one done; not the 404
+    notices.mark_read()
+
+
+def test_bell_and_log_on_the_page() -> None:
+    page = _page()
+    assert 'id="bell"' in page and 'id="bellbadge"' in page and 'id="logbtn"' in page and 'id="nmenu"' in page
+    assert 'fetch("/notices.json"' in page and 'fetch("/notices/read", { method: "POST" })' in page
+    assert 'window.open("/log"' in page and "/clientlog" in page and 'addEventListener("unhandledrejection"' in page

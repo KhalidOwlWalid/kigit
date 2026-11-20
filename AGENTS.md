@@ -669,6 +669,17 @@ at once. localStorage settings are per origin, so per port.
   `markBoards` uses `placedMarks()` in Assemble (button reads "Placed").
   Buy: `placedOf(l)` comes off "need"; the header counts boards still to
   build (boards - done).
+  Log and bell: every BOM route error goes through `bom._err(message,
+  status, what, **extra)`: the session log (warning; 404 "gone" only info)
+  and `notices.add` ("warning", "error" for 5xx; titled "BOM: ..."); things
+  done go through `_done(title, detail)` (info notice + log): cart imported
+  (unmatched rows as their own warning, with a table), received/undone,
+  fields written, undo, Look up done/stopped, inventory chosen, build made
+  or deleted, board done. Page: `#bell` polls `/notices.json` every 3 s
+  (while visible), badge = unread problems (or "@" for mentions), opening
+  `#nmenu` POSTs `/notices/read` (notices.py, marks read for every page);
+  `#logbtn` opens `/log`; window errors and unhandled rejections are
+  `sendBeacon`ed to `/bom/{key}/clientlog` (a warning in the log).
   Only on request: no background
   lookups. The page is `bom_page.html` (a plain file, read at import: no
   Python escaping), placeholders `%%KEY%%` etc. Beside the list: a 2D
