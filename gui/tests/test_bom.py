@@ -372,3 +372,14 @@ def test_bell_and_log_on_the_page() -> None:
     assert 'id="bell"' in page and 'id="bellbadge"' in page and 'id="logbtn"' in page and 'id="nmenu"' in page
     assert 'fetch("/notices.json"' in page and 'fetch("/notices/read", { method: "POST" })' in page
     assert 'window.open("/log"' in page and "/clientlog" in page and 'addEventListener("unhandledrejection"' in page
+
+
+def test_panels_are_resizable() -> None:
+    """A line between the list and the board, and between the side's panes:
+    dragged sizes remembered, double-click to reset; a pane shown later gets
+    its usual share (sizes are pixel weights, so it isn't squashed)."""
+    page = _page()
+    assert 'id="splitgrip"' in page and "#split.sized #side { flex: 0 0 var(--side-w); }" in page
+    assert '"kigit.bomSplit"' in page and '"kigit.bomPaneSizes"' in page and "function paneGrips()" in page
+    assert "unit * PANE_SHARE[id]" in page
+    assert "body.resizing iframe, body.resizing canvas, body.resizing svg { pointer-events: none; }" in page

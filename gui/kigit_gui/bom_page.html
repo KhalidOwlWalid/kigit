@@ -30,7 +30,17 @@ button { cursor: pointer; } button:hover { border-color: var(--accent); }
 button.primary, button.on { border-color: var(--accent); color: var(--accent); }
 #split { flex: 1; min-height: 0; display: flex; }
 #list { flex: 1 1 55%; min-width: 0; overflow: auto; padding: 0 12px 30px; }
-#side { flex: 1 1 45%; min-width: 0; display: flex; flex-direction: column; border-left: 1px solid var(--line); }
+#side { flex: 1 1 45%; min-width: 0; display: flex; flex-direction: column; }
+/* drag handles: list | side, and between the side's panes (sizes remembered; double-click resets) */
+#splitgrip { flex: none; width: 7px; margin: 0 -3px; z-index: 3; cursor: col-resize; position: relative; touch-action: none; }
+#splitgrip::after { content: ""; position: absolute; left: 3px; top: 0; bottom: 0; border-left: 1px solid var(--line); }
+#splitgrip:hover::after, #splitgrip.drag::after { border-left: 3px solid var(--accent); left: 2px; }
+#splitgrip[hidden] { display: none; }
+#split.sized #side { flex: 0 0 var(--side-w); }
+.pgrip { flex: none; height: 7px; margin: -3px 0; z-index: 3; cursor: row-resize; position: relative; touch-action: none; }
+.pgrip:hover, .pgrip.drag { background: var(--accent); opacity: .6; }
+body.resizing { user-select: none; cursor: col-resize; } body.resizing.rows { cursor: row-resize; }
+body.resizing iframe, body.resizing canvas, body.resizing svg { pointer-events: none; }
 #side.gone { display: none; }
 #list.gone { display: none; }
 #list.gone + #side { border-left: 0; }
@@ -219,7 +229,11 @@ dialog .sub { margin: 4px 0; } dialog .row { display: flex; gap: 8px; justify-co
 dialog a { color: var(--link); }
 .foot { color: var(--faint); font-size: 12px; margin-top: 14px; }
 @media (max-width: 1000px) { #split { flex-direction: column; } #list { flex: none; height: 55%; }
-  #side { border-left: 0; border-top: 1px solid var(--line); flex: none; height: 45%; } #side .pane { flex: 1; }
+  #side { border-left: 0; flex: none; height: 45%; } #side .pane { flex: 1; }
+  #splitgrip { width: auto; height: 7px; margin: -3px 0; cursor: row-resize; }
+  #splitgrip::after { left: 0; right: 0; top: 3px; bottom: auto; border-left: 0; border-top: 1px solid var(--line); }
+  #splitgrip:hover::after, #splitgrip.drag::after { border-left: 0; border-top: 3px solid var(--accent); top: 2px; left: 0; }
+  #split.sized #side { flex: none; height: var(--side-h); } #split.sized #list { flex: 1; height: auto; }
   #list.gone + #side { height: 100%; border-top: 0; } #list:has(+ #side.gone) { height: 100%; } }
 </style>
 </head>
@@ -288,6 +302,7 @@ design before saving. The search links only open the distributors' sites; kigit 
 <div id="writebar"><span class="what" id="what"></span><button id="discard">Discard</button><button id="undo" hidden>Undo</button>
   <button id="write" class="primary">Write to schematic</button></div>
 </main>
+<div id="splitgrip" title="Drag to give the list or the board more room; double-click to put it back"></div>
 <aside id="side">
   <section class="pane gone" id="panenotes">
     <div class="pane-head"><b>Notes</b><span class="faint" id="noteswhat"></span>
@@ -1793,6 +1808,94 @@ $("notestab").addEventListener("click", () => {
 });
 countNotes();
 
+// ------------------------------------------------------------- resizing
+// Drag the line between the list and the board to share the room; drag the
+// line between two of the side's panes (PCB, 3D, Notes) to share theirs.
+// Remembered in this browser; double-click a line to put it back.
+const narrow = () => matchMedia("(max-width: 1000px)").matches;  // the side below the list, not beside it
+const lsJson = (k) => { try { return JSON.parse(localStorage.getItem(k) || "null"); } catch { return null; } };
+const lsSave = (k, v) => { try { v === null ? localStorage.removeItem(k) : localStorage.setItem(k, JSON.stringify(v)); } catch {} };
+function applySplit() {
+  const v = lsJson("kigit.bomSplit") || {}, sp = $("split"), size = narrow() ? v.h : v.w;
+  sp.classList.toggle("sized", !!size);
+  sp.style.setProperty(narrow() ? "--side-h" : "--side-w", size ? size + "px" : "");
+}
+function drag(grip, rows, onMove, onEnd) {  // pointer capture on the grip; frames and canvases ignore the mouse meanwhile
+  grip.addEventListener("pointerdown", (e) => {
+    e.preventDefault();
+    grip.setPointerCapture(e.pointerId); grip.classList.add("drag");
+    document.body.classList.add("resizing"); document.body.classList.toggle("rows", rows());
+    const start = { x: e.clientX, y: e.clientY }, ctx = onMove(null, start);
+    const move = (ev) => onMove(ctx, { dx: ev.clientX - start.x, dy: ev.clientY - start.y });
+    const up = () => {
+      grip.removeEventListener("pointermove", move); grip.removeEventListener("pointerup", up); grip.removeEventListener("pointercancel", up);
+      grip.classList.remove("drag"); document.body.classList.remove("resizing", "rows");
+      onEnd(ctx); dispatchEvent(new Event("resize"));
+    };
+    grip.addEventListener("pointermove", move); grip.addEventListener("pointerup", up); grip.addEventListener("pointercancel", up);
+  });
+}
+// The list | side line: the side's width (or height, below the list).
+drag($("splitgrip"), narrow, (ctx, d) => {
+  const sp = $("split").getBoundingClientRect(), side = $("side").getBoundingClientRect();
+  if (!ctx) return { size: narrow() ? side.height : side.width, total: narrow() ? sp.height : sp.width };
+  const want = ctx.size - (narrow() ? d.dy : d.dx), size = Math.round(Math.max(240, Math.min(ctx.total - 280, want)));
+  ctx.now = size;
+  $("split").classList.add("sized");
+  $("split").style.setProperty(narrow() ? "--side-h" : "--side-w", size + "px");
+  dispatchEvent(new Event("resize"));
+}, (ctx) => {
+  if (!ctx.now) return;
+  const v = lsJson("kigit.bomSplit") || {};
+  v[narrow() ? "h" : "w"] = ctx.now; lsSave("kigit.bomSplit", v);
+});
+$("splitgrip").addEventListener("dblclick", () => {
+  const v = lsJson("kigit.bomSplit") || {};
+  delete v[narrow() ? "h" : "w"]; lsSave("kigit.bomSplit", Object.keys(v).length ? v : null);
+  applySplit(); dispatchEvent(new Event("resize"));
+});
+addEventListener("resize", () => { if (!document.body.classList.contains("resizing")) applySplit(); });
+// Lines between the side's panes. Their sizes are weights (flex-grow), kept per pane.
+const SIDE_PANES = ["panenotes", "pane2d", "pane3d"];
+const PANE_SHARE = { panenotes: 2, pane2d: 1, pane3d: 1 };  // as the CSS has them, before any is dragged
+function applyPaneSizes() {
+  // Saved sizes are pixel weights; a pane shown without one (Notes turned on
+  // after PCB and 3D were sized) gets its usual share next to them, in the same units.
+  const w = lsJson("kigit.bomPaneSizes") || {};
+  const shown = SIDE_PANES.filter((id) => !$(id).classList.contains("gone"));
+  const known = shown.filter((id) => w[id] > 0);
+  const unit = known.length ? known.reduce((a, id) => a + w[id] / PANE_SHARE[id], 0) / known.length : 0;
+  for (const id of SIDE_PANES) $(id).style.flex = !unit ? "" : `${w[id] > 0 ? w[id] : unit * PANE_SHARE[id]} 1 0`;
+}
+function paneGrips() {
+  document.querySelectorAll("#side .pgrip").forEach((g) => g.remove());
+  const shown = SIDE_PANES.map($).filter((p) => !p.classList.contains("gone"));
+  for (let i = 1; i < shown.length; i++) {
+    const g = document.createElement("div");
+    g.className = "pgrip"; g.title = "Drag to share the room between these two; double-click to put them back";
+    g.dataset.a = shown[i - 1].id; g.dataset.b = shown[i].id;
+    shown[i].before(g);
+    drag(g, () => true, (ctx, d) => {
+      const vis = SIDE_PANES.map($).filter((p) => !p.classList.contains("gone"));
+      if (!ctx) {  // every shown pane at its height now, so only these two change
+        const h = Object.fromEntries(vis.map((p) => [p.id, p.getBoundingClientRect().height]));
+        vis.forEach((p) => (p.style.flex = `${h[p.id]} 1 0`));
+        return { h, a: g.dataset.a, b: g.dataset.b };
+      }
+      const both = ctx.h[ctx.a] + ctx.h[ctx.b], a = Math.max(90, Math.min(both - 90, ctx.h[ctx.a] + d.dy));
+      ctx.now = { ...ctx.h, [ctx.a]: a, [ctx.b]: both - a };
+      $(ctx.a).style.flex = `${a} 1 0`; $(ctx.b).style.flex = `${both - a} 1 0`;
+      dispatchEvent(new Event("resize"));
+    }, (ctx) => {
+      if (!ctx.now) return;
+      lsSave("kigit.bomPaneSizes", Object.fromEntries(Object.entries({ ...(lsJson("kigit.bomPaneSizes") || {}), ...ctx.now })
+        .map(([k, v]) => [k, Math.round(v)])));
+    });
+    g.addEventListener("dblclick", () => { lsSave("kigit.bomPaneSizes", null); applyPaneSizes(); dispatchEvent(new Event("resize")); });
+  }
+}
+applySplit(); applyPaneSizes();
+
 // ------------------------------------------------------- the panes on the side
 // Each panel (the list, PCB, 3D) can be hidden, from its button in the
 // header or its own Hide; one always stays. Remembered in this browser.
@@ -1803,6 +1906,8 @@ function panes() {
   $("pane2d").classList.toggle("gone", !two); $("pane3d").classList.toggle("gone", !three);
   $("panenotes").classList.toggle("gone", !notes);
   $("side").classList.toggle("gone", !two && !three && !notes);
+  $("splitgrip").hidden = !list || (!two && !three && !notes);
+  applyPaneSizes(); paneGrips();
   if (notes) loadNotes();
   dispatchEvent(new Event("resize"));
   try { localStorage.setItem("kigit.bomPanes", JSON.stringify({ list, two, three, notes })); } catch {}

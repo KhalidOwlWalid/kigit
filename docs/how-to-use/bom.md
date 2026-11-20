@@ -15,6 +15,7 @@ On the right, the board twice: **PCB** (drawn from the board file itself: outlin
 - **Hover a part** on either: its line lights up (the list scrolls to it), with a tooltip saying what it is.
 - **Click a line** to keep its parts lit while you look around (click again to let go); the PCB zooms to them if they're off screen.
 - PCB: scroll to zoom, drag to pan, **Top** / **Bottom** show or hide each side, **Fit**. 3D: drag to turn, as in the 3D view.
+- **Resize** the panels by dragging the line between the list and the board (or between two of PCB, 3D and Notes); double-click a line to put it back. Sizes are remembered in your browser.
 - **List**, **PCB** and **3D** in the header show or hide each panel, and **Hide** on a pane's own bar hides it too. One always stays shown (the list alone, the board alone, any mix). Remembered in your browser.
 - **Columns** picks which columns the list shows: Qty, Value, each part number field, Mouser and Price (after Look up) and the search links. References always stays. The button is lit while some are hidden; **Show all** brings them back. Remembered too.
 

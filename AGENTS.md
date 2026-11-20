@@ -680,6 +680,15 @@ at once. localStorage settings are per origin, so per port.
   `#nmenu` POSTs `/notices/read` (notices.py, marks read for every page);
   `#logbtn` opens `/log`; window errors and unhandled rejections are
   `sendBeacon`ed to `/bom/{key}/clientlog` (a warning in the log).
+  Resizing: `#splitgrip` between `#list` and `#side` sets `--side-w`
+  (`--side-h` in the narrow, stacked layout) on `#split.sized`
+  (`kigit.bomSplit` {w, h}); `paneGrips()` puts a `.pgrip` between each
+  two shown side panes; a drag turns every shown pane's flex into its
+  pixel height, then moves only the two (min 90 px); `kigit.bomPaneSizes`
+  holds pixel weights; `applyPaneSizes` gives a pane without one
+  `PANE_SHARE` x the mean unit, so it isn't squashed. `drag()` sets
+  `body.resizing` (iframes, canvases, svg ignore the pointer). Double-
+  click resets.
   Only on request: no background
   lookups. The page is `bom_page.html` (a plain file, read at import: no
   Python escaping), placeholders `%%KEY%%` etc. Beside the list: a 2D
