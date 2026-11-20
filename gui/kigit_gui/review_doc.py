@@ -82,6 +82,12 @@ class Site:
     files: dict[str, Path] = field(default_factory=dict)  # lowercased file name -> file (for ![[...]])
     paths: dict[Path, str] = field(default_factory=dict)  # note/review file -> page address
     files_url: str = ""  # where files in reviews/ are served ("": links to them stay relative)
+    commits: dict[str, str] = field(default_factory=dict)  # reviewed commit's full hash -> its review's page
+
+    def commit_page(self, full_hash: str) -> str:
+        """The review page of a commit (a note's #commit= link), "" if it has none."""
+        full_hash = full_hash.lower()
+        return next((to for h, to in self.commits.items() if h == full_hash or (len(full_hash) >= 7 and h.startswith(full_hash))), "")
 
     def inside(self, path: Path) -> Path | None:
         """`path` resolved, if it's inside reviews/."""
@@ -149,6 +155,9 @@ class Site:
 
         def link(m: re.Match) -> str:
             label, href, title = m.group(1), m.group(2), m.group(3) or ""
+            if href.startswith("#commit="):  # a commit in a note (kigit's link): its review, if it has one
+                page = self.commit_page(href[len("#commit="):])
+                return f"[{label}]({page})" if page else label
             if re.match(r"^[a-z][a-z0-9+.-]*:|^/|^#", href, re.IGNORECASE):
                 return m.group(0)  # a web address, mailto:, or a place on the page
             rel = urllib.parse.unquote(href.split("#", 1)[0])
@@ -431,6 +440,8 @@ def build(project_dir: str | Path, name: str = "", files_url: str = "", base: st
         for key in (r.id, p.stem):
             site.names.setdefault(key.lower(), to)
         site.paths[p.resolve()] = to
+        if r.commit:
+            site.commits[r.commit.lower()] = to
     for t in talks:
         site.paths[(root / "threads" / f"{t.id}.md").resolve()] = book.href(f"discussions/{t.id}")
     for r, _ in reviews:  # [[commit subject]] too, after IDs and notes

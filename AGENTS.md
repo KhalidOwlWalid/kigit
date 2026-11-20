@@ -564,7 +564,20 @@ at once. localStorage settings are per origin, so per port.
   `/bom/{key}/undo` -> `--restore` of that write's backup. Commits'
   BOMs are read-only (`EDITABLE`, and the route refuses). KiCad's lock
   (409 `locked`) asks before `force`. Export CSV is made in the page (what's
-  shown, drafts included; quantities x Build qty `#boards`, DNP left out unless ticked).
+  shown, drafts included; quantities x Build qty `#boards`): `#xmenu` offers
+  `csvLcsc` (LCSC template: Quantity, Manufacture Part Number, Manufacturer,
+  Description, LCSC Part Number, Package, Customer Part Number = `refsShort`;
+  every non-DNP line), `csvMouser` (Mouser Part Number, Manufacturer Part
+  Number, Manufacturer Name, Customer Part Number, Description, Quantity 1;
+  lines with neither number are left out and listed in `#lookstate`) and
+  `csv` (every column; DNP only if ticked). Header names are from the
+  sites' templates as remembered, not checked against a download; both
+  tools map columns on upload. `partNo(kind, l)` is a part number as shown.
+  Which lines (`#xrule`, built by `ruleMenu` when the menu opens):
+  `exportRule` "all" | "shown" (`shownLines()`, the same filter render
+  uses) | "not:<tracker>" (non-DNP lines that tracker doesn't have all
+  of; falls back to all if the tracker is gone), in
+  `kigit.bomExportRule`; all three CSVs loop over `ruleLines()`.
   Only on request: no background
   lookups. The page is `bom_page.html` (a plain file, read at import: no
   Python escaping), placeholders `%%KEY%%` etc. Beside the list: a 2D
@@ -644,6 +657,17 @@ at once. localStorage settings are per origin, so per port.
   `commit_dialog` from `kigit.history`, appended as "- Commit `abc1234`
   (date · subject)"); `compact` is one column. `set_pinned` posts
   `notes`. Tests: test_notebook (helpers), test_app `test_bom_notes_page`.
+  Commits in notes: `notebook.commit_ref` writes ``[`abc1234`](#commit=<full>)``
+  (`COMMIT_LINK`); `link_commits` (called by `md_editor.rewrite_assets`,
+  so every GUI preview) turns a backticked 7-40 hex that
+  `resolve_commit` finds (`git rev-parse --verify <x>^{commit}`, cached)
+  into that link, not in fenced code or an existing link. `_PAGE_JS`
+  emits `kigit_open_commit` for `#commit=` hrefs; `NotebookPanel.
+  open_commit` (on every page with a panel): in kigit's tab
+  `compare_cb(commit_parent, full)` (first commit: `full..LOCAL`); standalone
+  (Notebook tab, BOM notes) posts {type: commit} on "kigit-notebook" for
+  kigit's tab. Reviews site: `Site.commits` (reviewed commit -> review
+  page); a `#commit=` link goes there, else is just the hash.
   Renaming columns (`renameColumn`, double-click a `th[data-rename]` or
   ✎ in Columns): only added fields (`custom`, no `kind`) and trackers.
   Tracker or a field with no schematic values: `rename_tracker` /

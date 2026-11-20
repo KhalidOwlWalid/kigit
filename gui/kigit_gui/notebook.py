@@ -381,6 +381,64 @@ def _refs_short(refs: list[str]) -> str:
 
 
 def commit_ref(full_hash: str, subject: str = "", date: str = "") -> str:
-    """A commit in a note: its short hash (code), date and subject."""
-    bits = [f"`{full_hash[:7]}`"] + ([date[:10]] if date else []) + ([review.one_line(subject).strip()] if subject else [])
-    return " ".join(bits[:1]) + (" (" + " · ".join(bits[1:]) + ")" if len(bits) > 1 else "")
+    """A commit in a note: its short hash as a link (#commit=<full hash>: kigit
+    opens that commit's changes; elsewhere it's a harmless in-page link),
+    then its date and subject."""
+    extra = ([date[:10]] if date else []) + ([review.one_line(subject).strip()] if subject else [])
+    return f"[`{full_hash[:7]}`]({COMMIT_LINK}{full_hash})" + (" (" + " · ".join(extra) + ")" if extra else "")
+
+
+# ------------------------------------------------------- commits in notes
+COMMIT_LINK = "#commit="
+_HASH = re.compile(r"^[0-9a-f]{7,40}$")
+_GIT_FLAGS = {"creationflags": getattr(subprocess, "CREATE_NO_WINDOW", 0)}  # no console flash on Windows
+_resolved: dict[tuple[str, str], str] = {}
+
+
+def _git(project_dir: str | Path, *args: str) -> str:
+    try:
+        r = subprocess.run(["git", "-C", str(Path(project_dir)), *args], capture_output=True, text=True, timeout=5,
+                           **_GIT_FLAGS)
+    except (OSError, subprocess.TimeoutExpired):
+        return ""
+    return r.stdout.strip() if r.returncode == 0 else ""
+
+
+def resolve_commit(project_dir: str | Path, rev: str) -> str:
+    """A hash (7 to 40 hex digits) as the full hash of a commit in the
+    project's repository, else "". Remembered (commits don't change)."""
+    rev = rev.strip().lower()
+    if not _HASH.match(rev):
+        return ""
+    k = (str(project_dir), rev)
+    if k not in _resolved:
+        _resolved[k] = _git(project_dir, "rev-parse", "--verify", "--quiet", f"{rev}^{{commit}}")
+    return _resolved[k]
+
+
+def commit_parent(project_dir: str | Path, full_hash: str) -> str:
+    """The commit's first parent ("" for the first commit)."""
+    return _git(project_dir, "rev-parse", "--verify", "--quiet", f"{full_hash}^")
+
+
+_FENCED = re.compile(r"^(```|~~~).*?^\1[^\n]*$", re.MULTILINE | re.DOTALL)
+_CODE_HASH = re.compile(r"(?<!\[)`([0-9a-fA-F]{7,40})`(?!\]\()")
+
+
+def link_commits(text: str, project_dir: str | Path) -> str:
+    """Hashes written in backticks (`b3d7ea1`) that are commits in this
+    repository become #commit= links, so clicking one shows that commit.
+    Code blocks and hashes already in a link are left alone."""
+    if "`" not in text:
+        return text
+
+    def one(m: re.Match) -> str:
+        full = resolve_commit(project_dir, m.group(1))
+        return f"[`{m.group(1)}`]({COMMIT_LINK}{full})" if full else m.group(0)
+
+    out, last = [], 0
+    for m in _FENCED.finditer(text):
+        out += [_CODE_HASH.sub(one, text[last:m.start()]), m.group(0)]
+        last = m.end()
+    out.append(_CODE_HASH.sub(one, text[last:]))
+    return "".join(out)

@@ -303,3 +303,13 @@ def test_added_pictures_show_in_notes_in_folders(tmp_path: Path) -> None:
     assert f'src="/F/{rel}"' in p and f'href="/F/{rel}"' in p and "No page" not in p
     key = project_key(tmp_path)
     assert f"](/review-files/{key}/" in rewrite_assets(f"![x](../{rel})", key)  # Obsidian's ../assets/x.png
+
+
+def test_commit_links_in_notes_go_to_that_commits_review(tmp_path: Path) -> None:
+    """A note's commit link (#commit=, from the Notebook's Commit button): its
+    review's page when that commit has one, else just the hash."""
+    old, new = make(tmp_path)
+    own(tmp_path, "BOM/1k.md", f"# 1k\n\n- Chosen at [`{A[:7]}`](#commit={A}) and [`9999999`](#commit={'9' * 40}).\n")
+    r = page(tmp_path, "notes/BOM/1k")
+    assert f'<a href="/reviews/{new.id}"><code>{A[:7]}</code></a>' in r  # reviewed: to its review
+    assert "<code>9999999</code>" in r and "#commit=" not in r          # not reviewed: the hash only

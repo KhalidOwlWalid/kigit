@@ -144,12 +144,43 @@ def test_bom_notes_pin_the_lines_parts(tmp_path: Path) -> None:
     assert n.pins[0].seen.old == "b" * 40 and n.pins[0].seen.new == ""  # HEAD..working tree
     text = notebook.read(n.path).text
     assert "- **MPN:** RC0603FR-071KL" in text and "## Why this part" in text
-    assert "- **Chosen at:** `bbbbbbb` (Pick resistors)" in text
+    assert f"- **Chosen at:** [`bbbbbbb`](#commit={'b' * 40}) (Pick resistors)" in text
     # Tied to the rest: found from the viewer's pin on the PCB, counted per part.
     assert n.path in [m.path for m, _ in notebook.about(tmp_path, Anchor("pcb", "footprint", "R3"))]
     assert [m.path for m in notebook.notes_for_parts(tmp_path, ["R5", "R9"])] == [n.path]
     counts = notebook.counts_by_part(tmp_path)
     assert counts["R1"] == 1 and "R9" not in counts
-    assert notebook.commit_ref("c" * 40, "Fix", "2026-11-20T10:00:00") == "`ccccccc` (2026-11-20 · Fix)"
-    assert notebook.commit_ref("c" * 40) == "`ccccccc`"
+    assert notebook.commit_ref("c" * 40, "Fix", "2026-11-20T10:00:00") == f"[`ccccccc`](#commit={'c' * 40}) (2026-11-20 · Fix)"
+    assert notebook.commit_ref("c" * 40) == f"[`ccccccc`](#commit={'c' * 40})"
     assert notebook.part_anchors(["R1", ""], "")[0].seen is None
+
+
+def test_commit_hashes_in_notes_become_links(tmp_path: Path) -> None:
+    """`b3d7ea1` in a note is a link to that commit, if it's one in this
+    repository; other hex in backticks, code blocks and links stay as written."""
+    import subprocess
+    import sys
+    sys.path.insert(0, str(Path(__file__).parent))
+    from fixture_repo import make_fixture_repo
+
+    project = make_fixture_repo(tmp_path / "repo")
+    run = lambda *a: subprocess.run(["git", "-C", str(project), *a], capture_output=True, text=True).stdout.strip()
+    head, first = run("rev-parse", "HEAD"), run("rev-list", "--max-parents=0", "HEAD")
+    assert notebook.resolve_commit(project, head[:7]) == head
+    assert notebook.resolve_commit(project, "deadbeef") == ""      # hex, but no such commit
+    assert notebook.resolve_commit(project, "not-a-hash") == ""
+    assert notebook.commit_parent(project, head) == run("rev-parse", "HEAD^")
+    assert notebook.commit_parent(project, first) == ""            # the first commit has none
+
+    text = (f"Chose it at `{head[:7]}`; tolerance `deadbeef`.\n\n"
+            f"```\n`{head[:7]}` in a code block\n```\n\n[`{head[:7]}`](#commit={head}) already linked\n")
+    out = notebook.link_commits(text, project)
+    assert f"Chose it at [`{head[:7]}`](#commit={head});" in out
+    assert "`deadbeef`." in out and "[`deadbeef`]" not in out
+    assert f"```\n`{head[:7]}` in a code block\n```" in out
+    assert out.count(f"(#commit={head})") == 2  # the one written, and the one that was already a link
+
+    # In the GUI's previews (rewrite_assets), with the project's key.
+    from kigit_gui.md_editor import rewrite_assets
+    from kigit_gui.review_panel import project_key
+    assert f"(#commit={head})" in rewrite_assets(f"see `{head[:7]}`", project_key(project))

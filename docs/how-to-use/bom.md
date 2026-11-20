@@ -110,7 +110,7 @@ Why did you pick that regulator, that crystal, that 0603 over a 0402? **+ Notes*
 - A line with notes shows **📝 N** instead: press it and its newest note opens. Clicking a line (to light it up) picks it in the Notes panel too.
 - It's the [Notebook](gui.md#notebook): the same editor, saved as you type, the same files. A BOM note is pinned to every part on its line, so it's also one of the notes about R1 when you pin R1 in the viewer, it's on the Reviews page, and search finds it.
 - **Pin this line** pins the picked line's parts to the open note (for a note about several lines); **Pin it here** pins what's selected in kigit's main tab, as in the Notebook. Click a pin to show it in kigit's tab.
-- **Commit** adds a line to the note for a commit you pick from the history (its short hash, date and subject): when the part changed, when it was ordered...
+- **Commit** adds a line to the note for a commit you pick from the history (its short hash, date and subject): when the part changed, when it was ordered... In the note's **Preview**, click the hash to see that commit's changes in kigit's tab (see the [Notebook](gui.md#notebook)).
 - **↗ New tab** opens the notes in a tab of their own, laid out wide; the panel closes, and **+ Notes** on the BOM page then goes to that tab. **Hide** (or the **Notes** button) hides the panel.
 
 ## Filtering
@@ -137,8 +137,19 @@ Trackers are kept in `kigit-bom.json` next to the board, with the drafts (commit
 
 ## Exporting
 
-**Export CSV** writes a file for Digi-Key's BOM Manager or Mouser's BOM Tool (both let you match up the columns): quantity, manufacturer, MPN, Digi-Key, Mouser and LCSC part numbers, references, value, footprint, and fields you added. It uses what's on screen, drafts included. **Build qty** (how many boards you're building) multiplies the quantities; DNP parts are left out unless you tick **DNP in export**.
+**Export CSV ▾** asks which file you want:
 
+- **LCSC BOM tool** (upload it at [lcsc.com/bom](https://www.lcsc.com/bom)): LCSC's template columns: Quantity, Manufacture Part Number, Manufacturer, Description, LCSC Part Number, Package and Customer Part Number (the references, shortened to fit: "R1 R3 R5 +4"). Every line goes in: LCSC matches by its own number, then the MPN, then the description.
+- **Mouser BOM tool** (upload it under **BOM Tool** in your Mouser account): Mouser Part Number, Manufacturer Part Number, Manufacturer Name, Customer Part Number, Description and Quantity 1. Mouser needs a Mouser number or an MPN, so lines with neither are left out, and the page says which.
+- **All columns**: quantity, manufacturer, MPN, Digi-Key, Mouser and LCSC part numbers, references, value, footprint, fields you added and your trackers. For Digi-Key's BOM Manager (it lets you match up the columns) or a spreadsheet.
+
+**Which lines** (at the top of the menu, remembered) picks what goes in, whichever file you choose:
+
+- **All lines**.
+- **Only the lines shown**: what the search box, **Show** and the column filters leave, so any filter works, e.g. *MPN: Not empty* plus *Mouser: Found*.
+- **Not Carted yet** (one for each of your trackers): to order just what isn't in the cart, or hasn't arrived.
+
+Each shows how many lines it has. They use what's on screen, drafts included, and **Build qty** (how many boards you're building) multiplies the quantities. LCSC's and Mouser's files leave DNP parts out; **DNP in export** puts them in **All columns**. Both sites let you check the columns when you upload, if one isn't picked up by itself.
 ## Which revision
 
 The working tree by default (the files on disk, saved or not committed). Tick one commit in the commit list first to get that commit's BOM instead.

@@ -80,6 +80,8 @@ window.kigitNotebook = new BroadcastChannel("kigit-notebook");
 window.kigitNotebook.onmessage = (e) => emitEvent("kigit_nb_message", e.data);
 </script>""")
         ui.on("kigit_nb_message", self._message)
+        # A commit hash clicked in a rendered note (#commit= links): show that commit.
+        ui.on("kigit_open_commit", lambda e: self.open_commit(str(e.args or "")))
         self.remote_pinned: Anchor | None = None  # in a tab of its own: what kigit's tab has pinned
         self.client = ui.context.client  # its page (messages go out from here, whatever's open)
         if bom:
@@ -115,6 +117,8 @@ window.kigitBomNotes.onmessage = (e) => emitEvent("kigit_bom_message", e.data);
                 self.go_to(a)
         elif not self.standalone and kind == "hello":
             self.tell_pinned()
+        elif not self.standalone and kind == "commit":
+            self.open_commit(str(m.get("hash", "")))
 
     # ------------------------------------------------------------- BOM lines
     def _bom_post(self, message: dict) -> None:
@@ -245,6 +249,25 @@ window.kigitBomNotes.onmessage = (e) => emitEvent("kigit_bom_message", e.data);
         self.dirty_at = time.monotonic() - SAVE_AFTER
         self._save()
         self.view.refresh()
+
+    def open_commit(self, rev: str) -> None:
+        """A commit from a note: its changes (its parent against it) in the
+        viewer; the first commit against the working tree. In a tab of its
+        own (or the BOM page's Notes pane), kigit's tab shows it."""
+        if not self.project:
+            return
+        full = notebook.resolve_commit(self.project, rev)
+        if not full:
+            ui.notify(f"{rev[:12]} isn't a commit in this repository (not pulled yet?)", type="warning")
+            return
+        if self.standalone:
+            self._post({"type": "commit", "key": self.key, "hash": full})
+            ui.notify(f"Showing {full[:7]} in kigit's tab")
+            return
+        parent = notebook.commit_parent(self.project, full)
+        logs.log.info("notebook: show commit %s", full[:7])
+        self.close()  # the viewer is what you want to see now
+        background_tasks.create(self.compare_cb(parent, full, None) if parent else self.compare_cb(full, "LOCAL", None))
 
     def tell_pinned(self) -> None:
         """kigit's tab: what's pinned, for a Notebook in its own tab."""

@@ -1661,6 +1661,50 @@ async def test_notebook_in_its_own_tab(user: User, monkeypatch, tmp_path: Path) 
     assert nb.remote_pinned.name == "C1"  # another project's: not ours
 
 
+async def test_commit_links_in_notes(user: User, monkeypatch, tmp_path: Path) -> None:
+    """A commit hash clicked in a note: kigit's tab compares it with its
+    parent (the first commit: with the working tree); a Notebook in its own
+    tab hands it to kigit's tab; a hash that isn't a commit just says so."""
+    from kigit_gui.notebook_panel import NotebookPanel
+    from kigit_gui.review_panel import project_key
+
+    project = make_fixture_repo(tmp_path / "repo")
+    head, first = git(project, "rev-parse", "HEAD"), git(project, "rev-list", "--max-parents=0", "HEAD")
+    await open_at(user, monkeypatch, str(project))
+    await user.should_see("Pick two commits on the left", retries=50)
+    nb = NotebookPanel.current
+    asked = []
+
+    async def compare(old, new, anchor):
+        asked.append((old, new, anchor))
+    monkeypatch.setattr(nb, "compare_cb", compare)
+    emit(user, "kigit_open_commit", head[:7])  # a click in a rendered note
+    for _ in range(20):
+        if asked:
+            break
+        await asyncio.sleep(0.05)
+    assert asked == [(git(project, "rev-parse", "HEAD^"), head, None)]
+    emit(user, "kigit_nb_message", {"type": "commit", "key": project_key(project), "hash": first})  # from a notes tab
+    for _ in range(20):
+        if len(asked) == 2:
+            break
+        await asyncio.sleep(0.05)
+    assert asked[1] == (first, "LOCAL", None)
+    emit(user, "kigit_open_commit", "deadbee")
+    await user.should_see("isn't a commit in this repository")
+    assert len(asked) == 2
+
+    # In a tab of its own: kigit's tab is asked to show it.
+    await user.open(f"/notebook/{project_key(project)}")
+    await user.should_see("Notebook")
+    tab = NotebookPanel.current
+    posted = []
+    monkeypatch.setattr(tab, "_post", lambda m: posted.append(m))
+    emit(user, "kigit_open_commit", head[:7])
+    assert posted == [{"type": "commit", "key": project_key(project), "hash": head}]
+    await user.should_see(f"Showing {head[:7]} in kigit's tab")
+
+
 async def test_bom_notes_page(user: User, monkeypatch, tmp_path: Path) -> None:
     """The BOM page's notes (/bom-notes/{key}?bom=job&pane=1): the line picked
     there, a new note about it (pinned to its parts), + Notes opening its
@@ -1689,7 +1733,7 @@ async def test_bom_notes_page(user: User, monkeypatch, tmp_path: Path) -> None:
     note = notebook.read(made)
     assert [a.name for a in note.pins] == ["R1", "R3"]
     assert note.pins[0].seen.old == git(project, "rev-parse", "HEAD")
-    assert "- **Chosen at:** `" in note.text
+    assert "- **Chosen at:** [`" in note.text and "](#commit=" in note.text
 
     # Another line with an extra part: Pin this line adds only what's new.
     emit(user, "kigit_bom_message", {"type": "line", "job": "JOB1", "line": {**line, "refs": ["R1", "R3", "R5"]}})
@@ -1704,10 +1748,10 @@ async def test_bom_notes_page(user: User, monkeypatch, tmp_path: Path) -> None:
     first = next(iter(user.find(marker="bom-notes-commit-row").elements))
     UserInteraction(user, {first}, None).click()
     for _ in range(30):
-        if "- Commit `" in made.read_text(encoding="utf-8"):
+        if "- Commit [`" in made.read_text(encoding="utf-8"):
             break
         await asyncio.sleep(0.1)
-    assert "- Commit `" in made.read_text(encoding="utf-8")
+    assert "- Commit [`" in made.read_text(encoding="utf-8")
 
     # + Notes on a line that has a note: that note opens.
     nb.note = None

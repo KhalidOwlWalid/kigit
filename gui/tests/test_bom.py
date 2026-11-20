@@ -249,6 +249,21 @@ def test_notes_on_the_page() -> None:
     assert "/bom-notes/${NOTESKEY}?bom=${KEY}&pane=1" in page
 
 
+def test_export_for_lcsc_and_mouser() -> None:
+    """Export CSV offers LCSC's and Mouser's BOM tools (their templates'
+    columns, DNP left out; Mouser needs a Mouser number or an MPN) and every column."""
+    page = _page()
+    for kind in ("lcsc", "mouser", "all"):
+        assert f'data-export="{kind}"' in page
+    assert '"Quantity", "Manufacture Part Number", "Manufacturer", "Description", "LCSC Part Number"' in page
+    assert '"Mouser Part Number", "Manufacturer Part Number", "Manufacturer Name"' in page and '"Quantity 1"' in page
+    assert "if (!mouser && !mpn) { left.push(l); continue; }" in page
+    # Which lines: all, the ones shown (filters), or not yet in a tracker; every format uses it.
+    assert 'id="xrule"' in page and '["shown", "Only the lines shown' in page and "`not:${t}`" in page
+    assert page.count("for (const l of ruleLines()) {") == 3
+    assert '"kigit.bomExportRule"' in page
+
+
 def test_trackers_on_the_page() -> None:
     page = _page()
     assert 'id="addtracker"' in page

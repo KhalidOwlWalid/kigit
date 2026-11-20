@@ -298,15 +298,19 @@ _PICTURE = re.compile(r"\.(png|jpe?g|gif|webp|svg)$", re.IGNORECASE)
 def rewrite_assets(text: str, key: str) -> str:
     """Markdown with pictures pointing at the GUI's file routes, for preview:
     assets/ (what kigit stores), and Obsidian embeds (![[picture.png]] or
-    ![[picture.png|300]], found by name anywhere in reviews/)."""
+    ![[picture.png|300]], found by name anywhere in reviews/). Commit hashes
+    in backticks become links that show the commit (notebook.link_commits)."""
     # assets/x.png, or ../assets/x.png from a note in a folder (Obsidian's way).
     text = re.sub(r"\]\(\s*(?:\.\./)*assets/", f"](/review-files/{key}/", text)
+    from .review_panel import _projects
+    project = _projects.get(key)
+    if project is not None:
+        from .notebook import link_commits
+        text = link_commits(text, project)  # `b3d7ea1`: click to see that commit
     if "![[" not in text:
         return text
     from urllib.parse import quote
 
-    from .review_panel import _projects
-    project = _projects.get(key)
     if project is None:
         return text
     base = review.folder(project)

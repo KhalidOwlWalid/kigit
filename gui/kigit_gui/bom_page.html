@@ -135,7 +135,17 @@ th:hover .fbtn { border-color: var(--line); } th .fbtn.on { color: var(--accent)
 #fmenu.on { display: block; } #fmenu b { display: block; margin-bottom: 4px; }
 #fmenu label { display: flex; gap: 8px; align-items: center; padding: 2px 0; cursor: pointer; }
 #fmenu input[type=text] { width: 100%; margin: 4px 0; } #fmenu .row { display: flex; justify-content: flex-end; margin-top: 6px; }
-#clearf { border-color: var(--accent); color: var(--accent); } .chip.warn { color: var(--warn); }
+#clearf { border-color: var(--accent); color: var(--accent); }
+#xmenu { position: fixed; z-index: 8; display: none; background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
+  box-shadow: 0 6px 18px rgba(0,0,0,.35); padding: 4px; width: 20rem; }
+#xmenu.on { display: block; }
+#xrule { padding: 4px 10px 6px; border-bottom: 1px solid var(--line); margin-bottom: 4px; }
+#xrule b { display: block; font-size: 12px; color: var(--muted); margin-bottom: 2px; }
+#xrule label { display: flex; gap: 8px; align-items: center; padding: 1px 0; cursor: pointer; font-size: 12.5px; }
+#xrule .n { margin-left: auto; color: var(--faint); font-size: 11.5px; }
+#xmenu button { display: block; width: 100%; text-align: left; border: 0; background: none; padding: 6px 10px; border-radius: 6px; }
+#xmenu button:hover { background: var(--hl); }
+#xmenu small { display: block; color: var(--muted); font-size: 11.5px; margin-top: 1px; } .chip.warn { color: var(--warn); }
 button.more { padding: 1px 7px; font-size: 12px; }
 tr.choices td { background: var(--panel); padding: 4px 8px 10px 30px; cursor: default; }
 .cand { width: 100%; font-size: 12px; } .cand td { border-bottom: 1px dashed var(--line); padding: 4px 6px; }
@@ -162,10 +172,10 @@ dialog a { color: var(--link); }
       <option value="has">Has a part number</option><option value="changed">Edited, not written</option>
     </select>
     <label class="sub" title="How many boards you're building: multiplies the quantities in the exported CSV (the list itself doesn't change)">Build qty <input id="boards" type="number" min="1" value="1" style="width:4.5rem" aria-label="Build quantity"></label>
-    <label class="sub"><input id="dnp" type="checkbox"> DNP in export</label>
+    <label class="sub" title="Only for All columns: LCSC's and Mouser's files leave DNP parts out (they aren't bought)"><input id="dnp" type="checkbox"> DNP in export</label>
     <button id="addfield" title="Add a column for another part information field (e.g. Tolerance, Supplier): written into the schematic">+ Field</button>
     <button id="addtracker" title="Add a tick column to track a build: Carted, Ordered, Received, Placed... Kept in kigit-bom.json, never in the schematic">+ Tracker</button>
-    <button id="export" class="primary" title="A CSV for Digi-Key's BOM Manager or Mouser's BOM Tool">Export CSV</button>
+    <button id="export" class="primary" title="A CSV for LCSC's or Mouser's BOM upload, or with every column">Export CSV &#9662;</button>
     <button id="lookup" title="Ask Mouser and Digi-Key (those you have a key for) for stock, prices and lifecycle, for Build qty boards (answers are kept a day; Shift+click asks again)">Look up</button>
     <button id="keybtn" title="Your Mouser and Digi-Key keys">Keys</button>
     <span id="lookstate"></span>
@@ -216,6 +226,15 @@ design before saving. The search links only open the distributors' sites; kigit 
 <div id="tip"></div>
 <div id="colmenu" role="menu" aria-label="Columns"></div>
 <div id="fmenu" role="dialog" aria-label="Filter"></div>
+<div id="xmenu" role="menu" aria-label="Export CSV">
+  <div id="xrule"></div>
+  <button data-export="lcsc" role="menuitem"><b>LCSC</b> BOM tool<small>Quantity, Manufacture Part Number, LCSC Part Number, Package...
+    For lcsc.com/bom.</small></button>
+  <button data-export="mouser" role="menuitem"><b>Mouser</b> BOM tool<small>Mouser Part Number, Manufacturer Part Number, Quantity 1...
+    Lines need a Mouser number or an MPN.</small></button>
+  <button data-export="all" role="menuitem"><b>All columns</b><small>Every part number, references, value, footprint, your fields
+    and trackers. For Digi-Key's BOM Manager or a spreadsheet.</small></button>
+</div>
 <dialog id="keydlg">
   <b>Parts sites' keys</b>
   <p class="sub">Look up asks every site you have a key for. Both are free. kigit keeps them in <code>parts-keys.json</code> in
@@ -560,6 +579,20 @@ $("head").addEventListener("dblclick", (e) => {
 });
 $("resetw").addEventListener("click", () => { colWidths = {}; saveWidths(); render(); });
 
+// The lines on screen: the search box, Show and the column filters.
+function shownLines() {
+  const cols = columns(), f = $("filter").value.trim().toLowerCase(), show = $("show").value;
+  return DATA.lines.filter((l) => {
+    const has = !!numberOf(l);
+    if (show === "need" && (has || l.dnp)) return false;
+    if (show === "has" && !has) return false;
+    if (show === "changed" && !cols.some((c) => changed(l, c))) return false;
+    if (!passesFilters(l)) return false;
+    if (!f) return true;
+    return [l.refs.join(" "), l.value, l.footprint, l.description, ...cols.map((c) => shown(l, c))].join(" ").toLowerCase().includes(f);
+  });
+}
+
 function render() {
   const cols = columns(), shownCols = visibleCols();
   applyWidths(shownCols);
@@ -569,16 +602,7 @@ function render() {
   const nf = Object.keys(colFilters).length;
   $("clearf").hidden = !nf; $("clearf").textContent = `Clear filters (${nf})`;
   $("colsbtn").classList.toggle("on", shownCols.length < tableCols().length);  // lit while some are hidden
-  const f = $("filter").value.trim().toLowerCase(), show = $("show").value;
-  const rows = DATA.lines.filter((l) => {
-    const has = !!numberOf(l);
-    if (show === "need" && (has || l.dnp)) return false;
-    if (show === "has" && !has) return false;
-    if (show === "changed" && !cols.some((c) => changed(l, c))) return false;
-    if (!passesFilters(l)) return false;
-    if (!f) return true;
-    return [l.refs.join(" "), l.value, l.footprint, l.description, ...cols.map((c) => shown(l, c))].join(" ").toLowerCase().includes(f);
-  });
+  const rows = shownLines();
   $("rows").innerHTML = rows.map((l) => {
     const i = DATA.lines.indexOf(l);
     return `<tr data-i="${i}" class="${l.dnp ? "dnp" : ""}">` + shownCols.map((c) => c.td(l, i)).join("") +
@@ -918,27 +942,124 @@ $("addtracker").addEventListener("click", async () => {
 });
 $("filter").addEventListener("input", render);
 $("show").addEventListener("change", render);
-// The CSV: what Digi-Key's BOM Manager and Mouser's BOM Tool read (they let you match the columns).
-function csv() {
-  const boards = Math.max(1, parseInt($("boards").value, 10) || 1), withDnp = $("dnp").checked, cols = columns();
-  const cell = (v) => { v = String(v ?? ""); return /[",\n\r]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v; };
-  const kind = (k, l) => { const c = cols.find((x) => x.kind === k); return c ? shown(l, c) : l[k]; };
+// ------------------------------------------------------------- exporting
+// Export CSV ▾: LCSC's BOM tool, Mouser's BOM tool (each in its own
+// template's columns, so they map by themselves), or every column. The
+// suppliers' files leave DNP parts out (they aren't bought) and count
+// Build qty boards; drafts (edited, not written) are in all of them.
+const csvCell = (v) => { v = String(v ?? ""); return /[",\n\r]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v; };
+const toCsv = (rows) => rows.map((r) => r.map(csvCell).join(",")).join("\r\n") + "\r\n";
+const buildQty = () => Math.max(1, parseInt($("boards").value, 10) || 1);
+// Which lines go in the file: all, the ones on screen, or those a tracker
+// doesn't have yet ("not:<tracker>"). Remembered in this browser.
+let exportRule = "all";
+try { exportRule = localStorage.getItem("kigit.bomExportRule") || "all"; } catch {}
+function ruleLines(rule = exportRule) {
+  if (rule === "shown") return shownLines();
+  if (rule.startsWith("not:")) {
+    const name = rule.slice(4);
+    if (trackers().includes(name)) return DATA.lines.filter((l) => !l.dnp && trackState(l, name) !== "all");
+  }
+  return DATA.lines;
+}
+function ruleName(rule = exportRule) {
+  if (rule === "shown") return "the lines shown";
+  if (rule.startsWith("not:") && trackers().includes(rule.slice(4))) return `lines not ${rule.slice(4)} yet`;
+  return "all lines";
+}
+function ruleMenu() {
+  if (exportRule.startsWith("not:") && !trackers().includes(exportRule.slice(4))) exportRule = "all";  // a tracker that's gone
+  const opts = [["all", "All lines"], ["shown", "Only the lines shown (search, Show, column filters)"],
+    ...trackers().map((t) => [`not:${t}`, `Not ${t} yet`])];
+  const count = (r) => ruleLines(r).filter((l) => !l.dnp).length;
+  $("xrule").innerHTML = `<b>Which lines</b>` + opts.map(([v, t]) => `<label><input type="radio" name="xrule" value="${esc(v)}"` +
+    `${exportRule === v ? " checked" : ""}> ${esc(t)}<span class="n">${count(v)}</span></label>`).join("") +
+    (trackers().length ? "" : `<div class="faint" style="font-size:11.5px">+ Tracker adds rules like "Not Carted yet".</div>`);
+}
+// A part number as shown (a draft if there is one), by kind: mpn, manufacturer, digikey, mouser, lcsc.
+function partNo(k, l) { const c = columns().find((x) => x.kind === k); return (c ? shown(l, c) : l[k]) || ""; }
+// The references, short enough for a supplier's customer part number field.
+function refsShort(l, max = 30) {
+  let s = "";
+  for (const [i, r] of l.refs.entries()) {
+    const more = l.refs.length - i - 1, next = (s ? s + " " : "") + r;
+    if (next.length + (more ? ` +${more}`.length : 0) > max) return `${s} +${l.refs.length - i}`;
+    s = next;
+  }
+  return s;
+}
+const describe = (l) => [l.value, l.package && l.package !== l.value ? l.package : "", l.description].filter(Boolean).join(" ").slice(0, 200);
+function csv() {  // every column
+  const boards = buildQty(), withDnp = $("dnp").checked, cols = columns();
   const extra = cols.filter((c) => !c.kind);
   const out = [["Quantity", "Manufacturer", "Manufacturer Part Number", "Digi-Key Part Number", "Mouser Part Number", "LCSC Part Number",
     "References", "Value", "Footprint", "DNP", ...extra.map((c) => c.name), ...trackers()]];
-  for (const l of DATA.lines) {
+  for (const l of ruleLines()) {
     if (l.dnp && !withDnp) continue;
-    out.push([l.dnp ? 0 : l.qty * boards, kind("manufacturer", l), kind("mpn", l), kind("digikey", l), kind("mouser", l), kind("lcsc", l),
-      l.refs.join(" "), l.value, l.footprint, l.dnp ? "DNP" : "", ...extra.map((c) => shown(l, c)),
+    out.push([l.dnp ? 0 : l.qty * boards, partNo("manufacturer", l), partNo("mpn", l), partNo("digikey", l), partNo("mouser", l),
+      partNo("lcsc", l), l.refs.join(" "), l.value, l.footprint, l.dnp ? "DNP" : "", ...extra.map((c) => shown(l, c)),
       ...trackers().map((t) => ({ all: "yes", some: "partly", none: "" })[trackState(l, t)])]);
   }
-  return out.map((r) => r.map(cell).join(",")).join("\r\n") + "\r\n";
+  return toCsv(out);
 }
-$("export").addEventListener("click", () => {
+// LCSC's BOM template. Quantity is the one column LCSC needs; it matches by
+// LCSC number, then MPN, then description, so every line goes in.
+function csvLcsc() {
+  const boards = buildQty(), out = [["Quantity", "Manufacture Part Number", "Manufacturer", "Description", "LCSC Part Number",
+    "Package", "Customer Part Number"]];
+  for (const l of ruleLines()) {
+    if (l.dnp) continue;
+    out.push([l.qty * boards, partNo("mpn", l), partNo("manufacturer", l), describe(l), partNo("lcsc", l), l.package, refsShort(l)]);
+  }
+  return { text: toCsv(out), lines: out.length - 1, left: [] };
+}
+// Mouser's BOM template: a line needs a Mouser number or an MPN.
+function csvMouser() {
+  const boards = buildQty(), left = [], out = [["Mouser Part Number", "Manufacturer Part Number", "Manufacturer Name",
+    "Customer Part Number", "Description", "Quantity 1"]];
+  for (const l of ruleLines()) {
+    if (l.dnp) continue;
+    const mouser = partNo("mouser", l), mpn = partNo("mpn", l);
+    if (!mouser && !mpn) { left.push(l); continue; }
+    out.push([mouser, mpn, partNo("manufacturer", l), refsShort(l), describe(l), l.qty * boards]);
+  }
+  return { text: toCsv(out), lines: out.length - 1, left };
+}
+function download(text, name) {
   const a = document.createElement("a");
-  a.href = URL.createObjectURL(new Blob([csv()], { type: "text/csv" }));
-  a.download = `${NAME}-bom.csv`; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  a.href = URL.createObjectURL(new Blob([text], { type: "text/csv" }));
+  a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+function exportAs(kind) {
+  $("xmenu").classList.remove("on");
+  const b = buildQty(), boards = `${b} board${b === 1 ? "" : "s"}`, el = $("lookstate");
+  el.className = "";
+  const which = exportRule === "all" ? "" : `, ${ruleName()}`;
+  if (kind === "all") { download(csv(), `${NAME}-bom.csv`); el.textContent = `Exported every column for ${boards}${which}.`; return; }
+  const r = kind === "lcsc" ? csvLcsc() : csvMouser(), site = kind === "lcsc" ? "LCSC" : "Mouser";
+  if (r.lines) download(r.text, `${NAME}-bom-${kind}.csv`);
+  if (!r.lines && !r.left.length) { el.className = "err"; el.textContent = `Nothing to export: none of ${ruleName()} is to be bought.`; return; }
+  el.textContent = (r.lines ? `Exported ${r.lines} line${r.lines === 1 ? "" : "s"} for ${site}'s BOM tool (${boards}${which}).`
+    : `Nothing exported for ${site}.`) +
+    (r.left.length ? ` Left out ${r.left.length} without a Mouser number or MPN: ${r.left.map((l) => l.refs[0] + (l.refs.length > 1 ? "…" : "")).join(", ")}.` : "");
+  if (r.left.length) el.className = "err";
+}
+$("export").addEventListener("click", (e) => {
+  e.stopPropagation();
+  const m = $("xmenu"), r = $("export").getBoundingClientRect();
+  ruleMenu();
+  m.classList.toggle("on");
+  m.style.top = r.bottom + 4 + "px";
+  m.style.left = Math.max(8, Math.min(r.left, innerWidth - m.offsetWidth - 8)) + "px";
 });
+$("xmenu").addEventListener("click", (e) => { e.stopPropagation(); const b = e.target.closest("[data-export]"); if (b) exportAs(b.dataset.export); });
+$("xmenu").addEventListener("change", (e) => {
+  if (e.target.name !== "xrule") return;
+  exportRule = e.target.value;
+  try { localStorage.setItem("kigit.bomExportRule", exportRule); } catch {}
+});
+document.addEventListener("click", () => $("xmenu").classList.remove("on"));
+addEventListener("keydown", (e) => { if (e.key === "Escape") $("xmenu").classList.remove("on"); });
 
 // ------------------------------------------------------------ BOM notes
 // + Notes on a line: the Notebook (the same notes, in reviews/) about that
@@ -1128,7 +1249,7 @@ const board2d = (() => {
     .then(draw).catch((e) => { $("msg2d").textContent = "Couldn't show the board: " + e.message; $("msg2d").classList.add("err"); });
   return { light, zoomTo, fit, refs: () => [...padsOf.keys()] };
 })();
-window.kigitBom = { csv, drafts: () => drafts, pending, light, board2d, lit: () => lit, look: () => LOOK,
+window.kigitBom = { csv, csvLcsc, csvMouser, ruleLines, setExportRule: (r) => (exportRule = r), drafts: () => drafts, pending, light, board2d, lit: () => lit, look: () => LOOK,
   columns: () => visibleCols().map((c) => c.id) };  // for scripted checks
 pollLookup();  // a Look up from before (this page reloaded), or one still running
 fetch(`/bom/${KEY}/drafts`).then((r) => r.json()).then((d) => { drafts = d; render(); }).catch(() => render());

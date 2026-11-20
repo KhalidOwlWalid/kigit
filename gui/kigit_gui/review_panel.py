@@ -93,7 +93,7 @@ async def _image(key: str, name: str) -> Response:
 # Page script: links in rendered notes open outside the app; Ctrl+S writes;
 # a warning before leaving with unwritten edits. (The editors' own script is
 # in md_editor.py.)
-_PAGE_JS = """
+_PAGE_JS = r"""
 <script>
 (() => {
   document.addEventListener("click", (e) => {
@@ -103,7 +103,9 @@ _PAGE_JS = """
     // A link to a discussion (threads/<id>.md): open it here.
     const t = (a.getAttribute("href") || "").match(/(?:^|\/)threads\/([0-9a-f]{8})\.md$/);
     const r = (a.getAttribute("href") || "").match(/^(?:\.\.\/)*([0-9a-f]{8})\.md$/);
-    if (t) emitEvent("kigit_open_thread", t[1]);
+    const c = (a.getAttribute("href") || "").match(/^#commit=([0-9a-f]{7,40})$/);
+    if (c) emitEvent("kigit_open_commit", c[1]);  // a commit in a note: show its changes
+    else if (t) emitEvent("kigit_open_thread", t[1]);
     else if (r) emitEvent("kigit_open_review", r[1]);  // a link to a review (<id>.md)
     else window.open(a.href, "_blank", "noopener");
   }, true);
@@ -125,6 +127,8 @@ _PAGE_JS = """
 .kigit-md-view p { margin: 0.3em 0; }
 .kigit-md-view a { color: #7fb3ff; }
 .kigit-md-view a[href*="threads/"]::before { content: "💬"; margin-right: 3px; font-size: .9em; }
+.kigit-md-view a[href^="#commit="] { text-decoration: none; border-bottom: 1px dotted currentColor; }
+.kigit-md-view a[href^="#commit="] code { color: #e8b84d; }
 .kigit-md-view a[href$=".md"]:not([href*="/"])::before { content: "📝"; margin-right: 3px; font-size: .9em; }
 .kigit-md-view math { font-size: 1.1em; }
 .kigit-md-view math[display=block] { margin: .6em 0; overflow-x: auto; overflow-y: hidden; }
