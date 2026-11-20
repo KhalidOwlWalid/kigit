@@ -13,13 +13,16 @@ Edits are drafts until you write them, kept next to the board in
 kigit-bom.json (in git, so they go with the project): {"version": 2,
 "drafts": {line key: {field name: value}}, "columns": [added fields],
 "tracking": {"columns": [tracker names], "done": {name: [refs]}}}.
-Carts exported from Mouser or LCSC (cart.py) are kept there too, one per
-site: "carts": {site: {"file", "time", "rows": [{sku, mpn, manufacturer,
-description, qty, refs, assigned?}]}}, and matched to the BOM's lines
-(match_carts) for the Ordered column and the board view.
-Trackers ("Carted", "Placed"...) are your own tick columns for a build:
-never written into the schematic, ticked per part reference (so they
-survive a line's part number changing or lines regrouping).
+What's bought belongs to a build (builds.py: kigit-builds/<id>/build.json),
+not the design: its trackers ("Sourced", "Carted"...: your own tick
+columns, never written into the schematic, ticked per part reference so
+they survive a line's part number changing or lines regrouping) and its
+carts from Mouser or LCSC (cart.py), one per site: {site: {"file", "time",
+"received"?, "rows": [{sku, mpn, manufacturer, description, qty, refs,
+assigned?}]}}, matched to the BOM's lines (match_carts) for the Ordered
+column and the board view. state(board, build) is the drafts plus the
+build's; save_state writes each to its own file. Receiving a cart adds it
+to your inventory (inventory.py).
 Only made when asked (the header's BOM button); nothing runs in the
 background.
 
@@ -134,6 +137,9 @@ def _carts(data: dict) -> dict:
                 row["assigned"] = [x for x in r["assigned"] if isinstance(x, str)]
             rows.append(row)
         out[site] = {"file": str(c.get("file", "")), "time": str(c.get("time", "")), "rows": rows}
+        if c.get("received"):
+            out[site]["received"] = str(c["received"])
+            out[site]["moved"] = [m for m in c.get("moved", []) if isinstance(m, dict)]
     return out
 
 
@@ -162,23 +168,19 @@ def load_drafts(board: str | Path) -> dict:
         for k, d in (data.get("drafts") or {}).items():
             if isinstance(d, dict):
                 drafts[k] = {str(f): str(v) for f, v in d.items()}
-    return {"drafts": drafts, "columns": columns, "tracking": _tracking(data), "carts": _carts(data)}
+    # Trackers and carts used to be kept here, for the whole BOM; they're per
+    # build now (kigit-builds/), and the old ones were left behind on purpose.
+    return {"drafts": drafts, "columns": columns, "tracking": _tracking({}), "carts": {}}
 
 
 def save_drafts(board: str | Path, state: dict) -> None:
     drafts = {k: dict(sorted(d.items())) for k, d in sorted(state["drafts"].items()) if d}
     columns = list(dict.fromkeys(state.get("columns", [])))
-    tracking = _tracking({"tracking": state.get("tracking") or {}})
-    carts = _carts({"carts": state.get("carts") or {}})
     path = drafts_path(board)
-    if not drafts and not columns and not tracking["columns"] and not carts:
+    if not drafts and not columns:
         path.unlink(missing_ok=True)
         return
     out = {"version": 2, "drafts": drafts, "columns": columns}
-    if tracking["columns"]:
-        out["tracking"] = tracking
-    if carts:
-        out["carts"] = carts
     text = json.dumps(out, indent=2, ensure_ascii=False) + "\n"
     tmp = path.with_suffix(".json.tmp")
     tmp.write_text(text, encoding="utf-8", newline="\n")
@@ -220,44 +222,72 @@ def rename_column(board: str | Path, old: str, new: str) -> dict:
     return load_drafts(board)
 
 
-def rename_tracker(board: str | Path, old: str, new: str) -> dict:
-    state = load_drafts(board)
-    t = state["tracking"]
+class NoBuild(ValueError):
+    """Trackers and carts belong to a build, and none was picked."""
+
+
+def state(board: str | Path, build: str = "") -> dict:
+    """The drafts (kigit-bom.json), with the build's trackers and carts (its
+    build.json); none of those with no build. Re-read every time."""
+    st = load_drafts(board)
+    st["build"] = build or ""
+    if build:
+        from . import builds
+        extra = builds.load_extra(board, build)
+        st["tracking"], st["carts"] = _tracking(extra), _carts(extra)
+    return st
+
+
+def save_state(board: str | Path, st: dict, drafts_too: bool = False) -> None:
+    """The build's trackers and carts into its build.json (and the drafts,
+    if they changed too)."""
+    from . import builds
+    if not st.get("build"):
+        raise NoBuild("pick a build first: trackers and carts belong to a build")
+    builds.save_extra(board, st["build"], {"tracking": _tracking({"tracking": st["tracking"]}),
+                                           "carts": _carts({"carts": st["carts"]})})
+    if drafts_too:
+        save_drafts(board, st)
+
+
+def rename_tracker(board: str | Path, build: str, old: str, new: str) -> dict:
+    st = state(board, build)
+    t = st["tracking"]
     t["columns"] = [new if c == old else c for c in t["columns"]]
     if old in t["done"]:
         t["done"][new] = t["done"].pop(old)
-    save_drafts(board, state)
-    return load_drafts(board)
+    save_state(board, st)
+    return state(board, build)
 
 
-def add_tracker(board: str | Path, name: str) -> dict:
-    state = load_drafts(board)
-    if name not in state["tracking"]["columns"]:
-        state["tracking"]["columns"].append(name)
-    save_drafts(board, state)
-    return load_drafts(board)
+def add_tracker(board: str | Path, build: str, name: str) -> dict:
+    st = state(board, build)
+    if name not in st["tracking"]["columns"]:
+        st["tracking"]["columns"].append(name)
+    save_state(board, st)
+    return state(board, build)
 
 
-def remove_tracker(board: str | Path, name: str) -> dict:
-    state = load_drafts(board)
-    t = state["tracking"]
+def remove_tracker(board: str | Path, build: str, name: str) -> dict:
+    st = state(board, build)
+    t = st["tracking"]
     t["columns"] = [c for c in t["columns"] if c != name]
     t["done"].pop(name, None)
-    save_drafts(board, state)
-    return load_drafts(board)
+    save_state(board, st)
+    return state(board, build)
 
 
-def set_tracked(board: str | Path, name: str, refs: list[str], done: bool) -> dict:
-    """Ticks (or unticks) parts in a tracker. Re-reads the file first."""
-    state = load_drafts(board)
-    t = state["tracking"]
+def set_tracked(board: str | Path, build: str, name: str, refs: list[str], done: bool) -> dict:
+    """Ticks (or unticks) parts in a build's tracker. Re-reads the file first."""
+    st = state(board, build)
+    t = st["tracking"]
     if name not in t["columns"]:
         t["columns"].append(name)
     have = set(t["done"].get(name, []))
     have = have | set(refs) if done else have - set(refs)
     t["done"][name] = sorted(have)
-    save_drafts(board, state)
-    return load_drafts(board)
+    save_state(board, st)
+    return state(board, build)
 
 
 # ------------------------------------------------------------------ carts
@@ -286,7 +316,9 @@ def match_carts(data: dict, state: dict) -> dict:
     by_ref = {r: l for l in lines for r in l["refs"]}
     out: dict = {"lines": {}, "unmatched": [], "carts": {}}
     for site, c in (state.get("carts") or {}).items():
-        out["carts"][site] = {"file": c["file"], "time": c["time"], "rows": len(c["rows"])}
+        out["carts"][site] = {"file": c["file"], "time": c["time"], "rows": len(c["rows"]), "received": c.get("received", "")}
+        if c.get("received"):
+            continue  # in your inventory now (In stock), not ordered any more
         sku_of = {_norm(shown_number(l, site, drafts, fn)): l for l in lines if shown_number(l, site, drafts, fn)}
         mpn_of = {_norm(shown_number(l, "mpn", drafts, fn)): l for l in lines if shown_number(l, "mpn", drafts, fn)}
         for i, row in enumerate(c["rows"]):
@@ -315,28 +347,81 @@ def match_carts(data: dict, state: dict) -> dict:
 SITE_NAMES = {"mouser": "Mouser", "lcsc": "LCSC"}
 
 
-def import_cart(board: str | Path, site: str, filename: str, data: bytes) -> dict:
-    """Reads a cart file and keeps it (replacing that site's last one)."""
+def import_cart(board: str | Path, build: str, site: str, filename: str, data: bytes) -> dict:
+    """Reads a cart file into a build (replacing that site's last one)."""
     from .cart import parse_cart
     rows = parse_cart(data, filename, site)
-    state = load_drafts(board)
-    state["carts"][site] = {"file": Path(filename).name[:200], "time": time.strftime("%Y-%m-%d %H:%M"), "rows": rows}
-    save_drafts(board, state)
-    return load_drafts(board)
+    st = state(board, build)
+    st["carts"][site] = {"file": Path(filename).name[:200], "time": time.strftime("%Y-%m-%d %H:%M"), "rows": rows}
+    save_state(board, st)
+    return state(board, build)
 
 
-def remove_cart(board: str | Path, site: str) -> dict:
-    state = load_drafts(board)
-    state["carts"].pop(site, None)
-    save_drafts(board, state)
-    return load_drafts(board)
+def remove_cart(board: str | Path, build: str, site: str) -> dict:
+    st = state(board, build)
+    st["carts"].pop(site, None)
+    save_state(board, st)
+    return state(board, build)
 
 
-def assign_row(board: str | Path, data: dict, site: str, i: int, refs: list[str] | None, keep: bool) -> dict:
+def receive_cart(board: str | Path, build: str, data: dict, site: str, undo: bool = False) -> dict:
+    """The cart arrived: each row's quantity goes into your inventory (the
+    part found by the row's MPN or site number, or as its line's passive),
+    and it stops counting as ordered. A line the row matched that has no
+    part number yet gets the row's (MPN, manufacturer, site number) as
+    drafts, so it finds its stock (you write them, or not). undo takes the
+    quantities back out (exactly what was added) and makes it ordered again."""
+    from . import inventory
+    where = inventory.location()
+    if where is None:
+        raise inventory.InventoryError("choose your inventory file first (Inventory, in the header)")
+    st = state(board, build)
+    c = st["carts"].get(site)
+    if c is None:
+        raise ValueError(f"no {SITE_NAMES.get(site, site)} cart in this build")
+    if undo:
+        if not c.get("received"):
+            raise ValueError("that cart isn't received")
+        inventory.change(where, deltas=[(m["ids"], -int(m["qty"])) for m in c.get("moved", [])])
+        c.pop("received", None)
+        c.pop("moved", None)
+    else:
+        if c.get("received"):
+            raise ValueError(f"that cart was received already ({c['received']})")
+        match = match_carts(data, st)
+        line_of = {(r["site"], r["i"]): k for k, m in match["lines"].items() for r in m["rows"]}
+        lines = {line_key(l): l for l in data.get("lines", [])}
+        fn = data.get("field_names") or {}
+        moved, add = [], {}
+        for i, row in enumerate(c["rows"]):
+            ids = {k: v for k, v in (("mpn", row["mpn"]), (site, row["sku"]), ("manufacturer", row["manufacturer"])) if v}
+            line = lines.get(line_of.get((site, i), ""))
+            if line is not None:  # a passive's kind, value and package: found as such if that's how you keep it
+                ids.update({k: v for k, v in line_ids(line, st["drafts"], fn).items()
+                            if k in ("kind", "value", "package")})
+                # No part number on the line yet: this cart's, as drafts, so the line finds what arrived.
+                if not any(shown_number(line, k, st["drafts"], fn) for k in ("mpn", "lcsc", "mouser", "digikey")):
+                    d = st["drafts"].setdefault(line_key(line), {})
+                    for kind, value in (("mpn", row["mpn"]), ("manufacturer", row["manufacturer"]), (site, row["sku"])):
+                        if value and not shown_number(line, kind, st["drafts"], fn):
+                            d[fn.get(kind) or _LABELS[kind]] = value
+            if not inventory.keys_of(ids):
+                continue
+            moved.append({"ids": ids, "qty": row["qty"]})
+            add[inventory.keys_of(ids)[0]] = {k: ids[k] for k in ("manufacturer",) if ids.get(k)}
+        inventory.change(where, deltas=[(m["ids"], m["qty"]) for m in moved], add_fields=add)
+        c["received"], c["moved"] = time.strftime("%Y-%m-%d %H:%M"), moved
+    save_state(board, st, drafts_too=not undo)
+    logs.log.info("bom: %s cart %s for build %s", site, "un-received" if undo else "received", build)
+    return state(board, build)
+
+
+def assign_row(board: str | Path, build: str, data: dict, site: str, i: int, refs: list[str] | None,
+               keep: bool) -> dict:
     """A cart row given to a line by hand (refs), or let go (None). keep:
     also make its part numbers the line's drafts where the line has none."""
-    state = load_drafts(board)
-    rows = state["carts"].get(site, {}).get("rows", [])
+    state_ = state(board, build)
+    rows = state_["carts"].get(site, {}).get("rows", [])
     if not 0 <= i < len(rows):
         raise ValueError("no such cart row")
     row = rows[i]
@@ -347,12 +432,12 @@ def assign_row(board: str | Path, data: dict, site: str, i: int, refs: list[str]
     if refs and keep:
         line = next((l for l in data.get("lines", []) if set(refs) & set(l["refs"])), None)
         if line is not None:
-            fn, d = data.get("field_names") or {}, state["drafts"].setdefault(line_key(line), {})
+            fn, d = data.get("field_names") or {}, state_["drafts"].setdefault(line_key(line), {})
             for kind, value in (("mpn", row["mpn"]), ("manufacturer", row["manufacturer"]), (site, row["sku"])):
-                if value and not shown_number(line, kind, state["drafts"], fn):
+                if value and not shown_number(line, kind, state_["drafts"], fn):
                     d[fn.get(kind) or _LABELS[kind]] = value
-    save_drafts(board, state)
-    return load_drafts(board)
+    save_state(board, state_, drafts_too=True)
+    return state(board, build)
 
 
 # -------------------------------------------------------------- inventory
@@ -426,40 +511,55 @@ async def _status(key: str) -> Response:
 
 
 @app.get("/bom/{key}/drafts")
-async def _drafts(key: str) -> Response:
+async def _drafts(key: str, build: str = "") -> Response:
+    """The drafts, with the build's trackers and carts (build: its id, "" for none)."""
+    from .builds import BuildError
     job = _job(key)
     if job is None:
         return JSONResponse({}, status_code=404)
-    return JSONResponse(load_drafts(job.board))
+    try:
+        return JSONResponse(state(job.board, build))
+    except BuildError:
+        return JSONResponse(state(job.board, ""))  # that build is gone: just the drafts
 
 
 @app.post("/bom/{key}/drafts")
 async def _set_draft(key: str, request: Request) -> Response:
+    """Drafts (part numbers, added columns) and the build's trackers. Answers
+    with state(board, build)."""
+    from .builds import BuildError
     job = _job(key)
     if job is None:
         return JSONResponse({"error": "gone"}, status_code=404)
     body = await request.json()
+    build = str(body.get("build") or "")
     try:
         if body.get("column"):
-            return JSONResponse(add_column(job.board, str(body["column"]).strip()[:100]))
-        if body.get("rename_column") or body.get("rename_tracker"):  # {rename_column | rename_tracker, to}
+            add_column(job.board, str(body["column"]).strip()[:100])
+        elif body.get("rename_column") or body.get("rename_tracker"):  # {rename_column | rename_tracker, to}
             new = str(body.get("to", "")).strip()[:100]
             if not new or any(ch in new for ch in "\r\n"):
                 return JSONResponse({"error": "a column needs a name (one line)"}, status_code=400)
             if body.get("rename_tracker"):
-                return JSONResponse(rename_tracker(job.board, str(body["rename_tracker"]), new[:60]))
-            return JSONResponse(rename_column(job.board, str(body["rename_column"]), new))
-        if body.get("tracker"):  # {tracker, remove?}: add or remove a tracker column
+                return JSONResponse(rename_tracker(job.board, build, str(body["rename_tracker"]), new[:60]))
+            rename_column(job.board, str(body["rename_column"]), new)
+        elif body.get("tracker"):  # {tracker, remove?}: add or remove a tracker column
             name = str(body["tracker"]).strip()[:60]
-            return JSONResponse(remove_tracker(job.board, name) if body.get("remove") else add_tracker(job.board, name))
-        if body.get("track"):  # {track, refs, done}: tick parts
+            return JSONResponse(remove_tracker(job.board, build, name) if body.get("remove")
+                                else add_tracker(job.board, build, name))
+        elif body.get("track"):  # {track, refs, done}: tick parts
             refs = [str(r) for r in body.get("refs", []) if isinstance(r, str)][:5000]
-            return JSONResponse(set_tracked(job.board, str(body["track"]).strip()[:60], refs, bool(body.get("done"))))
-        line, name = str(body.get("key", "")), str(body.get("field", ""))
-        if not line or not name:
-            return JSONResponse({"error": "no line or field"}, status_code=400)
-        value = body.get("value")
-        return JSONResponse(set_draft(job.board, line, name, None if value is None else str(value)))
+            return JSONResponse(set_tracked(job.board, build, str(body["track"]).strip()[:60], refs,
+                                            bool(body.get("done"))))
+        else:
+            line, name = str(body.get("key", "")), str(body.get("field", ""))
+            if not line or not name:
+                return JSONResponse({"error": "no line or field"}, status_code=400)
+            value = body.get("value")
+            set_draft(job.board, line, name, None if value is None else str(value))
+        return JSONResponse(state(job.board, build))
+    except (NoBuild, BuildError) as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
     except OSError as e:
         return JSONResponse({"error": str(e)}, status_code=500)
 
@@ -502,15 +602,19 @@ async def _write(key: str, request: Request) -> Response:
     except kigit.KigitError as e:
         return JSONResponse({"error": str(e), "locked": "KiCad has" in str(e)}, status_code=409)
     job.backup = result.get("backup") or job.backup
-    state = load_drafts(job.board)
+    left = load_drafts(job.board)
     for k, name in cells:
-        state["drafts"].get(k, {}).pop(name, None)
-    save_drafts(job.board, state)
+        left["drafts"].get(k, {}).pop(name, None)
+    save_drafts(job.board, left)
     for old, new in renames:
         rename_column(job.board, old, new)
     await _refresh(job)
     logs.log.info("bom: wrote %s fields into %s", result.get("fields"), ", ".join(result.get("written", [])))
-    return JSONResponse({"result": result, "data": job.data, "drafts": load_drafts(job.board)})
+    try:
+        answer = state(job.board, str(body.get("build") or ""))
+    except ValueError:
+        answer = state(job.board, "")
+    return JSONResponse({"result": result, "data": job.data, "drafts": answer})
 
 
 @app.post("/bom/{key}/undo")
@@ -538,21 +642,27 @@ async def _notes(key: str) -> Response:
     return JSONResponse(await asyncio.to_thread(notebook.counts_by_part, Path(job.board).parent))
 
 
-def _cart_answer(job: Job, state: dict) -> JSONResponse:
-    return JSONResponse({"match": match_carts(job.data, state), "drafts": state})
+def _cart_answer(job: Job, st: dict) -> JSONResponse:
+    return JSONResponse({"match": match_carts(job.data, st), "drafts": st})
 
 
 @app.get("/bom/{key}/cart")
-async def _cart(key: str) -> Response:
+async def _cart(key: str, build: str = "") -> Response:
+    """The build's carts matched to the lines (none without a build)."""
+    from .builds import BuildError
     job = _job(key)
     if job is None:
         return JSONResponse({"error": "gone"}, status_code=404)
-    return _cart_answer(job, load_drafts(job.board))
+    try:
+        return _cart_answer(job, state(job.board, build))
+    except BuildError:
+        return _cart_answer(job, state(job.board, ""))
 
 
 @app.post("/bom/{key}/cart/{site}")
-async def _import_cart(key: str, site: str, request: Request, name: str = "cart.csv") -> Response:
-    """A cart file (the request's body), from Mouser or LCSC."""
+async def _import_cart(key: str, site: str, request: Request, name: str = "cart.csv", build: str = "") -> Response:
+    """A cart file (the request's body), from Mouser or LCSC, into a build."""
+    from .builds import BuildError
     from .cart import MAX_BYTES, CartError
     job = _job(key)
     if job is None:
@@ -561,32 +671,42 @@ async def _import_cart(key: str, site: str, request: Request, name: str = "cart.
     if len(data) > MAX_BYTES:
         return JSONResponse({"error": "the file is too big for a cart (over 5 MB)"}, status_code=400)
     try:
-        state = await asyncio.to_thread(import_cart, job.board, site, name, data)
-    except CartError as e:
+        if not build:
+            raise NoBuild("pick or make a build first: a cart belongs to a build")
+        st = await asyncio.to_thread(import_cart, job.board, build, site, name, data)
+    except (CartError, NoBuild, BuildError) as e:
         return JSONResponse({"error": str(e)}, status_code=400)
     except OSError as e:
         return JSONResponse({"error": str(e)}, status_code=500)
-    logs.log.info("bom: %s cart %s imported (%d rows)", site, name, len(state["carts"].get(site, {}).get("rows", [])))
-    return _cart_answer(job, state)
+    logs.log.info("bom: %s cart %s imported into %s (%d rows)", site, name, build, len(st["carts"].get(site, {}).get("rows", [])))
+    return _cart_answer(job, st)
 
 
 @app.post("/bom/{key}/cart/{site}/edit")
 async def _edit_cart(key: str, site: str, request: Request) -> Response:
-    """{remove: true}, or {row, refs (null: unassign), keep}."""
+    """{build, remove: true} | {build, receive: true} | {build, unreceive: true} |
+    {build, row, refs (null: unassign), keep}."""
+    from .builds import BuildError
+    from .inventory import InventoryError
     job = _job(key)
     if job is None:
         return JSONResponse({"error": "gone"}, status_code=404)
     body = await request.json()
+    build = str(body.get("build") or "")
     try:
+        if not build:
+            raise NoBuild("pick a build first: carts belong to a build")
         if body.get("remove"):
-            state = remove_cart(job.board, site)
+            st = remove_cart(job.board, build, site)
+        elif body.get("receive") or body.get("unreceive"):
+            st = await asyncio.to_thread(receive_cart, job.board, build, job.data, site, bool(body.get("unreceive")))
         else:
             refs = body.get("refs")
             refs = [str(r) for r in refs if isinstance(r, str)] if isinstance(refs, list) else None
-            state = assign_row(job.board, job.data, site, int(body.get("row", -1)), refs, bool(body.get("keep")))
-    except (ValueError, TypeError) as e:
+            st = assign_row(job.board, build, job.data, site, int(body.get("row", -1)), refs, bool(body.get("keep")))
+    except (ValueError, TypeError, InventoryError, BuildError) as e:
         return JSONResponse({"error": str(e)}, status_code=400)
-    return _cart_answer(job, state)
+    return _cart_answer(job, st)
 
 
 @app.get("/bom/{key}/builds")

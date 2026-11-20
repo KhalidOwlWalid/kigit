@@ -640,6 +640,18 @@ at once. localStorage settings are per origin, so per port.
   body's folder is `data-cwd`, never `data-dir`, which folder rows use),
   In stock column id "stock" (filter "stock"), refetched on
   `visibilitychange` and after drafts/write/undo.
+  Buy (step 3): trackers and carts are per build, in build.json
+  ("tracking", "carts"; `builds.EXTRA`, `load_extra`/`save_extra` keep
+  them through renames); kigit-bom.json holds drafts and columns only
+  (old tracking/carts there are ignored: start fresh). `bom.state(board,
+  build)` = drafts + the build's; `save_state` (raises `NoBuild`
+  without one). Every page POST carries `build` (post()); GETs take
+  `?build=`. `receive_cart`: rows -> inventory.change deltas (ids = row's
+  mpn/site number/manufacturer + its line's kind/value/package), kept as
+  `moved` for `undo`; received carts aren't "ordered" in match_carts;
+  lines with no number get the row's as drafts. Page: `buyOf(l)` {need,
+  stock, ordered, toBuy}, `covers()`, column "tobuy", export rule
+  "tobuy" (`exportQty`). Not yet: placed parts (Assemble) in "need".
   Only on request: no background
   lookups. The page is `bom_page.html` (a plain file, read at import: no
   Python escaping), placeholders `%%KEY%%` etc. Beside the list: a 2D

@@ -214,10 +214,10 @@ dialog a { color: var(--link); }
     <label class="sub" title="How many boards you're building: multiplies the quantities in the exported CSV (the list itself doesn't change)">Build qty <input id="boards" type="number" min="1" value="1" style="width:4.5rem" aria-label="Build quantity"></label>
     <label class="sub" title="Only for All columns: LCSC's and Mouser's files leave DNP parts out (they aren't bought)"><input id="dnp" type="checkbox"> DNP in export</label>
     <button id="addfield" title="Add a column for another part information field (e.g. Tolerance, Supplier): written into the schematic">+ Field</button>
-    <button id="addtracker" title="Add a tick column to track a build: Carted, Ordered, Received, Placed... Kept in kigit-bom.json, never in the schematic">+ Tracker</button>
+    <button id="addtracker" data-title="Add a tick column to track this build: Sourced, Carted, Received... Kept with the build, never in the schematic" title="">+ Tracker</button>
     <button id="export" class="primary" title="A CSV for LCSC's or Mouser's BOM upload, or with every column">Export CSV &#9662;</button>
     <button id="invbtn" title="Your inventory: a CSV of yours, anywhere, shared by every project">Inventory</button>
-    <button id="cartbtn" title="Import a cart exported from Mouser or LCSC: what's ordered, line by line, and on the board">Import cart &#9662;</button>
+    <button id="cartbtn" data-title="Import a cart exported from Mouser or LCSC into this build: what's ordered, line by line, and on the board" title="">Import cart &#9662;</button>
     <input type="file" id="cartfile" accept=".csv,.xls,.xlsx" hidden>
     <button id="lookup" title="Ask Mouser and Digi-Key (those you have a key for) for stock, prices and lifecycle, for Build qty boards (answers are kept a day; Shift+click asks again)">Look up</button>
     <button id="keybtn" title="Your Mouser and Digi-Key keys">Keys</button>
@@ -412,6 +412,7 @@ let colFilters = {};  // column id -> {mode, q}
 const FILTERS = {
   track: [["done", "Done"], ["not", "Not done"], ["some", "Partly done"]],
   text: [["has", "Contains..."], ["filled", "Not empty"], ["empty", "Empty"]],
+  tobuy: [["buy", "Still to buy"], ["covered", "Covered (in stock or ordered)"]],
   stock: [["enough", "Enough in stock"], ["short", "Not enough in stock"], ["none", "Not in the inventory"]],
   ordered: [["enough", "Enough in the carts"], ["short", "Not enough"], ["none", "Not in a cart"],
     ["from:mouser", "In the Mouser cart"], ["from:lcsc", "In the LCSC cart"]],
@@ -428,6 +429,7 @@ function passes(col, f, l) {
     const st = trackState(l, col.tracker);
     return f.mode === "done" ? st === "all" : f.mode === "not" ? st !== "all" : st === "some";
   }
+  if (col.filter === "tobuy") return !l.dnp && (f.mode === "buy" ? buyOf(l).toBuy > 0 : buyOf(l).toBuy === 0);
   if (col.filter === "stock") {
     if (l.dnp) return false;
     const st = STOCK.lines[lineKey(l)], have = st && st.qty !== null ? st.qty : null, need = l.qty * buildQty();
@@ -537,6 +539,8 @@ function tableCols() {
       filter: "text", text: (l) => shown(l, c),
       th: `<th title="${esc(c.name)}${c.kind ? "" : " (double-click to rename)"}"${c.kind ? "" : ` data-rename="f:${esc(c.name)}"`}>${esc(c.label)}</th>`,
       td: (l, i) => `<td>${cell(l, c, i, ci)}</td>` })),
+    ...(BUILD ? [{ id: "tobuy", label: "To buy (this build)", filter: "tobuy",
+      th: `<th title="What's left to buy for this build: needed - in stock - ordered">To buy</th>`, td: (l) => toBuyCell(l) }] : []),
     ...(hasStock() ? [{ id: "stock", label: "In stock (inventory)", filter: "stock",
       th: `<th title="What your inventory has of each line's part, against what you need (Build qty boards)">In stock</th>`,
       td: (l) => stockCell2(l) }] : []),
@@ -613,6 +617,7 @@ function defaultWidth(id) {
   if (id.startsWith("price:")) return 120;
   if (id === "ordered") return 150;
   if (id === "stock") return 130;
+  if (id === "tobuy") return 90;
   if (id.startsWith("t:")) return Math.max(100, 56 + 8 * id.length);  // title, count and filter button on one line
   if (id.startsWith("site:")) return 210;
   return id === "f:" + (columns()[0]?.name) ? 200 : 170;  // MPN a bit wider than the other fields
@@ -696,6 +701,11 @@ function stats() {
   $("stats").innerHTML = `<span><b>${lines.length}</b> lines</span><span><b>${DATA.summary.parts}</b> parts</span>` +
     (DATA.summary.dnp_parts ? `<span><b>${DATA.summary.dnp_parts}</b> not populated</span>` : "") +
     `<span style="color:${need ? "var(--warn)" : "var(--ok)"}"><b>${need}</b> need a part number</span>`;
+  if (BUILD && hasStock()) {
+    const c = covers(), b = buildQty(), ok = c.n >= b;
+    $("stats").innerHTML += `<span title="${esc(c.worst && !ok ? `The scarcest: ${c.worst.value} (${c.worst.refs.join(", ")})` : "")}" style="color:${ok ? "var(--ok)" : "var(--bad)"}">` +
+      `stock covers <b>${Math.min(c.n, 99999)}</b> of ${b} boards` + (hasCarts() && c.withOrders > c.n ? `, <b>${Math.min(c.withOrders, 99999)}</b> with what's ordered` : "") + `</span>`;
+  }
   for (const site of lookSites()) {
   const s = LOOK.summary[site];
   if (s && !LOOK.sites[site].error) $("stats").innerHTML += `<span title="${esc(siteName(site))}, for ${LOOK.summary.boards} board(s): the parts found by their part number">` +
@@ -885,7 +895,8 @@ $("rows").addEventListener("click", (e) => {
   }
 });
 async function post(path, body) {
-  const r = await fetch(`/bom/${KEY}/${path}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}) });
+  body = { build: BUILD ? BUILD.id : "", ...(body || {}) };  // trackers and carts are the picked build's
+  const r = await fetch(`/bom/${KEY}/${path}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
   const j = await r.json().catch(() => ({}));
   if (!r.ok) { const e = new Error(j.error || r.status); e.info = j; throw e; }
   if (hasCarts() && /^(drafts|write|undo)$/.test(path)) refreshCart();  // part numbers changed: match the carts again
@@ -1013,6 +1024,7 @@ $("rows").addEventListener("change", async (e) => {
   catch (err) { box.checked = !box.checked; box.disabled = false; alert("Not saved: " + err.message); }
 });
 $("addtracker").addEventListener("click", async () => {
+  if (!BUILD) return;
   const name = (prompt("A tracker column to tick off as you go (e.g. Carted, Ordered, Received, Placed, Tested):") || "").trim().slice(0, 60);
   if (!name) return;
   if (trackers().includes(name)) { alert(`There's already a "${name}" tracker.`); return; }
@@ -1050,7 +1062,7 @@ function pickBuild(id) {
   BUILD = BUILDS.find((b) => b.id === id) || null;
   remember(BUILD ? BUILD.id : "");
   buildPicker();
-  qtyChanged();
+  loadState();
 }
 async function loadBuilds() {
   try { BUILDS = (await (await fetch(`/bom/${KEY}/builds`)).json()).builds || []; } catch { BUILDS = []; }
@@ -1058,7 +1070,16 @@ async function loadBuilds() {
   BUILD = BUILDS.find((b) => b.id === want) || null;
   if (want && !BUILD) remember("");  // that build is gone (deleted, or another branch)
   buildPicker();
-  qtyChanged();
+  loadState();
+}
+// The drafts with the picked build's trackers and carts.
+async function loadState() {
+  const b = BUILD ? BUILD.id : "";
+  try { drafts = await (await fetch(`/bom/${KEY}/drafts?build=${encodeURIComponent(b)}`)).json(); } catch {}
+  $("addtracker").disabled = $("cartbtn").disabled = !BUILD;
+  for (const id of ["addtracker", "cartbtn"]) $(id).title = BUILD ? $(id).dataset.title : "Pick or make a build first (next to the title): what's bought and ticked belongs to a build";
+  await refreshCart();
+  render(); qtyChanged();
 }
 async function buildAction(body) {
   const r = await post("builds", body);
@@ -1241,6 +1262,36 @@ $("invbody").addEventListener("change", async (e) => {
   catch (err) { alert("Not written: " + err.message); box.value = row.qty; }
 });
 
+// -------------------------------------------------------------------- buy
+// For a build: what's still needed (per board x boards), what's in your
+// inventory, what's ordered (carts not received yet) and so what's left to
+// buy. Your inventory is shared by every build and project.
+function buyOf(l) {
+  const st = STOCK.lines[lineKey(l)], need = l.qty * buildQty();
+  const stock = st && st.qty !== null && !st.missing ? st.qty : 0, known = !!(st && st.qty !== null);
+  const ordered = hasCarts() ? orderedOf(l).total : 0;
+  return { need, stock, ordered, known, toBuy: Math.max(0, need - stock - ordered) };
+}
+// How many boards the stock (and what's ordered) covers: the scarcest line.
+function covers() {
+  let n = Infinity, withOrders = Infinity, worst = null;
+  for (const l of DATA.lines) {
+    if (l.dnp) continue;
+    const b = buyOf(l), per = l.qty;
+    const k = Math.floor(b.stock / per), k2 = Math.floor((b.stock + b.ordered) / per);
+    if (k < n) { n = k; worst = l; }
+    withOrders = Math.min(withOrders, k2);
+  }
+  return { n: n === Infinity ? 0 : n, withOrders: withOrders === Infinity ? 0 : withOrders, worst };
+}
+function toBuyCell(l) {
+  if (l.dnp) return `<td class="ordered"><span class="faint">&ndash;</span></td>`;
+  const b = buyOf(l);
+  const how = `Needed ${b.need} (${l.qty} × ${buildQty()} boards) − in stock ${b.stock}${b.known ? "" : " (not in your inventory)"} − ordered ${b.ordered}`;
+  return `<td class="ordered" title="${esc(how)}">` + (b.toBuy ? `<span class="oq short">${b.toBuy}</span>` : `<span class="oq ok">&#10003;</span>`) +
+    (b.known || !STOCK.configured ? "" : ` <span class="faint">?</span>`) + `</td>`;
+}
+
 // ------------------------------------------------------------------ carts
 // Carts exported from Mouser or LCSC, read and matched to the lines by the
 // GUI (bom.py match_carts: by the references in Customer #, else the site's
@@ -1280,7 +1331,7 @@ function orderedCell(l) {
     Object.entries(o.qty).map(([s, n]) => `<span class="osite">${SITE_NAME[s]} ${n}</span>`).join("") + `</td>`;
 }
 async function refreshCart() {
-  try { CART = await (await fetch(`/bom/${KEY}/cart`)).json(); } catch { return; }
+  try { CART = await (await fetch(`/bom/${KEY}/cart?build=${encodeURIComponent(BUILD ? BUILD.id : "")}`)).json(); } catch { return; }
   render(); markBoards();
 }
 let marking = false;
@@ -1304,6 +1355,7 @@ $("cmenu").addEventListener("click", (e) => {
   const b = e.target.closest("[data-cart]"); if (!b) return;
   $("cmenu").classList.remove("on");
   if (b.dataset.cart === "show") { cartDialog(); return; }
+  if (!BUILD) { alert("Pick or make a build first (next to the title): a cart belongs to a build."); return; }
   cartSite = b.dataset.cart; $("cartfile").value = ""; $("cartfile").click();
 });
 document.addEventListener("click", () => $("cmenu").classList.remove("on"));
@@ -1311,7 +1363,8 @@ $("cartfile").addEventListener("change", async () => {
   const f = $("cartfile").files[0]; if (!f || !cartSite) return;
   const el = $("lookstate");
   try {
-    const r = await fetch(`/bom/${KEY}/cart/${cartSite}?name=${encodeURIComponent(f.name)}`, { method: "POST", body: f });
+    const r = await fetch(`/bom/${KEY}/cart/${cartSite}?name=${encodeURIComponent(f.name)}&build=${encodeURIComponent(BUILD ? BUILD.id : "")}`,
+      { method: "POST", body: f });
     const j = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(j.error || r.status);
     CART = j; drafts = j.drafts;
@@ -1334,6 +1387,9 @@ function cartDialog() {
   const head = `<tr><th>Site</th><th>Site's number</th><th>MPN</th><th>Description</th><th class="qty">Qty</th><th>Line</th></tr>`;
   $("cartbody").innerHTML = `<b>Imported carts</b>` +
     Object.entries(m.carts).map(([s, c]) => `<p class="sub">${SITE_NAME[s]}: <b>${esc(c.file)}</b>, ${esc(c.time)}, ${c.rows} rows ` +
+      (c.received ? `<span class="chip ok">received ${esc(c.received)}</span> <button data-unreceive="${s}" ` +
+        `title="Take its quantities back out of your inventory: ordered again">Undo received</button> `
+        : `<button data-receive="${s}" class="primary" title="It arrived: add its quantities to your inventory (and it stops counting as ordered)">Mark received</button> `) +
       `<button data-rmcart="${s}">Remove</button></p>`).join("") +
     (m.unmatched.length ? `<p class="sub">These rows match no line (no references, and no line has their part number). Give each its line; ` +
       `<label><input type="checkbox" id="cartkeep" checked> and keep its part numbers as the line's drafts</label>.</p>` +
@@ -1352,7 +1408,15 @@ $("cartbody").addEventListener("change", async (e) => {
 });
 $("cartbody").addEventListener("click", async (e) => {
   const un = e.target.closest("[data-unassign]"), rm = e.target.closest("[data-rmcart]");
+  const rc = e.target.closest("[data-receive]"), urc = e.target.closest("[data-unreceive]");
   try {
+    if (rc || urc) {
+      const site = (rc || urc).dataset.receive || (rc || urc).dataset.unreceive;
+      if (!STOCK.configured) { alert("Choose your inventory file first (Inventory, in the header): received parts go into it."); return; }
+      if (urc && !confirm(`Take the ${SITE_NAME[site]} cart's parts back out of your inventory?`)) return;
+      CART = await post(`cart/${site}/edit`, rc ? { receive: true } : { unreceive: true });
+      drafts = CART.drafts; await refreshStock(); render(); markBoards(); cartDialog(); return;
+    }
     if (un) { const [site, i] = un.dataset.unassign.split("|"); CART = await post(`cart/${site}/edit`, { row: +i, refs: null }); }
     else if (rm) {
       if (!confirm(`Forget the ${SITE_NAME[rm.dataset.rmcart]} cart?`)) return;
@@ -1371,12 +1435,15 @@ $("cartbody").addEventListener("click", async (e) => {
 const csvCell = (v) => { v = String(v ?? ""); return /[",\n\r]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v; };
 const toCsv = (rows) => rows.map((r) => r.map(csvCell).join(",")).join("\r\n") + "\r\n";
 const buildQty = () => Math.max(1, parseInt($("boards").value, 10) || 1);
+// A line's quantity in an export: for its boards, or with "what's still to buy", just that.
+const exportQty = (l, boards) => exportRule === "tobuy" && BUILD ? buyOf(l).toBuy : l.qty * boards;
 // Which lines go in the file: all, the ones on screen, or those a tracker
 // doesn't have yet ("not:<tracker>"). Remembered in this browser.
 let exportRule = "all";
 try { exportRule = localStorage.getItem("kigit.bomExportRule") || "all"; } catch {}
 function ruleLines(rule = exportRule) {
   if (rule === "shown") return shownLines();
+  if (rule === "tobuy") return BUILD ? DATA.lines.filter((l) => !l.dnp && buyOf(l).toBuy > 0) : DATA.lines;
   if (rule.startsWith("not:")) {
     const name = rule.slice(4);
     if (trackers().includes(name)) return DATA.lines.filter((l) => !l.dnp && trackState(l, name) !== "all");
@@ -1385,12 +1452,15 @@ function ruleLines(rule = exportRule) {
 }
 function ruleName(rule = exportRule) {
   if (rule === "shown") return "the lines shown";
+  if (rule === "tobuy" && BUILD) return "what's still to buy";
   if (rule.startsWith("not:") && trackers().includes(rule.slice(4))) return `lines not ${rule.slice(4)} yet`;
   return "all lines";
 }
 function ruleMenu() {
   if (exportRule.startsWith("not:") && !trackers().includes(exportRule.slice(4))) exportRule = "all";  // a tracker that's gone
-  const opts = [["all", "All lines"], ["shown", "Only the lines shown (search, Show, column filters)"],
+  if (exportRule === "tobuy" && !BUILD) exportRule = "all";
+  const opts = [["all", "All lines"], ...(BUILD ? [["tobuy", "Only what's still to buy (and that many)"]] : []),
+    ["shown", "Only the lines shown (search, Show, column filters)"],
     ...trackers().map((t) => [`not:${t}`, `Not ${t} yet`])];
   const count = (r) => ruleLines(r).filter((l) => !l.dnp).length;
   $("xrule").innerHTML = `<b>Which lines</b>` + opts.map(([v, t]) => `<label><input type="radio" name="xrule" value="${esc(v)}"` +
@@ -1417,7 +1487,7 @@ function csv() {  // every column
     "References", "Value", "Footprint", "DNP", ...extra.map((c) => c.name), ...trackers()]];
   for (const l of ruleLines()) {
     if (l.dnp && !withDnp) continue;
-    out.push([l.dnp ? 0 : l.qty * boards, partNo("manufacturer", l), partNo("mpn", l), partNo("digikey", l), partNo("mouser", l),
+    out.push([l.dnp ? 0 : exportQty(l, boards), partNo("manufacturer", l), partNo("mpn", l), partNo("digikey", l), partNo("mouser", l),
       partNo("lcsc", l), l.refs.join(" "), l.value, l.footprint, l.dnp ? "DNP" : "", ...extra.map((c) => shown(l, c)),
       ...trackers().map((t) => ({ all: "yes", some: "partly", none: "" })[trackState(l, t)])]);
   }
@@ -1430,7 +1500,7 @@ function csvLcsc() {
     "Package", "Customer Part Number"]];
   for (const l of ruleLines()) {
     if (l.dnp) continue;
-    out.push([l.qty * boards, partNo("mpn", l), partNo("manufacturer", l), describe(l), partNo("lcsc", l), l.package, refsShort(l)]);
+    out.push([exportQty(l, boards), partNo("mpn", l), partNo("manufacturer", l), describe(l), partNo("lcsc", l), l.package, refsShort(l)]);
   }
   return { text: toCsv(out), lines: out.length - 1, left: [] };
 }
@@ -1442,7 +1512,7 @@ function csvMouser() {
     if (l.dnp) continue;
     const mouser = partNo("mouser", l), mpn = partNo("mpn", l);
     if (!mouser && !mpn) { left.push(l); continue; }
-    out.push([mouser, mpn, partNo("manufacturer", l), refsShort(l), describe(l), l.qty * boards]);
+    out.push([mouser, mpn, partNo("manufacturer", l), refsShort(l), describe(l), exportQty(l, boards)]);
   }
   return { text: toCsv(out), lines: out.length - 1, left };
 }
@@ -1693,7 +1763,7 @@ loadBuilds();  // the build picked last time on this board
 refreshCart();  // carts imported before (kept in kigit-bom.json)
 refreshStock();  // your inventory, if you've chosen it
 pollLookup();  // a Look up from before (this page reloaded), or one still running
-fetch(`/bom/${KEY}/drafts`).then((r) => r.json()).then((d) => { drafts = d; render(); }).catch(() => render());
+render();  // the drafts come with the build picked last time (loadBuilds)
 </script>
 <script type="module">
 // ----------------------------------------------------------------- 3D board

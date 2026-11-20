@@ -109,7 +109,22 @@ A **build** is a batch of boards you're making from the design: *Proto run, 3 bo
 - A build keeps its **number of boards** (the **Boards** box, where **Build qty** is without a build; saved as you type) and the **revision** it's for: the working tree (and the commit it started from) or the commit you opened the BOM at.
 - Each build is a folder next to the board, `kigit-builds/<name>/build.json`, in git with the project. **⋯** renames it (the folder follows) or deletes it (git still has it if you committed it).
 - The build you picked is remembered for that board in your browser: it's still there when you reload or open the BOM again, until you pick another.
-- Coming next, per build: what's bought and still to buy (**Buy**), and boards #1, #2... with their own placement sheets (**Assemble**).
+- What's bought belongs to a build: its **trackers** and **carts** are kept in its `build.json`, so each batch starts fresh. With **Design only** there are none (+ Tracker and Import cart ask you to pick a build).
+- Coming next, per build: boards #1, #2... with their own placement sheets (**Assemble**).
+
+### Buying for a build
+
+With a build picked (and your [inventory](#inventory) chosen), the list shows, per line:
+
+- **In stock**: what your inventory has.
+- **Ordered**: what the build's carts have that hasn't arrived yet.
+- **To buy**: what's left: needed (per board × boards) − in stock − ordered; **✓** when nothing is. Its **▾** filters *Still to buy* / *Covered*.
+
+The header says how many boards your stock covers ("stock covers 37 of 50 boards", and how many with what's ordered); hover it to see the scarcest line. Your inventory is shared by every build and project, so another build's needs can draw on the same parts.
+
+To order just what's missing: **Export CSV ▾** → **Which lines**: *Only what's still to buy (and that many)*, then the LCSC or Mouser file: each line with its **To buy** quantity.
+
+When a cart arrives: **Import cart ▾** → **Carts and unmatched rows…** → **Mark received**. Each row's quantity goes into your inventory CSV (found by its MPN or site number, or as its line's passive by kind, value and package; a row for anything new to you), and the cart stops counting as ordered. A line that matched the cart but had no part number yet gets the cart's (MPN, manufacturer, LCSC or Mouser number) as drafts, so it finds its stock; write them to the schematic, or not. **Undo received** takes exactly those quantities back out.
 
 ## Inventory
 
@@ -137,7 +152,7 @@ STM32F103C8T6,STMicroelectronics,,511-STM32F103C8T6,,,,6,Box A,two have bent pin
 - Rows kigit can't use (no quantity, nothing saying what the part is, the same part twice) are listed in the dialog and left alone.
 - Every change re-reads the file first (so edits made elsewhere aren't lost), goes through a temporary file, and keeps the previous version as `<name>.csv.bak`.
 - Windows: if the file is open in Excel, Excel locks it and kigit can't save; close it there and try again.
-- Coming with **Buy** and **Assemble**: received carts adding to it, and parts placed on a board taking from it.
+- Received carts add to it ([Buying for a build](#buying-for-a-build)); coming with **Assemble**: parts placed on a board taking from it.
 
 ## Notes about parts
 
@@ -165,7 +180,7 @@ Fill your carts at Mouser and LCSC (the CSVs from **Export CSV** upload straight
 - **Rows that match no line** (most often, passives without a part number yet): **Import cart ▾** → **Carts and unmatched rows…** lists them; give each its line, and (ticked by default) keep its MPN, manufacturer and site number as that line's drafts, to write into the schematic. **Let go** undoes it.
 - **On the board:** **Ordered** on the PCB and 3D panes colours every part **green** if the carts cover it and **red** if not, so you can see at a glance that everything's ordered before you check out. Parts without a 3D model show as a flat tile over their pads.
 - **Not enough for every position:** each board needs the line's parts once, so a cart of *c* parts for *b* boards fills ⌊*c* / *b*⌋ of the line's positions on every board: the first ones by reference (C1, C2, C3...) are green, the rest red. For example, 10 capacitors for a line of four (C1 to C4) on 3 boards: C1, C2 and C3 green (3 per board), C4 red.
-- Carts are kept in `kigit-bom.json` next to the board, one per site; importing a site's cart again replaces it. **Remove** in the carts dialog forgets one.
+- Carts belong to the [build](#builds) you've picked (its `build.json`), one per site; importing a site's cart again replaces it. **Remove** in the carts dialog forgets one; **Mark received** puts it in your inventory (see [Buying for a build](#buying-for-a-build)).
 
 ## Filtering
 
@@ -187,7 +202,7 @@ A filtered column's **▾** is lit. **Clear filters** (in the header while any i
 - Like any column, a tracker can be hidden or resized. **Columns** → **×** removes one with its ticks.
 - **Export CSV** includes them (*yes*, *partly* or empty).
 
-Trackers are kept in `kigit-bom.json` next to the board, with the drafts (commit it to share progress), **never in the schematic**: they're about this build, not the design. That's the difference from **+ Field**, whose values get written into the schematic.
+Trackers belong to the [build](#builds) you've picked: they're kept in its `kigit-builds/<build>/build.json` (commit it to share progress), **never in the schematic**: they're about that batch, not the design. That's the difference from **+ Field**, whose values get written into the schematic. With **Design only** there are none.
 
 ## Exporting
 

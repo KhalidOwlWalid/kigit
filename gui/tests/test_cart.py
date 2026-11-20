@@ -88,11 +88,14 @@ def data() -> dict:
 
 
 def test_carts_matched_to_lines(tmp_path: Path) -> None:
+    from kigit_gui import builds
     board = tmp_path / "x.kicad_pcb"
-    bom.import_cart(board, "lcsc", LCSC.name, LCSC.read_bytes())
-    state = bom.import_cart(board, "mouser", MOUSER.name, MOUSER.read_bytes())
+    b = builds.new(board, "Proto", 2).id
+    bom.import_cart(board, b, "lcsc", LCSC.name, LCSC.read_bytes())
+    state = bom.import_cart(board, b, "mouser", MOUSER.name, MOUSER.read_bytes())
     d = data()
-    state = bom.set_draft(board, bom.line_key(d["lines"][6]), "MPN", "LFXTAL084885")  # Y2's MPN, typed, not written
+    bom.set_draft(board, bom.line_key(d["lines"][6]), "MPN", "LFXTAL084885")  # Y2's MPN, typed, not written
+    state = bom.state(board, b)
     m = bom.match_carts(d, state)
     key = lambda i: bom.line_key(d["lines"][i])  # noqa: E731
     assert m["lines"][key(0)]["qty"] == {"lcsc": 3}
@@ -104,27 +107,73 @@ def test_carts_matched_to_lines(tmp_path: Path) -> None:
     assert m["lines"][key(5)]["qty"] == {"mouser": 2} and m["lines"][key(5)]["rows"][0]["by"] == "Mouser number"
     assert m["lines"][key(6)]["qty"] == {"mouser": 2}           # by the draft MPN
     assert key(7) not in m["lines"] and key(8) not in m["lines"]
-    assert m["carts"]["lcsc"] == {"file": LCSC.name, "time": state["carts"]["lcsc"]["time"], "rows": 7}
+    assert m["carts"]["lcsc"] == {"file": LCSC.name, "time": state["carts"]["lcsc"]["time"], "rows": 7, "received": ""}
     unmatched = {(u["site"], u["mpn"]) for u in m["unmatched"]}
     assert ("mouser", "STM32F103C8T6") not in unmatched and ("mouser", "CC0603KRX5R6BB105") in unmatched
     assert len(m["unmatched"]) == (7 - 3) + (20 - 3)              # 3 of LCSC's 7 rows are lines here, 3 of Mouser's 20
 
     # A row given to a line by hand, with its part numbers kept as drafts.
     i = next(u["i"] for u in m["unmatched"] if u["mpn"] == "CC0603KRX5R6BB105")
-    state = bom.assign_row(board, d, "mouser", i, ["J9"], keep=True)
+    state = bom.assign_row(board, b, d, "mouser", i, ["J9"], keep=True)
     m = bom.match_carts(d, state)
     assert m["lines"][key(8)]["qty"] == {"mouser": 20} and m["lines"][key(8)]["rows"][0]["by"] == "assigned"
     assert state["drafts"][key(8)] == {"MPN": "CC0603KRX5R6BB105", "Manufacturer": "YAGEO", "Mouser": "603-CC603KRX5R6BB105"}
-    state = bom.assign_row(board, d, "mouser", i, None, keep=False)  # let go: still J9's, by the numbers kept as drafts
+    state = bom.assign_row(board, b, d, "mouser", i, None, keep=False)  # let go: still J9's, by the numbers kept as drafts
     assert bom.match_carts(d, state)["lines"][key(8)]["rows"][0]["by"] == "Mouser number"
     bom.set_draft(board, key(8), "Mouser", None)
-    assert bom.match_carts(d, bom.load_drafts(board))["lines"][key(8)]["rows"][0]["by"] == "MPN"
-    state = bom.set_draft(board, key(8), "MPN", None)                # drafts dropped: in no line now
+    assert bom.match_carts(d, bom.state(board, b))["lines"][key(8)]["rows"][0]["by"] == "MPN"
+    bom.set_draft(board, key(8), "MPN", None)                         # drafts dropped: in no line now
+    state = bom.state(board, b)
     assert key(8) not in bom.match_carts(d, state)["lines"]
     with pytest.raises(ValueError):
-        bom.assign_row(board, d, "mouser", 999, ["J9"], keep=False)
+        bom.assign_row(board, b, d, "mouser", 999, ["J9"], keep=False)
 
-    # Kept in kigit-bom.json; importing again replaces that site's cart; removing it.
-    assert set(bom.load_drafts(board)["carts"]) == {"lcsc", "mouser"}
-    state = bom.remove_cart(board, "lcsc")
+    # Kept with the build (another build has none); removing one.
+    assert set(bom.state(board, b)["carts"]) == {"lcsc", "mouser"}
+    assert bom.state(board, builds.new(board, "Bulk", 50).id)["carts"] == {}
+    state = bom.remove_cart(board, b, "lcsc")
     assert set(state["carts"]) == {"mouser"}
+    with pytest.raises(bom.NoBuild):
+        bom.import_cart(board, "", "lcsc", LCSC.name, LCSC.read_bytes())
+
+
+def test_receiving_a_cart_adds_it_to_the_inventory(tmp_path: Path) -> None:
+    """Mark received: each row's quantity goes into your inventory CSV (by
+    part number, or as its line's passive), and it's not "ordered" any more;
+    undo takes exactly that back out."""
+    from kigit_gui import builds, inventory
+    board = tmp_path / "x.kicad_pcb"
+    b = builds.new(board, "Proto", 2).id
+    shelf = tmp_path / "inventory.csv"
+    shelf.write_text("MPN,Kind,Value,Package,Quantity,Location\n"
+                     "FT230XS-R,,,,1,Box A\n"
+                     ",resistor,10k,0603,40,Drawer 2\n", encoding="utf-8")
+    d = {"field_names": {}, "lines": [
+        line(["U3"], "FT230XS"),
+        {**line(["R1", "R2", "R11", "R19", "R20"], "10k"), "kind": "resistor", "package": "0603"},
+    ]}
+    bom.import_cart(board, b, "lcsc", LCSC.name, LCSC.read_bytes())
+    with pytest.raises(inventory.InventoryError, match="choose your inventory"):
+        bom.receive_cart(board, b, d, "lcsc")
+    inventory.remember(shelf)
+    try:
+        state = bom.receive_cart(board, b, d, "lcsc")
+        inv = inventory.read(shelf)
+        assert inv.find({"mpn": "FT230XS-R"})[0].qty == 1 + 3                 # by MPN
+        assert inv.find({"kind": "resistor", "value": "10k", "package": "0603"})[0].qty == 40 + 100  # as its line's passive
+        assert inv.find({"mpn": "RC0603JR-070RL"})[0].qty == 100                # new to you: a row of its own (no LCSC column here)
+        assert len(inv.rows) == 2 + 5                                            # 7 rows: 2 found, 5 new
+        m = bom.match_carts(d, state)
+        assert m["lines"] == {} and m["carts"]["lcsc"]["received"]              # received: not ordered any more
+        # U3 had no part number: it gets the cart's as drafts, and so finds what arrived.
+        assert state["drafts"][bom.line_key(d["lines"][0])] == {"MPN": "FT230XS-R", "Manufacturer": "FTDI", "LCSC": "C69082"}
+        assert bom.stock_of(d, state, inv)[bom.line_key(d["lines"][0])]["qty"] == 4
+        with pytest.raises(ValueError, match="received already"):
+            bom.receive_cart(board, b, d, "lcsc")
+        bom.receive_cart(board, b, d, "lcsc", undo=True)                         # exactly what was added, back out
+        inv = inventory.read(shelf)
+        assert inv.find({"mpn": "FT230XS-R"})[0].qty == 1
+        assert inv.find({"kind": "resistor", "value": "10k", "package": "0603"})[0].qty == 40
+        assert bom.match_carts(d, bom.state(board, b))["lines"][bom.line_key(d["lines"][0])]["qty"] == {"lcsc": 3}
+    finally:
+        inventory.remember(None)  # the test app folder is shared by the tests

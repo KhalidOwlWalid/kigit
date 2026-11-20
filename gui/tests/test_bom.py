@@ -40,32 +40,38 @@ def test_drafts_kept_next_to_the_board(tmp_path: Path) -> None:
     assert not (tmp_path / bom.DRAFTS).exists()  # nothing left: no file
 
 
-def test_trackers_tick_parts_and_stay_out_of_the_schematic(tmp_path: Path) -> None:
-    """Trackers are tick columns kept in kigit-bom.json, per part reference,
-    beside the drafts (which they never disturb)."""
+def test_trackers_belong_to_a_build_and_stay_out_of_the_schematic(tmp_path: Path) -> None:
+    """Trackers are tick columns of a build (its build.json), per part
+    reference; the drafts (kigit-bom.json) never hold them."""
+    from kigit_gui import builds
     board = tmp_path / "x.kicad_pcb"
     bom.set_draft(board, "10k|R_0603", "MPN", "RC0603FR-0710KL")
-    bom.add_tracker(board, "Carted")
-    bom.add_tracker(board, "Placed")
-    bom.add_tracker(board, "Carted")  # once
-    state = bom.set_tracked(board, "Carted", ["R1", "R2"], True)
+    b = builds.new(board, "Proto", 3).id
+    other = builds.new(board, "Bulk", 50).id
+    with pytest.raises(bom.NoBuild):
+        bom.add_tracker(board, "", "Carted")                 # no build: nowhere to keep it
+    bom.add_tracker(board, b, "Carted")
+    bom.add_tracker(board, b, "Placed")
+    bom.add_tracker(board, b, "Carted")  # once
+    state = bom.set_tracked(board, b, "Carted", ["R1", "R2"], True)
     assert state["tracking"] == {"columns": ["Carted", "Placed"], "done": {"Carted": ["R1", "R2"]}}
-    state = bom.set_tracked(board, "Carted", ["R2", "R3"], True)
+    state = bom.set_tracked(board, b, "Carted", ["R2", "R3"], True)
     assert state["tracking"]["done"]["Carted"] == ["R1", "R2", "R3"]
-    state = bom.set_tracked(board, "Carted", ["R1"], False)
+    state = bom.set_tracked(board, b, "Carted", ["R1"], False)
     assert state["tracking"]["done"]["Carted"] == ["R2", "R3"]
-    assert state["drafts"]["10k|R_0603"]["MPN"] == "RC0603FR-0710KL"  # drafts untouched
-    saved = json.loads((tmp_path / bom.DRAFTS).read_text(encoding="utf-8"))
-    assert saved["tracking"]["columns"] == ["Carted", "Placed"]
-    state = bom.remove_tracker(board, "Carted")
+    assert state["drafts"]["10k|R_0603"]["MPN"] == "RC0603FR-0710KL"  # the drafts are there too, untouched
+    assert bom.state(board, other)["tracking"] == {"columns": [], "done": {}}  # another build starts fresh
+    assert bom.state(board, "")["tracking"]["columns"] == []                    # and so does the design
+    saved = json.loads((tmp_path / "kigit-builds" / b / "build.json").read_text(encoding="utf-8"))
+    assert saved["tracking"]["columns"] == ["Carted", "Placed"] and saved["boards"] == 3
+    assert "tracking" not in json.loads((tmp_path / bom.DRAFTS).read_text(encoding="utf-8"))
+    builds.update(board, b, boards=4)                         # editing the build keeps what's in it
+    assert bom.state(board, b)["tracking"]["done"]["Carted"] == ["R2", "R3"]
+    state = bom.remove_tracker(board, b, "Carted")
     assert state["tracking"] == {"columns": ["Placed"], "done": {}}
-    # The drafts dropped (written to the schematic): the file stays for the tracker.
-    bom.set_draft(board, "10k|R_0603", "MPN", None)
-    assert (tmp_path / bom.DRAFTS).exists()
-    bom.remove_tracker(board, "Placed")
-    assert not (tmp_path / bom.DRAFTS).exists()  # nothing left
-    # A broken tracking block is ignored, not fatal.
-    (tmp_path / bom.DRAFTS).write_text('{"version": 2, "tracking": {"columns": "x", "done": 3}}', encoding="utf-8")
+    # Trackers and carts from before builds (in kigit-bom.json) are left behind.
+    (tmp_path / bom.DRAFTS).write_text('{"version": 2, "tracking": {"columns": ["Old"], "done": {}}, "carts": {}}',
+                                      encoding="utf-8")
     assert bom.load_drafts(board)["tracking"] == {"columns": [], "done": {}}
 
 
@@ -77,9 +83,11 @@ def test_renaming_columns_keeps_their_drafts_and_ticks(tmp_path: Path) -> None:
     state = bom.rename_column(board, "Voltage", "Voltage rating")
     assert state["columns"] == ["Voltage rating", "Supplier"]  # in place
     assert state["drafts"]["10k|R_0603"] == {"Voltage rating": "50V"}
-    bom.add_tracker(board, "Carted")
-    bom.set_tracked(board, "Carted", ["R1"], True)
-    state = bom.rename_tracker(board, "Carted", "In cart")
+    from kigit_gui import builds
+    b = builds.new(board, "Proto", 1).id
+    bom.add_tracker(board, b, "Carted")
+    bom.set_tracked(board, b, "Carted", ["R1"], True)
+    state = bom.rename_tracker(board, b, "Carted", "In cart")
     assert state["tracking"] == {"columns": ["In cart"], "done": {"In cart": ["R1"]}}
 
 
@@ -293,6 +301,20 @@ def test_hidden_panes_fit_the_board_when_shown() -> None:
     page = _page()
     assert 'addEventListener("resize", () => { if (drawn && !full && measure()) fit(); })' in page
     assert 'if (model && !framed) { framed = true; view("iso"); }' in page
+
+
+def test_buy_on_the_page() -> None:
+    """With a build: To buy (needed - in stock - ordered), how many boards
+    the stock covers, receiving carts, exporting only what's left to buy;
+    every request says which build."""
+    page = _page()
+    assert 'body = { build: BUILD ? BUILD.id : "", ...(body || {}) };' in page
+    assert "/drafts?build=" in page and "/cart?build=" in page and "&build=" in page
+    assert 'id: "tobuy", label: "To buy (this build)", filter: "tobuy"' in page
+    assert "toBuy: Math.max(0, need - stock - ordered)" in page
+    assert "stock covers <b>" in page and "data-receive=" in page and "data-unreceive=" in page
+    assert '["tobuy", "Only what\'s still to buy (and that many)"]' in page
+    assert 'exportRule === "tobuy" && BUILD ? buyOf(l).toBuy : l.qty * boards' in page
 
 
 def test_trackers_on_the_page() -> None:

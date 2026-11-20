@@ -7,9 +7,12 @@
 
 revision is the commit the build is for (null: the working tree, with
 head saying where it started). A build's id is its folder's name, made
-from its name (renaming it renames the folder). What each build holds
-beyond this (carts, procurement trackers, boards #1...) comes with Buy and
-Assemble.
+from its name (renaming it renames the folder).
+
+What's bought for it is in the same file (Buy): "tracking" (your tick
+columns: Sourced, Carted...) and "carts" (imported from Mouser and LCSC,
+with "received" once they're in your inventory); bom.py reads and writes
+those (load_extra / save_extra), this keeps them as they are.
 """
 
 from __future__ import annotations
@@ -23,6 +26,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 FOLDER = "kigit-builds"
+EXTRA = ("tracking", "carts")  # what's bought for a build (bom.py)
 FILE = "build.json"
 MAX_BOARDS = 100000
 
@@ -39,6 +43,7 @@ class Build:
     created: str
     revision: dict | None  # {"hash", "subject"}, or None for the working tree
     head: str = ""
+    extra: dict | None = None  # what bom.py keeps in it: tracking, carts
 
     def to_dict(self) -> dict:
         return {"id": self.id, "name": self.name, "boards": self.boards, "created": self.created,
@@ -92,14 +97,15 @@ def _read(path: Path) -> Build | None:
         boards = _boards(d.get("boards", 1))
     except BuildError:
         boards = 1
-    return Build(path.name, d["name"], boards, str(d.get("created", "")), rev, str(d.get("head", "")))
+    extra = {k: d[k] for k in EXTRA if k in d}
+    return Build(path.name, d["name"], boards, str(d.get("created", "")), rev, str(d.get("head", "")), extra)
 
 
 def _write(board: str | Path, b: Build) -> None:
     path = folder(board) / b.id
     path.mkdir(parents=True, exist_ok=True)
     data = {"version": 1, "name": b.name, "boards": b.boards, "created": b.created, "revision": b.revision,
-            "head": b.head}
+            "head": b.head, **{k: v for k, v in (b.extra or {}).items() if k in EXTRA and v}}
     tmp = path / (FILE + ".tmp")
     tmp.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8", newline="\n")
     tmp.replace(path / FILE)
@@ -164,3 +170,15 @@ def update(board: str | Path, build_id: str, name: str | None = None, boards: in
 def delete(board: str | Path, build_id: str) -> None:
     b = get(board, build_id)
     shutil.rmtree(folder(board) / b.id)
+
+
+def load_extra(board: str | Path, build_id: str) -> dict:
+    """A build's tracking and carts, as stored (bom.py cleans them)."""
+    return dict(get(board, build_id).extra or {})
+
+
+def save_extra(board: str | Path, build_id: str, extra: dict) -> None:
+    """Replaces a build's tracking and carts (re-reading the rest first)."""
+    b = get(board, build_id)
+    b.extra = {k: extra[k] for k in EXTRA if k in extra}
+    _write(board, b)
