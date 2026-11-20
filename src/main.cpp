@@ -18,13 +18,22 @@ using namespace kigit;
 
 namespace {
 
+// An error in the log on one line: a log line's continuation has no
+// timestamp, so the GUI (which hides log lines by theirs) would show it again.
+void log_error(const std::exception& e) {
+    std::string one = e.what();
+    for (auto& c : one)
+        if (c == '\n' || c == '\r') c = ' ';
+    spdlog::error("{}", one);
+}
+
 int run(int argc, char** argv) {
     if (argc >= 2 && std::string(argv[1]) == "bom") {
         try {
             return cmd::run_bom(argc - 2, argv + 2);
         } catch (const std::exception& e) {
             std::cerr << "kigit: " << e.what() << "\n";
-            spdlog::error("{}", e.what());
+            log_error(e);
             return 1;
         }
     }
@@ -40,7 +49,7 @@ int run(int argc, char** argv) {
         return cmd::run_diff(o, project);
     } catch (const std::exception& e) {
         std::cerr << "kigit: " << e.what() << "\n";
-        spdlog::error("{}", e.what());
+        log_error(e);
         return 1;
     }
 }

@@ -102,6 +102,43 @@ kigit is not a schematic editor, and this can't change your design:
 
 Only the working tree can be edited: a commit's BOM is read-only.
 
+## Builds
+
+A **build** is a batch of boards you're making from the design: *Proto run, 3 boards* or *December run, 50 boards*. Pick one in the **Build** list next to the title (**+ New build…** makes one); **Design only** is the schematic's parts on their own, as the BOM opens the first time.
+
+- A build keeps its **number of boards** (the **Boards** box, where **Build qty** is without a build; saved as you type) and the **revision** it's for: the working tree (and the commit it started from) or the commit you opened the BOM at.
+- Each build is a folder next to the board, `kigit-builds/<name>/build.json`, in git with the project. **⋯** renames it (the folder follows) or deletes it (git still has it if you committed it).
+- The build you picked is remembered for that board in your browser: it's still there when you reload or open the BOM again, until you pick another.
+- Coming next, per build: what's bought and still to buy (**Buy**), and boards #1, #2... with their own placement sheets (**Assemble**).
+
+## Inventory
+
+Your **inventory** is a CSV file of yours, wherever you keep it (a synced folder, its own git repo, a USB stick), shared by every project. kigit reads it to show what you have, and changes only its **Quantity** (and adds rows for parts new to you). It only remembers *where* the file is, so removing kigit or its app folder loses nothing: choose the file again.
+
+**Inventory** in the BOM's header: **Choose your inventory file…** (browse to it) or **New inventory file…** (an empty one with kigit's columns, where you say). Then it lists your parts; type a new quantity and it's written into the file when you leave the box. Edit anything else in a spreadsheet: kigit reads the file again when you come back to the page.
+
+The format: one row per part, a header row first, columns in any order (names matched loosely):
+
+| Column | | |
+|---|---|---|
+| `Quantity` | needed | how many you have |
+| `MPN`, `LCSC`, `Mouser`, `Digi-Key` | one of these... | what the part is |
+| `Kind`, `Value`, `Package` | ...or these, for passives | `resistor`, `10k`, `0603` (resistors, capacitors, inductors and ferrites without a part number) |
+| `Manufacturer`, `Description`, `Location`, `Notes`, anything else | yours | kept as they are |
+
+```csv
+MPN,Manufacturer,LCSC,Mouser,Kind,Value,Package,Quantity,Location,Notes
+RC0603FR-0710KL,YAGEO,C98220,,resistor,10k,0603,400,Drawer 2,
+STM32F103C8T6,STMicroelectronics,,511-STM32F103C8T6,,,,6,Box A,two have bent pins
+,,,,capacitor,100n,0603,1200,Drawer 1,mixed brands
+```
+
+- **In stock** (a column, once you've chosen the file): each line's stock against what you need (quantity × Build qty), green or red, found by its MPN, else LCSC / Mouser / Digi-Key number (drafts count), else as a passive by kind, value and package (`10k`, `10K`, `10kΩ` and `4k7` / `4.7k` are the same). **✎** changes the count; **+ add** puts a line's part in your inventory. Its **▾** filters: *Enough in stock*, *Not enough*, *Not in the inventory*.
+- Rows kigit can't use (no quantity, nothing saying what the part is, the same part twice) are listed in the dialog and left alone.
+- Every change re-reads the file first (so edits made elsewhere aren't lost), goes through a temporary file, and keeps the previous version as `<name>.csv.bak`.
+- Windows: if the file is open in Excel, Excel locks it and kigit can't save; close it there and try again.
+- Coming with **Buy** and **Assemble**: received carts adding to it, and parts placed on a board taking from it.
+
 ## Notes about parts
 
 Why did you pick that regulator, that crystal, that 0603 over a 0402? **+ Notes** under a line's references keeps the reason with the part.

@@ -32,7 +32,9 @@ kept with the job for the page. Keys go to kigit on stdin (kigit bom
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import html
+import os
 import json
 import re
 import secrets
@@ -353,6 +355,44 @@ def assign_row(board: str | Path, data: dict, site: str, i: int, refs: list[str]
     return load_drafts(board)
 
 
+# -------------------------------------------------------------- inventory
+def line_ids(line: dict, drafts: dict, field_names: dict) -> dict:
+    """What a line's part is, for the inventory (inventory.keys_of): its part
+    numbers as shown (drafts count), kind, value and package."""
+    ids = {k: shown_number(line, k, drafts, field_names) for k in ("mpn", "manufacturer", "lcsc", "mouser", "digikey")}
+    ids.update({"kind": line.get("kind", ""), "value": line.get("value", ""), "package": line.get("package", "")})
+    return {k: v for k, v in ids.items() if v}
+
+
+def stock_of(data: dict, state: dict, inv) -> dict:
+    """Each line's row in the inventory: {line key: {qty, by, label, row}};
+    lines with nothing to find them by get {qty: null, why}."""
+    from . import inventory
+    fn, drafts = data.get("field_names") or {}, state.get("drafts") or {}
+    out = {}
+    for l in data.get("lines", []):
+        if l.get("dnp"):
+            continue
+        ids = line_ids(l, drafts, fn)
+        if not inventory.keys_of(ids):
+            out[line_key(l)] = {"qty": None, "why": "no part number to look for (a passive needs a value and package)"}
+            continue
+        row, by = inv.find(ids)
+        out[line_key(l)] = ({"qty": row.qty, "by": by, "label": row.label(), "row": row.line} if row
+                            else {"qty": 0, "by": "", "missing": True})
+    return out
+
+
+def _stock_answer(job: Job) -> JSONResponse:
+    from . import inventory
+    inv, why = inventory.current()
+    where = inventory.location()
+    return JSONResponse({"path": str(where) if where else "", "error": "" if why in ("", "none") else why,
+                         "configured": where is not None,
+                         "inventory": inv.to_json() if inv else None,
+                         "lines": stock_of(job.data, load_drafts(job.board), inv) if inv else {}})
+
+
 def _job(key: str) -> Job | None:
     return jobs.get(key)
 
@@ -549,6 +589,123 @@ async def _edit_cart(key: str, site: str, request: Request) -> Response:
     return _cart_answer(job, state)
 
 
+@app.get("/bom/{key}/builds")
+async def _builds(key: str) -> Response:
+    from . import builds
+    job = _job(key)
+    if job is None:
+        return JSONResponse({"error": "gone"}, status_code=404)
+    return JSONResponse({"builds": [b.to_dict() for b in builds.all_builds(job.board)]})
+
+
+@app.post("/bom/{key}/builds")
+async def _edit_builds(key: str, request: Request) -> Response:
+    """{action: new, name, boards} | {action: update, id, name?, boards?} | {action: delete, id}.
+    Answers {build (the one made or changed, or null), builds}."""
+    from . import builds
+    job = _job(key)
+    if job is None:
+        return JSONResponse({"error": "gone"}, status_code=404)
+    body = await request.json()
+    action = body.get("action")
+    try:
+        if action == "new":
+            b = builds.new(job.board, str(body.get("name", "")), body.get("boards", 1), job.rev)
+            logs.log.info("bom: new build %s (%d boards)", b.id, b.boards)
+        elif action == "update":
+            b = builds.update(job.board, str(body.get("id", "")), body.get("name"), body.get("boards"))
+        elif action == "delete":
+            builds.delete(job.board, str(body.get("id", "")))
+            logs.log.info("bom: deleted build %s", body.get("id"))
+            b = None
+        else:
+            return JSONResponse({"error": f"unknown action {action}"}, status_code=400)
+    except builds.BuildError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    except OSError as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+    return JSONResponse({"build": b.to_dict() if b else None,
+                         "builds": [x.to_dict() for x in builds.all_builds(job.board)]})
+
+
+@app.get("/bom/{key}/stock")
+async def _stock(key: str) -> Response:
+    job = _job(key)
+    if job is None:
+        return JSONResponse({"error": "gone"}, status_code=404)
+    return await asyncio.to_thread(_stock_answer, job)
+
+
+@app.post("/bom/{key}/inventory")
+async def _edit_inventory(key: str, request: Request) -> Response:
+    """{action: choose | new, path} | {action: forget} | {action: set | adjust,
+    key (a BOM line) or ids (a row), qty | delta}."""
+    from . import inventory
+    job = _job(key)
+    if job is None:
+        return JSONResponse({"error": "gone"}, status_code=404)
+    body = await request.json()
+    action = body.get("action")
+
+    def run() -> None:
+        if action in ("choose", "new"):
+            path = Path(str(body.get("path", ""))).expanduser()
+            if not path.is_absolute():
+                raise inventory.InventoryError("give the file's full path")
+            inv = inventory.create(path) if action == "new" else inventory.read(path)
+            inventory.remember(path, inv)
+            logs.log.info("inventory: %s %s (%d parts)", "made" if action == "new" else "chose", path, len(inv.rows))
+        elif action == "forget":
+            inventory.remember(None)
+            logs.log.info("inventory: forgot the file (it stays where it is)")
+        elif action in ("set", "adjust"):
+            where = inventory.location()
+            if where is None:
+                raise inventory.InventoryError("choose your inventory file first")
+            if body.get("key"):
+                line = next((l for l in job.data.get("lines", []) if line_key(l) == body["key"]), None)
+                if line is None:
+                    raise inventory.InventoryError("no such line")
+                ids = line_ids(line, load_drafts(job.board).get("drafts") or {}, job.data.get("field_names") or {})
+            else:
+                ids = {k: str(v) for k, v in (body.get("ids") or {}).items() if isinstance(v, str | int)}
+            n = int(body.get("qty" if action == "set" else "delta", 0))
+            keys = inventory.keys_of(ids)
+            extra = {keys[0]: {k: ids[k] for k in ("manufacturer", "description") if ids.get(k)}} if keys else {}
+            inventory.change(where, deltas=[(ids, n)] if action == "adjust" else None,
+                             sets=[(ids, n)] if action == "set" else None, add_fields=extra)
+        else:
+            raise inventory.InventoryError(f"unknown action {action}")
+
+    try:
+        await asyncio.to_thread(run)
+    except inventory.InventoryError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    except (TypeError, ValueError) as e:
+        return JSONResponse({"error": f"not a number: {e}"}, status_code=400)
+    return await asyncio.to_thread(_stock_answer, job)
+
+
+@app.get("/bom/{key}/browse")
+async def _browse(key: str, dir: str = "") -> Response:
+    """Folders and .csv files in a folder, for choosing the inventory file
+    (a web page can't ask for a path). Only names, nothing read."""
+    from . import inventory
+    if _job(key) is None:
+        return JSONResponse({"error": "gone"}, status_code=404)
+    where = inventory.location()
+    d = Path(dir).expanduser() if dir else (where.parent if where else Path.home())
+    try:
+        d = d.resolve()
+        entries = sorted(d.iterdir(), key=lambda p: p.name.lower())
+    except OSError as e:
+        return JSONResponse({"error": f"can't open {d}: {e}"}, status_code=400)
+    folders = [p.name for p in entries if p.is_dir() and not p.name.startswith(".")]
+    files = [p.name for p in entries if p.is_file() and p.suffix.lower() == ".csv"]
+    return JSONResponse({"dir": str(d), "parent": str(d.parent) if d.parent != d else "", "folders": folders,
+                         "files": files, "sep": os.sep})
+
+
 @app.get("/bom/{key}/keys")
 async def _keys(key: str) -> Response:
     if _job(key) is None:
@@ -643,6 +800,8 @@ def page(key: str, job: Job) -> str:
     return (_PAGE.replace("%%TITLE%%", html.escape(job.title))
             .replace("%%KEY%%", key)
             .replace("%%NOTESKEY%%", project_key(Path(job.board).parent))
+            # Stable across GUI sessions (the keys above aren't): what this page remembers is per board.
+            .replace("%%BOARDID%%", hashlib.sha1(str(Path(job.board).resolve()).encode()).hexdigest()[:16])
             .replace("%%NAME%%", json.dumps(name))
             .replace("%%EDITABLE%%", "true" if job.rev == "LOCAL" else "false")
             .replace("%%DRAFTS_FILE%%", html.escape(str(drafts_path(job.board))))

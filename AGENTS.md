@@ -604,6 +604,42 @@ at once. localStorage settings are per origin, so per port.
   made before it existed was lost). Tests: gui/tests/test_cart.py uses the
   real exports in tests/test_examples/exported_boms_from_distributor
   (owl board's; the BOM in the test is made up to meet them).
+  Builds (`builds.py`, the plan: builds -> inventory -> Buy -> Assemble):
+  a batch of boards, `<board folder>/kigit-builds/<id>/build.json`
+  {version 1, name, boards, created, revision {hash, subject} | null
+  (working tree), head (HEAD when made)}; id = slug of the name (rename
+  renames the folder; `_free_id` keeps ids unique; `get` only takes
+  `[a-z0-9-]`). Routes GET/POST `/bom/{key}/builds` {action new | update
+  | delete}. Page: `#build` select (Design only, builds, "+"), `#bmenu`
+  rename/delete, `BUILD`/`BUILDS`; picked build in localStorage
+  `kigit.bomBuild.<BOARDID>` (BOARDID = sha1 of the board's path: the
+  notes/job keys change every GUI session). With a build, `#boards` is
+  its board count (saved 600 ms after typing); `qtyChanged()` is what
+  re-counts when it changes. Decided with the user: inventory is a CSV
+  of theirs anywhere (kigit keeps only its path and a cached copy in the
+  app folder), across projects; placing parts on a board (Assemble)
+  takes them out of it; boards #1.. are made only when started, a file
+  each in `kigit-builds/<id>/boards/`; today's carts/trackers in
+  kigit-bom.json will become per build (starting fresh).
+  Inventory (`inventory.py`): the user's CSV anywhere; kigit keeps
+  `<app data>/kigit/inventory.json` = {path, mtime, size, copy} only
+  (`location`, `remember`, `current()` re-reads every time). Columns by
+  `role()` (qty, mpn, manufacturer, lcsc, mouser, digikey, kind, value,
+  package, description, location, notes; others kept untouched); rows
+  without a qty number, without identity, or repeating a part are
+  `problems`. Identity `keys_of`: `mpn:`/`lcsc:`/`mouser:`/`digikey:` +
+  `norm_pn`, then `generic:kind|norm_value|package` for GENERIC_KINDS
+  only. `change(path, deltas, sets, add_fields)` re-reads the file,
+  edits only the Quantity cell (>= 0) or appends rows (kind/value/package
+  only for passives), keeps dialect and line endings, `.bak`, temp +
+  `os.replace`; PermissionError -> "open in a spreadsheet?". BOM side:
+  `line_ids` (shown numbers, drafts count) -> `stock_of`; routes GET
+  `/bom/{key}/stock`, POST `/bom/{key}/inventory` {choose|new|forget|set|
+  adjust}, GET `/bom/{key}/browse?dir=` (folders and .csv names only).
+  Page: `STOCK`, `#invbtn`/`#invdlg` (format, browser with `fsMode`; the
+  body's folder is `data-cwd`, never `data-dir`, which folder rows use),
+  In stock column id "stock" (filter "stock"), refetched on
+  `visibilitychange` and after drafts/write/undo.
   Only on request: no background
   lookups. The page is `bom_page.html` (a plain file, read at import: no
   Python escaping), placeholders `%%KEY%%` etc. Beside the list: a 2D

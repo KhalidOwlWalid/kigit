@@ -278,6 +278,15 @@ def test_carts_on_the_page() -> None:
     assert "function mark(marks)" in page and "window.kigitBomMarked" in page
 
 
+def test_builds_on_the_page() -> None:
+    """The Build picker (Design only, the builds, + New build), remembered per
+    board (a key that lasts across GUI sessions), its board count as Build qty."""
+    page = _page()
+    assert 'id="build"' in page and 'id="bmenu"' in page and "+ New build&hellip;" in page
+    assert "kigit.bomBuild.${BOARDID}" in page
+    assert '%%' not in page.split("<script>")[0] and 'BOARDID = "' in page and 'BOARDID = ""' not in page
+
+
 def test_trackers_on_the_page() -> None:
     page = _page()
     assert 'id="addtracker"' in page

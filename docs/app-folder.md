@@ -37,6 +37,7 @@ In the GUI, the :material-receipt-text: log button shows the log's full path and
 | `3d-build-times.json` | How long each board's [3D model](how-to-use/3d-view.md#making-the-model) took to make, for the progress bar | the GUI |
 | `parts-keys.json` | Your keys for [part lookups](how-to-use/bom.md#keys) (Mouser's API key, Digi-Key's client ID and secret), readable only by you | `kigit bom --set-key` |
 | `parts-cache.json` | Mouser's and Digi-Key's answers to part lookups, used for a day (dropped after a week) | `kigit bom --lookup` |
+| `inventory.json` | Where your [inventory](how-to-use/bom.md#inventory) CSV is, and a copy of what was last read. The inventory itself is your CSV, wherever you keep it: not in here | the GUI |
 | `gui-env/` | The GUI's Python and packages, set up the first time you run `kigit gui` | the installed kigit |
 | `example/` | The [example project](example.md), if you tried it from the GUI | the GUI |
 

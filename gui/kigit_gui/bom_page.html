@@ -137,11 +137,29 @@ th:hover .fbtn { border-color: var(--line); } th .fbtn.on { color: var(--accent)
 #fmenu input[type=text] { width: 100%; margin: 4px 0; } #fmenu .row { display: flex; justify-content: flex-end; margin-top: 6px; }
 #clearf { border-color: var(--accent); color: var(--accent); }
 /* carts: what's ordered */
+.buildpick { display: flex; flex-wrap: wrap; gap: 2px 6px; align-items: center; max-width: 26rem; }
+.buildpick select { max-width: 16rem; font-weight: 600; }
+.buildpick select.on { border-color: var(--accent); color: var(--accent); }
+.buildpick .sub { flex-basis: 100%; font-size: 12px; }
+#bmenu { position: fixed; z-index: 8; display: none; background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
+  box-shadow: 0 6px 18px rgba(0,0,0,.35); padding: 4px; }
+#bmenu.on { display: block; }
+#bmenu button { display: block; width: 100%; text-align: left; border: 0; background: none; padding: 5px 12px; border-radius: 6px; }
+#bmenu button:hover { background: var(--hl); } #bmenu button.bad { color: var(--bad); }
 #cmenu { position: fixed; z-index: 8; display: none; background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
   box-shadow: 0 6px 18px rgba(0,0,0,.35); padding: 4px; width: 18rem; }
 #cmenu.on { display: block; }
 #cmenu button { display: block; width: 100%; text-align: left; border: 0; background: none; padding: 6px 10px; border-radius: 6px; }
 #cmenu button:hover { background: var(--hl); } #cmenu small { display: block; color: var(--muted); font-size: 11.5px; }
+#invdlg { max-width: min(64rem, 94vw); width: 64rem; }
+#invdlg table { font-size: 12px; } #invdlg td, #invdlg th { padding: 3px 6px; }
+#invdlg input.q { width: 6rem; text-align: right; }
+#invdlg pre { background: var(--bg); padding: 6px 8px; border-radius: 6px; font-size: 11.5px; overflow: auto; }
+.fslist { max-height: 18rem; overflow: auto; border: 1px solid var(--line); border-radius: 6px; margin: 6px 0; }
+.fslist div { padding: 3px 10px; cursor: pointer; } .fslist div:hover { background: var(--hl); }
+.fslist .f::before { content: "📄 "; } .fslist .d::before { content: "📁 "; }
+td.stock2 { white-space: nowrap; font-variant-numeric: tabular-nums; }
+td.stock2 button { padding: 0 6px; font-size: 12px; }
 td.ordered { white-space: nowrap; font-variant-numeric: tabular-nums; }
 .oq { font-weight: 600; } .oq.ok { color: var(--ok); } .oq.short { color: var(--bad); }
 .osite { display: inline-block; font-size: 11px; color: var(--muted); margin-right: 6px; }
@@ -181,6 +199,11 @@ dialog a { color: var(--link); }
 <body>
 <header>
   <div><h1>Bill of materials</h1><div class="sub">%%TITLE%%</div></div>
+  <div class="buildpick">
+    <select id="build" aria-label="Build" title="A build: a batch of boards you're making (its board count, and soon what's bought and what's placed). Design only: just the schematic's parts"></select>
+    <button id="buildmore" title="Rename or delete this build" hidden>&#8943;</button>
+    <div class="sub" id="buildinfo"></div>
+  </div>
   <div class="stats" id="stats"></div>
   <div class="tools">
     <input id="filter" placeholder="Filter (ref, value, part...)" aria-label="Filter">
@@ -193,6 +216,7 @@ dialog a { color: var(--link); }
     <button id="addfield" title="Add a column for another part information field (e.g. Tolerance, Supplier): written into the schematic">+ Field</button>
     <button id="addtracker" title="Add a tick column to track a build: Carted, Ordered, Received, Placed... Kept in kigit-bom.json, never in the schematic">+ Tracker</button>
     <button id="export" class="primary" title="A CSV for LCSC's or Mouser's BOM upload, or with every column">Export CSV &#9662;</button>
+    <button id="invbtn" title="Your inventory: a CSV of yours, anywhere, shared by every project">Inventory</button>
     <button id="cartbtn" title="Import a cart exported from Mouser or LCSC: what's ordered, line by line, and on the board">Import cart &#9662;</button>
     <input type="file" id="cartfile" accept=".csv,.xls,.xlsx" hidden>
     <button id="lookup" title="Ask Mouser and Digi-Key (those you have a key for) for stock, prices and lifecycle, for Build qty boards (answers are kept a day; Shift+click asks again)">Look up</button>
@@ -247,11 +271,13 @@ design before saving. The search links only open the distributors' sites; kigit 
 <div id="tip"></div>
 <div id="colmenu" role="menu" aria-label="Columns"></div>
 <div id="fmenu" role="dialog" aria-label="Filter"></div>
+<div id="bmenu" role="menu" aria-label="Build"><button data-b="rename">Rename&hellip;</button><button data-b="delete" class="bad">Delete&hellip;</button></div>
 <div id="cmenu" role="menu" aria-label="Import cart">
   <button data-cart="mouser" role="menuitem"><b>Mouser cart&hellip;</b><small>Cart &rarr; Export (the .xls), or .xlsx / .csv</small></button>
   <button data-cart="lcsc" role="menuitem"><b>LCSC cart&hellip;</b><small>Cart &rarr; Export (the .csv), or .xlsx</small></button>
   <button data-cart="show" role="menuitem" id="cartshow"><b>Carts and unmatched rows&hellip;</b><small>What was imported; give rows kigit couldn't match to a line</small></button>
 </div>
+<dialog id="invdlg"><div id="invbody"></div><div class="row"><button id="invclose" class="primary">Done</button></div></dialog>
 <dialog id="cartdlg"><div id="cartbody"></div><div class="row"><button id="cartclose" class="primary">Done</button></div></dialog>
 <div id="xmenu" role="menu" aria-label="Export CSV">
   <div id="xrule"></div>
@@ -288,7 +314,7 @@ design before saving. The search links only open the distributors' sites; kigit 
 </dialog>
 <script>
 let DATA = %%DATA%%;
-const KEY = "%%KEY%%", NAME = %%NAME%%, EDITABLE = %%EDITABLE%%, NOTESKEY = "%%NOTESKEY%%";
+const KEY = "%%KEY%%", NAME = %%NAME%%, EDITABLE = %%EDITABLE%%, NOTESKEY = "%%NOTESKEY%%", BOARDID = "%%BOARDID%%";
 let drafts = { drafts: {}, columns: [], tracking: { columns: [], done: {} } };
 const $ = (id) => document.getElementById(id);
 const esc = (t) => String(t ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
@@ -386,6 +412,7 @@ let colFilters = {};  // column id -> {mode, q}
 const FILTERS = {
   track: [["done", "Done"], ["not", "Not done"], ["some", "Partly done"]],
   text: [["has", "Contains..."], ["filled", "Not empty"], ["empty", "Empty"]],
+  stock: [["enough", "Enough in stock"], ["short", "Not enough in stock"], ["none", "Not in the inventory"]],
   ordered: [["enough", "Enough in the carts"], ["short", "Not enough"], ["none", "Not in a cart"],
     ["from:mouser", "In the Mouser cart"], ["from:lcsc", "In the LCSC cart"]],
   site: [["ok", "Found"], ["short", "Short of stock"], ["ending", "Ending (obsolete, last buy...)"], ["choose", "To choose"],
@@ -400,6 +427,13 @@ function passes(col, f, l) {
     if (l.dnp) return false;  // not bought: not part of a build's progress
     const st = trackState(l, col.tracker);
     return f.mode === "done" ? st === "all" : f.mode === "not" ? st !== "all" : st === "some";
+  }
+  if (col.filter === "stock") {
+    if (l.dnp) return false;
+    const st = STOCK.lines[lineKey(l)], have = st && st.qty !== null ? st.qty : null, need = l.qty * buildQty();
+    if (f.mode === "none") return !st || st.qty === null || st.missing;
+    if (have === null || st.missing) return false;
+    return f.mode === "enough" ? have >= need : have < need;
   }
   if (col.filter === "ordered") {
     if (l.dnp) return false;
@@ -503,6 +537,9 @@ function tableCols() {
       filter: "text", text: (l) => shown(l, c),
       th: `<th title="${esc(c.name)}${c.kind ? "" : " (double-click to rename)"}"${c.kind ? "" : ` data-rename="f:${esc(c.name)}"`}>${esc(c.label)}</th>`,
       td: (l, i) => `<td>${cell(l, c, i, ci)}</td>` })),
+    ...(hasStock() ? [{ id: "stock", label: "In stock (inventory)", filter: "stock",
+      th: `<th title="What your inventory has of each line's part, against what you need (Build qty boards)">In stock</th>`,
+      td: (l) => stockCell2(l) }] : []),
     ...(hasCarts() ? [{ id: "ordered", label: "Ordered (carts)", filter: "ordered",
       th: `<th title="What the imported carts have for each line, against what you need (Build qty boards)">Ordered</th>`,
       td: (l) => orderedCell(l) }] : []),
@@ -575,6 +612,7 @@ function defaultWidth(id) {
   if (id === "search") return 84;
   if (id.startsWith("price:")) return 120;
   if (id === "ordered") return 150;
+  if (id === "stock") return 130;
   if (id.startsWith("t:")) return Math.max(100, 56 + 8 * id.length);  // title, count and filter button on one line
   if (id.startsWith("site:")) return 210;
   return id === "f:" + (columns()[0]?.name) ? 200 : 170;  // MPN a bit wider than the other fields
@@ -826,7 +864,7 @@ $("lookup").addEventListener("click", async (e) => {
   try { lookState(await post("lookup", { boards, refresh: e.shiftKey })); pollLookup(); }
   catch (err) { lookState({ error: err.message }); }
 });
-$("boards").addEventListener("input", () => { if (LOOK) lookState({ result: LOOK }); });
+
 
 // Hover a line: its parts light up; click: they stay lit (click again to let go).
 $("rows").addEventListener("mouseover", (e) => {
@@ -851,6 +889,7 @@ async function post(path, body) {
   const j = await r.json().catch(() => ({}));
   if (!r.ok) { const e = new Error(j.error || r.status); e.info = j; throw e; }
   if (hasCarts() && /^(drafts|write|undo)$/.test(path)) refreshCart();  // part numbers changed: match the carts again
+  if (hasStock() && /^(drafts|write|undo)$/.test(path)) refreshStock();  // ... and find them in the inventory again
   return j;
 }
 // Enter leaves the box (fields are one line); the text still wraps to show it all.
@@ -982,6 +1021,226 @@ $("addtracker").addEventListener("click", async () => {
 });
 $("filter").addEventListener("input", render);
 $("show").addEventListener("change", render);
+// ----------------------------------------------------------------- builds
+// A build: a batch of boards (kigit-builds/<id>/build.json, builds.py).
+// Picked in the header and remembered per board (this browser), until
+// another is picked. Its board count is Build qty; Design only leaves
+// Build qty free, as before.
+let BUILDS = [], BUILD = null;
+const pickKey = `kigit.bomBuild.${BOARDID}`;
+const remembered = () => { try { return localStorage.getItem(pickKey) || ""; } catch { return ""; } };
+const remember = (id) => { try { id ? localStorage.setItem(pickKey, id) : localStorage.removeItem(pickKey); } catch {} };
+function buildPicker() {
+  const sel = $("build");
+  sel.innerHTML = `<option value="">Design only</option>` +
+    BUILDS.map((b) => `<option value="${esc(b.id)}">${esc(b.name)} (${b.boards})</option>`).join("") +
+    `<option value="+">+ New build&hellip;</option>`;
+  sel.value = BUILD ? BUILD.id : "";
+  sel.classList.toggle("on", !!BUILD);
+  $("buildmore").hidden = !BUILD;
+  const rev = BUILD && (BUILD.revision ? `for ${BUILD.revision.hash.slice(0, 7)}${BUILD.revision.subject ? " " + BUILD.revision.subject : ""}`
+    : `for the working tree${BUILD.head ? ` (from ${BUILD.head.slice(0, 7)})` : ""}`);
+  $("buildinfo").textContent = BUILD ? `${BUILD.boards} board${BUILD.boards === 1 ? "" : "s"} · ${rev} · since ${BUILD.created}` : "";
+  $("buildinfo").title = BUILD ? `kigit-builds/${BUILD.id}/build.json` : "";
+  const qty = $("boards"), label = qty.closest("label");
+  if (BUILD) { qty.value = BUILD.boards; label.childNodes[0].textContent = "Boards "; label.title = "How many boards this build makes (saved with it)"; }
+  else { label.childNodes[0].textContent = "Build qty "; label.title = "How many boards you're building: multiplies the quantities in the exported CSV (the list itself doesn't change)"; }
+}
+function pickBuild(id) {
+  BUILD = BUILDS.find((b) => b.id === id) || null;
+  remember(BUILD ? BUILD.id : "");
+  buildPicker();
+  qtyChanged();
+}
+async function loadBuilds() {
+  try { BUILDS = (await (await fetch(`/bom/${KEY}/builds`)).json()).builds || []; } catch { BUILDS = []; }
+  const want = remembered();
+  BUILD = BUILDS.find((b) => b.id === want) || null;
+  if (want && !BUILD) remember("");  // that build is gone (deleted, or another branch)
+  buildPicker();
+  qtyChanged();
+}
+async function buildAction(body) {
+  const r = await post("builds", body);
+  BUILDS = r.builds;
+  return r.build;
+}
+// Build qty changed (typed, or a build picked): everything that counts boards follows.
+function qtyChanged() {
+  if (LOOK) lookState({ result: LOOK });
+  if (hasCarts()) { render(); markBoards(); }
+}
+$("build").addEventListener("change", async () => {
+  const sel = $("build");
+  if (sel.value !== "+") { pickBuild(sel.value); return; }
+  sel.value = BUILD ? BUILD.id : "";
+  const name = (prompt("A name for the build (a batch of boards you're making):", `Build ${new Date().toISOString().slice(0, 10)}`) || "").trim();
+  if (!name) return;
+  const boards = parseInt(prompt("How many boards?", String(buildQty())) || "", 10);
+  if (!(boards >= 1)) return;
+  try { const b = await buildAction({ action: "new", name, boards }); pickBuild(b.id); }
+  catch (e) { alert("No build made: " + e.message); }
+});
+let boardsTimer = 0;
+$("boards").addEventListener("input", () => {
+  if (!BUILD) return;
+  clearTimeout(boardsTimer);
+  boardsTimer = setTimeout(async () => {  // the build's board count, saved a moment after typing stops
+    const n = parseInt($("boards").value, 10);
+    if (!(n >= 1) || n === BUILD.boards) return;
+    try { const b = await buildAction({ action: "update", id: BUILD.id, boards: n }); BUILD = b; buildPicker(); }
+    catch (e) { alert("Not saved: " + e.message); }
+  }, 600);
+});
+$("buildmore").addEventListener("click", (e) => {
+  e.stopPropagation();
+  const m = $("bmenu"), r = $("buildmore").getBoundingClientRect();
+  m.classList.toggle("on"); m.style.top = r.bottom + 4 + "px"; m.style.left = r.left + "px";
+});
+document.addEventListener("click", () => $("bmenu").classList.remove("on"));
+$("bmenu").addEventListener("click", async (e) => {
+  const b = e.target.closest("[data-b]"); if (!b || !BUILD) return;
+  $("bmenu").classList.remove("on");
+  try {
+    if (b.dataset.b === "rename") {
+      const name = (prompt("Rename the build:", BUILD.name) || "").trim();
+      if (!name || name === BUILD.name) return;
+      pickBuild((await buildAction({ action: "update", id: BUILD.id, name })).id);  // its folder follows the name
+    } else {
+      if (!confirm(`Delete the build "${BUILD.name}"? Its folder (kigit-builds/${BUILD.id}) is deleted; git still has it if it was committed.`)) return;
+      await buildAction({ action: "delete", id: BUILD.id });
+      pickBuild("");
+    }
+  } catch (err) { alert(err.message); }
+});
+
+// -------------------------------------------------------------- inventory
+// Your inventory: a CSV of yours, anywhere (inventory.py). kigit keeps only
+// where it is. The In stock column finds each line's part in it (by part
+// numbers as shown, else a passive's kind, value and package).
+let STOCK = { configured: false, lines: {}, inventory: null, path: "", error: "" };
+const hasStock = () => !!STOCK.inventory;
+async function refreshStock() {
+  try { STOCK = await (await fetch(`/bom/${KEY}/stock`)).json(); } catch { return; }
+  $("invbtn").classList.toggle("on", hasStock());
+  $("invbtn").title = STOCK.path ? `Your inventory: ${STOCK.path}` + (STOCK.error ? ` (${STOCK.error})` : "") : $("invbtn").title;
+  render();
+  if ($("invdlg").open && !fsMode) invDialog();
+}
+document.addEventListener("visibilitychange", () => { if (!document.hidden && STOCK.configured) refreshStock(); });  // edited elsewhere?
+function stockCell2(l) {
+  if (l.dnp) return `<td class="stock2"><span class="faint">&ndash;</span></td>`;
+  const st = STOCK.lines[lineKey(l)], need = l.qty * buildQty();
+  if (!st || st.qty === null) return `<td class="stock2"><span class="faint" title="${esc(st?.why || "")}">no part number</span></td>`;
+  if (st.missing) return `<td class="stock2"><span class="faint">not in it</span> <button data-stock="${esc(lineKey(l))}" data-now="0" ` +
+    `title="Add this part to your inventory, with how many you have">+ add</button></td>`;
+  return `<td class="stock2" title="${esc(`${st.label}: line ${st.row} of your inventory (found by ${st.by})`)}">` +
+    `<span class="oq ${st.qty >= need ? "ok" : "short"}">${st.qty}</span> <span class="faint">/ ${need}</span> ` +
+    `<button data-stock="${esc(lineKey(l))}" data-now="${st.qty}" title="Change how many you have">&#9998;</button></td>`;
+}
+$("rows").addEventListener("click", async (e) => {
+  const b = e.target.closest("button[data-stock]"); if (!b) return;
+  const l = DATA.lines.find((x) => lineKey(x) === b.dataset.stock);
+  const n = prompt(`How many ${l.value} (${l.refs.join(", ")}) do you have? It's written into your inventory.`, b.dataset.now);
+  if (n === null || n.trim() === "" || !(+n >= 0)) return;
+  try { STOCK = await post("inventory", { action: "set", key: b.dataset.stock, qty: Math.round(+n) }); render(); }
+  catch (err) { alert("Not written: " + err.message); }
+});
+// The dialog: which file, and what's in it.
+let fsMode = "";  // "choose" | "new" while browsing for the file
+const FORMAT = `MPN,Manufacturer,LCSC,Mouser,Kind,Value,Package,Quantity,Location,Notes
+RC0603FR-0710KL,YAGEO,C98220,,resistor,10k,0603,400,Drawer 2,
+STM32F103C8T6,STMicroelectronics,,511-STM32F103C8T6,,,,6,Box A,two have bent pins
+,,,,capacitor,100n,0603,1200,Drawer 1,mixed brands`;
+function invDialog() {
+  fsMode = "";
+  const inv = STOCK.inventory, b = $("invbody");
+  if (!STOCK.configured) {
+    b.innerHTML = `<b>Your inventory</b><p class="sub">A CSV file of yours, wherever you keep it (a synced folder, its own git repo): ` +
+      `kigit reads it, shows what you have against what each build needs, and changes only its <b>Quantity</b> ` +
+      `(and adds rows for parts new to you). kigit only remembers where it is, so nothing is lost if kigit is removed.</p>` +
+      `<p class="sub">One row per part. <b>Quantity</b>, and something that says what the part is: <b>MPN</b>, <b>LCSC</b>, ` +
+      `<b>Mouser</b> or <b>Digi-Key</b>, or for resistors, capacitors, inductors and ferrites without a number <b>Kind</b>, ` +
+      `<b>Value</b> and <b>Package</b>. Any other columns (Location, Notes, your own) are yours and kept.</p><pre>${esc(FORMAT)}</pre>` +
+      `<div class="row" style="justify-content:flex-start"><button data-inv="choose" class="primary">Choose your inventory file&hellip;</button>` +
+      `<button data-inv="new">New inventory file&hellip;</button></div>`;
+  } else if (!inv) {
+    b.innerHTML = `<b>Your inventory</b><p class="sub" style="color:var(--bad)">${esc(STOCK.error)}</p>` +
+      `<div class="row" style="justify-content:flex-start"><button data-inv="choose" class="primary">Find it&hellip;</button>` +
+      `<button data-inv="new">New inventory file&hellip;</button><button data-inv="forget">Forget it</button></div>`;
+  } else {
+    const q = (b.querySelector("#invq")?.value || "").toLowerCase();
+    const rows = inv.rows.filter((r) => !q || JSON.stringify(r.ids).toLowerCase().includes(q));
+    const id = (r, k) => esc(r.ids[k] || "");
+    b.innerHTML = `<b>Your inventory</b> <span class="sub">${inv.rows.length} parts</span>` +
+      `<p class="sub"><code>${esc(STOCK.path)}</code> <button data-inv="choose">Change file&hellip;</button> ` +
+      `<button data-inv="new">New file&hellip;</button> <button data-inv="forget" title="kigit stops using it; the file stays where it is">Forget</button></p>` +
+      (inv.problems.length ? `<details><summary class="sub" style="color:var(--warn)">${inv.problems.length} row${inv.problems.length === 1 ? "" : "s"} ` +
+        `kigit can't use</summary><pre>${esc(inv.problems.join("\n"))}</pre></details>` : "") +
+      `<input id="invq" placeholder="Filter" value="${esc(q)}" style="width:16rem;margin:6px 0">` +
+      `<div style="max-height:55vh;overflow:auto"><table><tr><th>Part</th><th>Manufacturer</th><th>LCSC</th><th>Mouser</th><th>Kind / value / package</th>` +
+      `<th>Location</th><th>Notes</th><th class="qty">Quantity</th></tr>` +
+      rows.map((r) => `<tr><td class="num">${esc(r.label)}</td><td>${id(r, "manufacturer")}</td><td class="num">${id(r, "lcsc")}</td>` +
+        `<td class="num">${id(r, "mouser")}</td><td>${esc([r.ids.kind, r.ids.value, r.ids.package].filter(Boolean).join(" "))}</td>` +
+        `<td>${id(r, "location")}</td><td>${id(r, "notes")}</td><td class="qty"><input class="q" type="number" min="0" ` +
+        `data-row="${r.line}" value="${r.qty}"></td></tr>`).join("") + `</table></div>` +
+      `<p class="sub">Quantities are written into the file when you leave a box. Edit the rest in a spreadsheet: kigit reads the file again when you come back.</p>`;
+    const box = b.querySelector("#invq"); box.focus(); box.setSelectionRange(box.value.length, box.value.length);
+  }
+  if (!$("invdlg").open) $("invdlg").showModal();
+}
+// Browsing for the file (a web page can't ask for a path): folders and .csv files.
+async function browse(dir) {
+  let d;
+  try { d = await (await fetch(`/bom/${KEY}/browse?dir=${encodeURIComponent(dir || "")}`)).json(); } catch { return; }
+  const b = $("invbody");
+  if (d.error) { alert(d.error); return; }
+  b.innerHTML = `<b>${fsMode === "new" ? "Where to make your inventory file" : "Choose your inventory file"}</b>` +
+    `<p class="sub"><input id="fspath" value="${esc(d.dir)}" style="width:80%"> <button data-fs="go">Go</button></p>` +
+    `<div class="fslist">${d.parent ? `<div class="d" data-dir="${esc(d.parent)}">..</div>` : ""}` +
+    d.folders.map((f) => `<div class="d" data-dir="${esc(d.dir + d.sep + f)}">${esc(f)}</div>`).join("") +
+    (fsMode === "choose" ? d.files.map((f) => `<div class="f" data-file="${esc(d.dir + d.sep + f)}">${esc(f)}</div>`).join("") : "") +
+    (!d.folders.length && !(fsMode === "choose" && d.files.length) ? `<div class="faint">Nothing here.</div>` : "") + `</div>` +
+    (fsMode === "new" ? `<p class="sub">File name <input id="fsname" value="inventory.csv"> <button data-fs="make" class="primary">Make it here</button></p>` : "") +
+    `<p><button data-fs="back">Back</button></p>`;
+  b.dataset.cwd = d.dir; b.dataset.sep = d.sep;  // not data-dir: that's what a folder row is
+}
+async function useFile(action, path) {
+  try { STOCK = await post("inventory", { action, path }); fsMode = ""; invDialog(); render(); $("invbtn").classList.toggle("on", hasStock()); }
+  catch (err) { alert(err.message); }
+}
+$("invbtn").addEventListener("click", async () => { await refreshStock(); invDialog(); });
+$("invclose").addEventListener("click", () => { fsMode = ""; $("invdlg").close(); });
+$("invbody").addEventListener("click", async (e) => {
+  const t = e.target, b = $("invbody");
+  const inv = t.closest("[data-inv]"), dir = t.closest("[data-dir]"), file = t.closest("[data-file]"), fs = t.closest("[data-fs]");
+  if (inv) {
+    if (inv.dataset.inv === "forget") {
+      if (!confirm("Stop using this inventory file? The file stays where it is; choose it again any time.")) return;
+      useFile("forget", ""); return;
+    }
+    fsMode = inv.dataset.inv; browse(""); return;
+  }
+  if (dir) browse(dir.dataset.dir);
+  else if (file) useFile("choose", file.dataset.file);
+  else if (fs?.dataset.fs === "go") browse($("fspath").value);
+  else if (fs?.dataset.fs === "back") invDialog();
+  else if (fs?.dataset.fs === "make") {
+    const name = ($("fsname").value || "").trim();
+    if (!name) return;
+    useFile("new", b.dataset.cwd + b.dataset.sep + (name.toLowerCase().endsWith(".csv") ? name : name + ".csv"));
+  }
+});
+$("invbody").addEventListener("keydown", (e) => { if (e.key === "Enter" && e.target.id === "fspath") browse(e.target.value); });
+$("invbody").addEventListener("input", (e) => { if (e.target.id === "invq") invDialog(); });
+$("invbody").addEventListener("change", async (e) => {
+  const box = e.target.closest("input[data-row]"); if (!box) return;
+  const row = STOCK.inventory.rows.find((r) => r.line === +box.dataset.row), n = Math.round(+box.value);
+  if (!row || !(n >= 0)) return;
+  try { STOCK = await post("inventory", { action: "set", ids: row.ids, qty: n }); render(); }
+  catch (err) { alert("Not written: " + err.message); box.value = row.qty; }
+});
+
 // ------------------------------------------------------------------ carts
 // Carts exported from Mouser or LCSC, read and matched to the lines by the
 // GUI (bom.py match_carts: by the references in Customer #, else the site's
@@ -1031,7 +1290,7 @@ function markBoards() {
   board2d.mark(marks); window.bom3d?.mark(marks);
 }
 document.querySelectorAll("[data-ordered]").forEach((b) => b.addEventListener("click", () => { marking = !marking; markBoards(); }));
-$("boards").addEventListener("input", () => { if (hasCarts()) { render(); markBoards(); } });
+$("boards").addEventListener("input", qtyChanged);
 let cartSite = "";
 $("cartbtn").addEventListener("click", (e) => {
   e.stopPropagation();
@@ -1417,10 +1676,12 @@ const board2d = (() => {
   }
   return { light, mark, zoomTo, fit, refs: () => [...padsOf.keys()], box: (r) => boxOf.get(r) };
 })();
-window.kigitBom = { cart: () => CART, orderedMarks, csv, csvLcsc, csvMouser, ruleLines, setExportRule: (r) => (exportRule = r), drafts: () => drafts, pending, light, board2d, lit: () => lit, look: () => LOOK,
+window.kigitBom = { stock: () => STOCK, build: () => BUILD, builds: () => BUILDS, cart: () => CART, orderedMarks, csv, csvLcsc, csvMouser, ruleLines, setExportRule: (r) => (exportRule = r), drafts: () => drafts, pending, light, board2d, lit: () => lit, look: () => LOOK,
   columns: () => visibleCols().map((c) => c.id) };  // for scripted checks
 window.kigitBomMarked = () => markBoards();
+loadBuilds();  // the build picked last time on this board
 refreshCart();  // carts imported before (kept in kigit-bom.json)
+refreshStock();  // your inventory, if you've chosen it
 pollLookup();  // a Look up from before (this page reloaded), or one still running
 fetch(`/bom/${KEY}/drafts`).then((r) => r.json()).then((d) => { drafts = d; render(); }).catch(() => render());
 </script>
