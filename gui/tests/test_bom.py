@@ -433,3 +433,14 @@ def test_lines_select_like_files() -> None:
     assert "window.bomPick(drag.ref, e)" in page and "window.bomPick(at(e.clientX, e.clientY), e)" in page
     assert 'id="selinfo"' in page and '$("selclear").addEventListener("click", clearSel)' in page
     assert "pinned" not in page.split("// What's lit")[1].split("// ---------------------------------------------------------------- the table")[0]
+
+
+def test_a_selection_is_ticked_and_placed_together() -> None:
+    """With several lines selected, ticking a tracker or placing a part on one
+    of them does it for every selected line (DNP left out); the board buttons
+    count what's done and what's left."""
+    page = _page()
+    assert "function actOn(i, refs)" in page
+    assert "refs: actOn(+box.dataset.i, l.refs)" in page
+    assert "place(actOn(i, [chip.dataset.place])" in page and "place(actOn(i, all.dataset.placeall" in page
+    assert '<span class="mk short">${left} ${asm ? "left" : "short"}</span>' in page

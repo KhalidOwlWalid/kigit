@@ -79,6 +79,16 @@ The BOM with the board in 2D and 3D beside it: hover a line to light up its part
 
 ![kigit's BOM: the parts list with the board in 2D and 3D](docs/blobs/demo/gifs/bom-system.gif)
 
+#### Cart assistant
+Import your Mouser or LCSC cart into a build: each line shows what's ordered, the board turns green where parts are covered and red where they're short, and rows kigit can't place get a suggested line to accept.
+
+![Importing a cart: ordered parts in green on the board, short ones in red](docs/blobs/demo/gifs/cart-assistant.gif)
+
+#### Assembly assistant
+Assemble a build board by board: tick parts off as you place them (each comes out of your inventory), select several lines at once, and watch the board go from red (still to place) to green (placed).
+
+![Assembling a board: placed parts in green, the rest in red](docs/blobs/demo/gifs/assembly-assistant.gif)
+
 ---
 
 ## What kigit is not

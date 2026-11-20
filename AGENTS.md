@@ -584,6 +584,10 @@ at once. localStorage settings are per origin, so per port.
   `#selinfo` from 2 lines; board clicks (2D pointerup < 4 px from
   pointerdown, 3D the same via `at()`) call `window.bomPick(ref, e)`
   (Shift acts as Ctrl). Esc (no dialog, not in a field) clears.
+  `actOn(i, refs)`: a tracker tick or a place click on a selected line
+  (with 2+ selected) applies to every selected non-DNP line's refs.
+  `markBoards` appends done/left counts (`.mk`) to the `[data-ordered]`
+  buttons.
   Unmatched cart rows: `match_carts` adds `suggest` {key, refs, label,
   why} to each (`suggest_line`: a passive whose kind word (`_KIND_WORDS`)
   is in the description and whose value equals one there as a number

@@ -247,6 +247,9 @@ td.stock2 button { padding: 0 6px; font-size: 12px; }
 #cartdlg .star { color: var(--accent); font-size: 12px; white-space: nowrap; }
 #cartdlg td button.ok { border-color: var(--ok); color: var(--ok); }
 #cartchips { display: inline-flex; gap: 6px; }
+[data-ordered] .mk { font-size: 11px; padding: 0 5px; border-radius: 8px; margin-left: 3px; text-transform: none; }
+[data-ordered] .mk.ok { background: rgba(33,186,69,.25); color: #7ee29a; }
+[data-ordered] .mk.short { background: rgba(248,81,73,.22); color: #ff9a94; }
 .cartchip { display: inline-flex; align-items: center; gap: 4px; padding: 1px 2px 1px 10px; border-radius: 16px; font-size: 12.5px;
   background: rgba(88,152,212,.14); border: 1px solid rgba(88,152,212,.45); color: var(--text); cursor: pointer; white-space: nowrap; }
 .cartchip:hover { background: rgba(88,152,212,.24); }
@@ -531,6 +534,12 @@ function select(i, e, ordered) {
     $("noteswhat").textContent = `${notesLine.value} · ${notesLine.refs.join(", ")}`;
     sendLine(false);
   }
+}
+// The parts a click on line i acts on: the whole selection when i is in it (and more than
+// one line is selected), else just line i's. DNP lines are left out of a selection.
+function actOn(i, refs) {
+  if (!(sel.size > 1 && sel.has(i))) return refs;
+  return [...sel].filter((k) => DATA.lines[k] && !DATA.lines[k].dnp).flatMap((k) => DATA.lines[k].refs);
 }
 function clearSel() { sel = new Set(); anchor = null; rest(); }
 // A part clicked on the board (2D or 3D): its line, picked the same way (Shift acts as Ctrl).
@@ -1210,7 +1219,7 @@ $("rows").addEventListener("change", async (e) => {
   const box = e.target.closest("input[data-track]"); if (!box) return;
   const l = DATA.lines[+box.dataset.i], name = box.dataset.track;
   box.disabled = true;
-  try { drafts = await post("drafts", { track: name, refs: l.refs, done: box.checked }); render(); }
+  try { drafts = await post("drafts", { track: name, refs: actOn(+box.dataset.i, l.refs), done: box.checked }); render(); }
   catch (err) { box.checked = !box.checked; box.disabled = false; alert("Not saved: " + err.message); }
 });
 $("addtracker").addEventListener("click", async () => {
@@ -1578,8 +1587,10 @@ async function place(refs, on) {
 }
 $("rows").addEventListener("click", (e) => {
   const chip = e.target.closest("[data-place]"), all = e.target.closest("[data-placeall]");
-  if (chip) place([chip.dataset.place], !chip.classList.contains("on"));
-  else if (all) place(all.dataset.placeall.split(" "), all.dataset.on === "1");
+  const i = +(e.target.closest("tr[data-i]")?.dataset.i ?? -1);
+  // In a selection of several lines, a click places (or takes off) every selected line's parts.
+  if (chip) place(actOn(i, [chip.dataset.place]), !chip.classList.contains("on"));
+  else if (all) place(actOn(i, all.dataset.placeall.split(" ")), all.dataset.on === "1");
 });
 // The picked board's parts on the PCB and 3D views: placed green, still to place red.
 function placedMarks() {
@@ -1677,6 +1688,11 @@ function markBoards() {
   });
   const marks = marking && can ? (asm ? placedMarks() : orderedMarks()) : null;
   board2d.mark(marks); window.bom3d?.mark(marks);
+  if (marks) {  // what's done and what's left, on the button itself
+    const v = Object.values(marks), ok = v.filter((m) => m === "ok").length, left = v.length - ok;
+    document.querySelectorAll("[data-ordered]").forEach((b) => b.insertAdjacentHTML("beforeend",
+      ` <span class="mk ok">${ok}</span><span class="mk short">${left} ${asm ? "left" : "short"}</span>`));
+  }
 }
 document.querySelectorAll("[data-ordered]").forEach((b) => b.addEventListener("click", () => { marking = !marking; markBoards(); }));
 $("boards").addEventListener("input", qtyChanged);
