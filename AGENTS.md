@@ -578,6 +578,21 @@ at once. localStorage settings are per origin, so per port.
   uses) | "not:<tracker>" (non-DNP lines that tracker doesn't have all
   of; falls back to all if the tracker is gone), in
   `kigit.bomExportRule`; all three CSVs loop over `ruleLines()`.
+  Selection: `sel` (Set of line indices) + `anchor`; `select(i, e)`:
+  plain click one (again: none), Ctrl/Meta toggles, Shift the range in
+  the rows' DOM order (Ctrl+Shift adds); `light(selRefs())`, `tr.pin`,
+  `#selinfo` from 2 lines; board clicks (2D pointerup < 4 px from
+  pointerdown, 3D the same via `at()`) call `window.bomPick(ref, e)`
+  (Shift acts as Ctrl). Esc (no dialog, not in a field) clears.
+  Unmatched cart rows: `match_carts` adds `suggest` {key, refs, label,
+  why} to each (`suggest_line`: a passive whose kind word (`_KIND_WORDS`)
+  is in the description and whose value equals one there as a number
+  (`si_value`, `_values_in` per kind's unit `_UNITS`; "M"/"m" are mega for
+  resistors), +1 for its package; else a part name (>= 4 chars) in the
+  row's MPN or description; none if two lines tie). Page: `#unmatchbar`
+  (from `cartChips`) -> `cartDialog(true)` scrolled to `#tomatch`; rows
+  with a suggestion are pre-picked (★), `data-accept` / `#acceptall` call
+  `assign()` (the same edit route as picking).
   Carts (`cart.py`, `bom.py`): Import cart ▾ posts the file (raw body) to
   `/bom/{key}/cart/{site}?name=` -> `cart.parse_cart` (`.xls` via xlrd,
   the GUI's one dependency for this; `.xlsx` via zipfile + XML; CSV

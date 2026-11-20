@@ -177,3 +177,40 @@ def test_receiving_a_cart_adds_it_to_the_inventory(tmp_path: Path) -> None:
         assert bom.match_carts(d, bom.state(board, b))["lines"][bom.line_key(d["lines"][0])]["qty"] == {"lcsc": 3}
     finally:
         inventory.remember(None)  # the test app folder is shared by the tests
+
+
+def test_values_as_numbers() -> None:
+    """A passive's value, however it's written, as a number."""
+    for text, kind, want in (("10k", "resistor", 1e4), ("10kR", "resistor", 1e4), ("4k7", "resistor", 4700), ("4R7", "resistor", 4.7),
+                             ("27R", "resistor", 27), ("1M", "resistor", 1e6), ("1m", "resistor", 1e6),
+                             ("100nF", "capacitor", 1e-7), ("0.1uF", "capacitor", 1e-7), ("1µF", "capacitor", 1e-6),
+                             ("27nH", "inductor", 27e-9), ("8MHz", "crystal", 8e6), ("32k768", "crystal", 32768)):
+        assert bom.si_value(text, kind) == pytest.approx(want), text
+    assert bom.si_value("RED", "led") is None and bom.si_value("STM32", "other") is None
+
+
+def test_unmatched_rows_get_a_suggested_line() -> None:
+    """For cart rows that match no line, a likely line from the description
+    (kind, value as a number, package) or the part name; only a clear best,
+    and never matched until accepted. Your real Mouser cart."""
+    rows = {r["mpn"]: r for r in cart.parse_cart(MOUSER.read_bytes(), MOUSER.name, "mouser")}
+    lines = [{**line(["C1", "C17"], "10uF"), "kind": "capacitor", "package": "0603"},
+             {**line(["C2", "C3"], "100nF"), "kind": "capacitor", "package": "0603"},
+             {**line(["C9", "C10"], "4pF"), "kind": "capacitor", "package": "0603"},
+             {**line(["C11", "C12"], "47pF"), "kind": "capacitor", "package": "0603"},
+             {**line(["Y2"], "32k768"), "kind": "crystal", "package": ""},
+             {**line(["L1"], "27nH"), "kind": "inductor", "package": "0603"},
+             {**line(["U4"], "SN65HVD230"), "kind": "other", "package": "SOIC-8"},
+             {**line(["C99"], "100nF", dnp=True), "kind": "capacitor", "package": "0603"}]
+    sug = lambda mpn: bom.suggest_line(rows[mpn], lines, {}, {})  # noqa: E731
+    assert sug("0603ZC104K4T2A")["refs"] == ["C2", "C3"]        # "0.1uF ... 0603" is the 100nF line (not the DNP one)
+    assert sug("0603ZC104K4T2A")["why"] == "capacitor 100nF + 0603"
+    assert sug("0603N470J100CT")["refs"] == ["C11", "C12"]      # "47 pF", with a space
+    assert sug("KGM15CT71A106MT")["refs"] == ["C1", "C17"]      # "10uF"
+    assert sug("LFXTAL084885")["refs"] == ["Y2"]                # "32.768kHz" is 32k768
+    assert sug("AISC-0603-R027G-T")["refs"] == ["L1"]           # "27.00 nH"
+    assert sug("SN65HVD230QDG4")["refs"] == ["U4"]              # the part name in its MPN
+    assert sug("0603N5R0C100CT") is None                         # 5 pF: no 5 pF line (the 4pF isn't close enough)
+    assert sug("S2B-PH-K-S-GW") is None                          # nothing like it
+    twins = lines + [{**line(["C30"], "100nF"), "kind": "capacitor", "package": "0603", "footprint": "other"}]
+    assert bom.suggest_line(rows["0603ZC104K4T2A"], twins, {}, {}) is None  # two 100nF 0603 lines: no guess

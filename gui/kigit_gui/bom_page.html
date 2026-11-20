@@ -131,6 +131,11 @@ td { padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: top
 tbody tr { cursor: pointer; }
 tbody tr.hl td { background: var(--hl); }
 tbody tr.pin td:first-child { box-shadow: inset 3px 0 var(--accent); }
+tbody tr.pin td { background: rgba(232,184,77,.16); }
+#rows tr[data-i] { user-select: none; } #rows tr[data-i] textarea, #rows tr[data-i] input { user-select: text; }
+#selinfo { display: flex; align-items: center; gap: 10px; padding: 4px 16px; font-size: 13px;
+  background: rgba(232,184,77,.10); border-top: 1px solid rgba(232,184,77,.4); }
+#selinfo > .material-icons { color: var(--accent); }
 tr.dnp td { opacity: .55; }
 .refs { color: var(--muted); max-width: 14rem; }
 .qty { text-align: right; font-variant-numeric: tabular-nums; }
@@ -206,6 +211,11 @@ td.placed button { padding: 0 6px; font-size: 11px; margin-left: 2px; }
 #bellbadge { position: absolute; top: -6px; right: -6px; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 8px;
   font-size: 11px; line-height: 16px; font-weight: 700; color: #fff; background: var(--bad); }
 #bellbadge.mention { background: #a371f7; }
+/* Import cart: a red "!" while cart rows match no line */
+#cartbtn { position: relative; }
+#cartbadge { position: absolute; top: -6px; right: -6px; width: 16px; height: 16px; border-radius: 8px;
+  font-size: 11px; line-height: 16px; font-weight: 700; text-align: center; color: #fff; background: var(--bad); }
+#cartbadge[hidden] { display: none; }
 #nmenu { position: fixed; z-index: 9; display: none; right: 12px; top: 56px; width: min(30rem, 94vw); max-height: 70vh; overflow: auto;
   background: var(--panel); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 6px 18px rgba(0,0,0,.35); }
 #nmenu.on { display: block; }
@@ -228,6 +238,14 @@ td.placed button { padding: 0 6px; font-size: 11px; margin-left: 2px; }
 .fslist .f::before { content: "📄 "; } .fslist .d::before { content: "📁 "; }
 td.stock2 { white-space: nowrap; font-variant-numeric: tabular-nums; }
 td.stock2 button { padding: 0 6px; font-size: 12px; }
+#unmatchbar { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; padding: 6px 16px; color: #ffe08a;
+  background: rgba(242,192,55,.12); border-bottom: 1px solid rgba(242,192,55,.45); }
+#unmatchbar > .material-icons { color: var(--warn); } #unmatchbar b { color: #fff; }
+#cartdlg h3 { font-size: 14px; margin: 14px 0 4px; display: flex; align-items: center; gap: 8px; }
+#cartdlg h3 .material-icons { color: var(--warn); }
+#cartdlg tr.sug td { background: rgba(88,152,212,.08); }
+#cartdlg .star { color: var(--accent); font-size: 12px; white-space: nowrap; }
+#cartdlg td button.ok { border-color: var(--ok); color: var(--ok); }
 #cartchips { display: inline-flex; gap: 6px; }
 .cartchip { display: inline-flex; align-items: center; gap: 4px; padding: 1px 2px 1px 10px; border-radius: 16px; font-size: 12.5px;
   background: rgba(88,152,212,.14); border: 1px solid rgba(88,152,212,.45); color: var(--text); cursor: pointer; white-space: nowrap; }
@@ -315,7 +333,7 @@ dialog a { color: var(--link); }
     <button id="lookup" title="Ask Mouser and Digi-Key (those you have a key for) for stock, prices and lifecycle, for Build qty boards (answers are kept a day; Shift+click asks again)"><i class="material-icons">travel_explore</i>Look up</button>
     <button id="keybtn" title="Your Mouser and Digi-Key keys"><i class="material-icons">key</i>Keys</button>
     <button id="invbtn" title="Your inventory: a CSV of yours, anywhere, shared by every project"><i class="material-icons">inventory_2</i>Inventory</button>
-    <button id="cartbtn" data-title="Import a cart exported from Mouser or LCSC into this build: what's ordered, line by line, and on the board" title=""><i class="material-icons">add_shopping_cart</i>Import cart<i class="material-icons">arrow_drop_down</i></button>
+    <button id="cartbtn" data-title="Import a cart exported from Mouser or LCSC into this build: what's ordered, line by line, and on the board" title=""><i class="material-icons">add_shopping_cart</i>Import cart<i class="material-icons">arrow_drop_down</i><span id="cartbadge" hidden>!</span></button>
     <input type="file" id="cartfile" accept=".csv,.xls,.xlsx" hidden>
     <span id="cartchips"></span>
     <button id="export" class="primary" title="A CSV for LCSC's or Mouser's BOM upload, or with every column"><i class="material-icons">download</i>Export CSV<i class="material-icons">arrow_drop_down</i></button>
@@ -326,6 +344,10 @@ dialog a { color: var(--link); }
   <div class="nhead"><b>Notifications</b><span class="sub">this session</span>
     <a href="/notices" target="_blank" rel="noopener">All</a><a href="/log" target="_blank" rel="noopener">Session log</a></div>
   <div id="nlist"></div>
+</div>
+<div id="unmatchbar" hidden>
+  <i class="material-icons">warning_amber</i><span id="unmatchtext"></span>
+  <button id="unmatchgo" class="primary"><i class="material-icons">link</i>Match them&hellip;</button>
 </div>
 <div id="asmbar" hidden>
   <b>Board</b> <select id="boardsel" aria-label="Board"></select>
@@ -342,7 +364,10 @@ dialog a { color: var(--link); }
   <thead><tr id="head"></tr></thead>
   <tbody id="rows"></tbody>
 </table>
-<div class="foot" id="foot">Hover a line to see its parts on the board; click it to keep them lit. Edits are drafts, saved as you type in
+<div id="selinfo" hidden><i class="material-icons">select_all</i><span id="selcount"></span>
+  <span class="faint">Ctrl+click adds or removes a line, Shift+click a range, Esc clears</span>
+  <button id="selclear"><i class="material-icons">close</i>Clear selection</button></div>
+<div class="foot" id="foot">Hover a line to see its parts on the board; click it to keep them lit (Ctrl+click for more, Shift+click for a range; or click parts on the board). Edits are drafts, saved as you type in
 <code>%%DRAFTS_FILE%%</code>, until you write them into the schematic. kigit only writes part information fields (part numbers,
 manufacturer, distributors, fields you add): never values, footprints, the board or the wiring, and it checks the schematic is the same
 design before saving. The search links only open the distributors' sites; kigit itself only contacts Mouser and Digi-Key when you press Look up.</div>
@@ -459,20 +484,62 @@ const mpnCol = () => columns()[0];
 const numberOf = (l) => shown(l, mpnCol()) || l.lcsc || l.digikey || l.mouser || "";
 
 // ------------------------------------------------------------ highlighting
-// What's lit: a line's parts (hovered or pinned) or one part (hovered on the board).
-let pinned = null, lit = null;
+// What's lit: the selected lines' parts, a hovered line's, or one part (hovered on the board).
+// Selecting lines works like a file manager: click picks one, Ctrl/Cmd+click adds or
+// removes one, Shift+click takes the range from the last clicked (Ctrl+Shift adds it).
+let sel = new Set(), anchor = null, lit = null;
+const selRefs = () => [...sel].filter((i) => DATA.lines[i]).flatMap((i) => DATA.lines[i].refs);
 function light(refs, one, scroll) {
   lit = refs && refs.length ? refs : null;
   const lines = new Set((lit || []).map((r) => lineOfRef.get(r)).filter((i) => i !== undefined));
   document.querySelectorAll("#rows tr[data-i]").forEach((tr) => {
     tr.classList.toggle("hl", lines.has(+tr.dataset.i));
-    tr.classList.toggle("pin", pinned !== null && +tr.dataset.i === pinned);
+    tr.classList.toggle("pin", sel.has(+tr.dataset.i));
   });
+  selInfo();
   if (scroll && lines.size) document.querySelector(`#rows tr[data-i="${[...lines][0]}"]`)?.scrollIntoView({ block: "nearest" });
   board2d.light(lit, one);
   window.bom3d?.light(lit);
 }
-const rest = () => light(pinned !== null && DATA.lines[pinned] ? DATA.lines[pinned].refs : null);
+const rest = () => light(sel.size ? selRefs() : null);
+// "3 lines selected · 12 parts", with a way out.
+function selInfo() {
+  const n = [...sel].filter((i) => DATA.lines[i]).length;
+  $("selinfo").hidden = n < 2;
+  if (n >= 2) $("selcount").textContent = `${n} lines selected · ${selRefs().length} parts`;
+}
+// Picks line i the way a click with these keys does.
+function select(i, e, ordered) {
+  const add = e && (e.ctrlKey || e.metaKey), range = e && e.shiftKey && anchor !== null && DATA.lines[anchor];
+  if (range) {
+    const order = ordered || [...document.querySelectorAll("#rows tr[data-i]")].map((tr) => +tr.dataset.i);
+    let a = order.indexOf(anchor), b = order.indexOf(i);
+    if (a < 0) a = b;
+    if (!add) sel = new Set();
+    for (let k = Math.min(a, b); k <= Math.max(a, b); k++) sel.add(order[k]);
+  } else if (add) {
+    if (sel.has(i)) sel.delete(i); else sel.add(i);
+    anchor = i;
+  } else {
+    sel = sel.size === 1 && sel.has(i) ? new Set() : new Set([i]);  // click the only one again: let go
+    anchor = i;
+  }
+  light(sel.size ? selRefs() : null);
+  if (sel.size) board2d.zoomTo(selRefs());
+  if (sel.has(i)) {
+    notesLine = lineInfo(DATA.lines[i]);  // the notes follow the line you last picked
+    $("noteswhat").textContent = `${notesLine.value} · ${notesLine.refs.join(", ")}`;
+    sendLine(false);
+  }
+}
+function clearSel() { sel = new Set(); anchor = null; rest(); }
+// A part clicked on the board (2D or 3D): its line, picked the same way (Shift acts as Ctrl).
+window.bomPick = (ref, e) => {
+  const i = ref ? lineOfRef.get(ref) : undefined;
+  if (i === undefined) { if (!(e.ctrlKey || e.metaKey || e.shiftKey)) clearSel(); return; }
+  select(i, { ctrlKey: e.ctrlKey || e.metaKey || e.shiftKey });
+  document.querySelector(`#rows tr[data-i="${i}"]`)?.scrollIntoView({ block: "nearest" });
+};
 function showTip(ref, x, y) {
   const tip = $("tip");
   if (!ref) { tip.style.display = "none"; return; }
@@ -998,24 +1065,25 @@ $("lookup").addEventListener("click", async (e) => {
 });
 
 
-// Hover a line: its parts light up; click: they stay lit (click again to let go).
+// Hover a line: its parts light up; click selects it (Ctrl/Cmd and Shift for more), and they stay lit.
 $("rows").addEventListener("mouseover", (e) => {
   const tr = e.target.closest("tr[data-i]"); if (!tr) return;
   light(DATA.lines[+tr.dataset.i].refs);
 });
 $("rows").addEventListener("mouseleave", rest);
 $("rows").addEventListener("click", (e) => {
-  if (e.target.closest("a, input, textarea, button, tr.choices, [data-place]")) return;
+  if (e.target.closest("a, input, textarea, button, select, tr.choices, [data-place]")) return;
   const tr = e.target.closest("tr[data-i]"); if (!tr) return;
-  pinned = pinned === +tr.dataset.i ? null : +tr.dataset.i;
-  light(DATA.lines[+tr.dataset.i].refs);
-  if (pinned !== null) {
-    board2d.zoomTo(DATA.lines[pinned].refs);
-    notesLine = lineInfo(DATA.lines[pinned]);  // the notes follow the line you picked
-    $("noteswhat").textContent = `${notesLine.value} · ${notesLine.refs.join(", ")}`;
-    sendLine(false);
-  }
+  select(+tr.dataset.i, e);
 });
+// Shift+click would select the page's text between the clicks.
+$("rows").addEventListener("mousedown", (e) => {
+  if ((e.shiftKey || e.ctrlKey || e.metaKey) && !e.target.closest("input, textarea, select")) e.preventDefault();
+});
+addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && sel.size && !document.querySelector("dialog[open]") && !e.target.closest?.("input, textarea")) clearSel();
+});
+$("selclear").addEventListener("click", clearSel);
 async function post(path, body) {
   body = { build: BUILD ? BUILD.id : "", ...(body || {}) };  // trackers and carts are the picked build's
   const r = await fetch(`/bom/${KEY}/${path}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
@@ -1560,6 +1628,16 @@ function orderedCell(l) {
 }
 // The build's loaded carts, in the toolbar: what's there, and a plain way to remove one.
 function cartChips() {
+  // Rows that match no line: a banner that says so and leads to matching them.
+  const um = BUILD ? (CART.match.unmatched || []) : [], sug = um.filter((u) => u.suggest).length;
+  $("unmatchbar").hidden = !um.length;
+  if (um.length) {
+    const per = Object.entries(um.reduce((a, u) => ({ ...a, [u.site]: (a[u.site] || 0) + 1 }), {}))
+      .map(([site, n]) => `${n} of the ${SITE_NAME[site]} cart`).join(" and ");
+    $("unmatchtext").innerHTML = `<b>${um.length} cart row${um.length === 1 ? "" : "s"} match${um.length === 1 ? "es" : ""} no BOM line</b> (${per}): ` +
+      `they aren't counted as ordered until you say which line each is for.` +
+      (sug ? ` kigit suggests a line for <b>${sug}</b> of them.` : "");
+  }
   const carts = BUILD ? Object.entries(CART.match.carts || {}) : [];
   $("cartchips").innerHTML = carts.map(([site, c]) => {
     const left = (CART.match.unmatched || []).filter((u) => u.site === site).length;
@@ -1569,7 +1647,12 @@ function cartChips() {
       `${c.received ? " &middot; received" : left ? ` &middot; <span style="color:var(--warn)">${left} unmatched</span>` : ""}` +
       `<button class="x" data-rmchip="${site}" title="Remove this cart from the build"><i class="material-icons">close</i></button></span>`;
   }).join("");
+  // Rows of the build's carts that match no line yet: give them one (Import cart ▾ → Carts).
+  const left = BUILD ? (CART.match.unmatched || []).length : 0;
+  $("cartbadge").hidden = !left;
+  $("cartbadge").title = `${left} cart row(s) match no line: Import cart ▾ → Carts and unmatched rows to give them one`;
 }
+$("unmatchgo").addEventListener("click", () => cartDialog(true));
 $("cartchips").addEventListener("click", async (e) => {
   const x = e.target.closest("[data-rmchip]"), chip = e.target.closest("[data-chip]");
   if (x) {
@@ -1643,7 +1726,7 @@ $("cartfile").addEventListener("change", async () => {
     CART = j; drafts = j.drafts;
     const site = SITE_NAME[cartSite], c = j.match.carts[cartSite], left = j.match.unmatched.filter((u) => u.site === cartSite).length;
     el.className = left ? "err" : "";
-    el.textContent = `${site} cart: ${c.rows} rows, ${c.rows - left} matched to lines` + (left ? `; ${left} not: Import cart ▾ → Carts to give them a line.` : ".");
+    el.textContent = `${site} cart: ${c.rows} rows, ${c.rows - left} matched to lines` + (left ? `; ${left} to match (see the bar above).` : ".");
     if (!marking) marking = true;  // show it on the board straight away: colours on,
     for (const id of ["show2d", "show3d"]) $(id).classList.add("on");  // and the PCB and 3D panes shown
     panes();
@@ -1651,13 +1734,16 @@ $("cartfile").addEventListener("change", async () => {
   } catch (err) { el.className = "err"; el.textContent = `Couldn't read the ${SITE_NAME[cartSite]} cart: ${err.message}`; }
 });
 // The carts dialog: each cart, and the rows that aren't a line yet (give them one).
-function cartDialog() {
-  const m = CART.match, lineOpts = DATA.lines.filter((l) => !l.dnp)
-    .map((l) => `<option value="${esc(l.refs.join(" "))}">${esc(l.value)} · ${esc(l.refs.join(", ").slice(0, 40))}</option>`).join("");
-  const rowHtml = (u, assigned) => `<tr><td>${SITE_NAME[u.site]}</td><td class="num">${esc(u.sku)}</td><td class="num">${esc(u.mpn)}` +
+function cartDialog(toMatch) {
+  const m = CART.match;
+  const lineOpts = (sel) => DATA.lines.filter((l) => !l.dnp).map((l) => { const v = l.refs.join(" ");
+    return `<option value="${esc(v)}"${v === sel ? " selected" : ""}>${v === sel ? "★ " : ""}${esc(l.value)} · ${esc(l.refs.join(", ").slice(0, 40))}</option>`; }).join("");
+  const rowHtml = (u, assigned) => `<tr${!assigned && u.suggest ? ' class="sug"' : ""}><td>${SITE_NAME[u.site]}</td><td class="num">${esc(u.sku)}</td><td class="num">${esc(u.mpn)}` +
     `<div class="faint">${esc(u.manufacturer)}</div></td><td>${esc(u.description)}</td><td class="qty">${u.qty}</td><td>` +
     (assigned ? `${esc((u.assigned || []).join(", "))} <button data-unassign="${u.site}|${u.i}">Let go</button>`
-      : `<select data-assign="${u.site}|${u.i}"><option value="">Give it a line&hellip;</option>${lineOpts}</select>`) + `</td></tr>`;
+      : `<select data-assign="${u.site}|${u.i}"><option value="">Pick its line&hellip;</option>${lineOpts(u.suggest ? u.suggest.refs.join(" ") : "")}</select>` +
+        (u.suggest ? `<div class="star" title="Why: ${esc(u.suggest.why)}">★ suggested (${esc(u.suggest.why)}) ` +
+          `<button class="ok" data-accept="${u.site}|${u.i}">Accept</button></div>` : "")) + `</td></tr>`;
   const assigned = Object.values(m.lines).flatMap((x) => x.rows).filter((r) => r.by === "assigned");
   const head = `<tr><th>Site</th><th>Site's number</th><th>MPN</th><th>Description</th><th class="qty">Qty</th><th>Line</th></tr>`;
   $("cartbody").innerHTML = `<b>Imported carts</b>` +
@@ -1666,20 +1752,43 @@ function cartDialog() {
         `title="Take its quantities back out of your inventory: ordered again">Undo received</button> `
         : `<button data-receive="${s}" class="primary" title="It arrived: add its quantities to your inventory (and it stops counting as ordered)">Mark received</button> `) +
       `<button data-rmcart="${s}">Remove</button></p>`).join("") +
-    (m.unmatched.length ? `<p class="sub">These rows match no line (no references, and no line has their part number). Give each its line; ` +
-      `<label><input type="checkbox" id="cartkeep" checked> and keep its part numbers as the line's drafts</label>.</p>` +
-      `<table>${head}${m.unmatched.map((u) => rowHtml(u, false)).join("")}</table>` : `<p class="sub">Every row matches a line.</p>`) +
-    (assigned.length ? `<p class="sub">Given a line by hand:</p><table>${head}${assigned.map((u) => rowHtml(u, true)).join("")}</table>` : "");
+    (m.unmatched.length ? `<h3 id="tomatch"><i class="material-icons">warning_amber</i>Rows to match (${m.unmatched.length})</h3>` +
+      `<p class="sub">kigit couldn't tell which BOM line these are for (no references in Customer #, and no line has their part number). ` +
+      `Pick each one's line: it's then counted as ordered, and shown on the board. ★ is kigit's suggestion, from the description ` +
+      `(kind, value, package) or part number: nothing is matched until you accept it or pick a line.</p>` +
+      `<p class="sub"><label><input type="checkbox" id="cartkeep" checked> Keep each row's part numbers as its line's drafts ` +
+      `(so it matches by itself next time)</label>` +
+      (m.unmatched.some((u) => u.suggest) ? ` <button id="acceptall" class="primary"><i class="material-icons">done_all</i>` +
+        `Accept all ${m.unmatched.filter((u) => u.suggest).length} suggestions</button>` : "") + `</p>` +
+      `<table>${head}${m.unmatched.map((u) => rowHtml(u, false)).join("")}</table>`
+      : `<p class="sub"><i class="material-icons" style="color:var(--ok)">check_circle</i> Every row matches a line.</p>`) +
+    (assigned.length ? `<h3>Matched by hand (${assigned.length})</h3><table>${head}${assigned.map((u) => rowHtml(u, true)).join("")}</table>` : "");
   if (!$("cartdlg").open) $("cartdlg").showModal();
+  if (toMatch) $("tomatch")?.scrollIntoView({ block: "start" });
 }
+// A row given its line (picked, or a suggestion accepted).
+async function assign(site, i, refs) {
+  const r = await post(`cart/${site}/edit`, { row: +i, refs, keep: $("cartkeep")?.checked });
+  CART = r; drafts = r.drafts;
+}
+$("cartbody").addEventListener("click", async (e) => {
+  const one = e.target.closest("[data-accept]"), all = e.target.closest("#acceptall");
+  if (!one && !all) return;
+  try {
+    const rows = one ? [one.dataset.accept.split("|")] : CART.match.unmatched.filter((u) => u.suggest).map((u) => [u.site, u.i]);
+    for (const [site, i] of rows) {
+      const u = CART.match.unmatched.find((x) => x.site === site && String(x.i) === String(i));
+      if (u && u.suggest) await assign(site, i, u.suggest.refs);
+    }
+    render(); markBoards(); cartDialog();
+  } catch (err) { alert(err.message); }
+});
 $("cartclose").addEventListener("click", () => $("cartdlg").close());
 $("cartbody").addEventListener("change", async (e) => {
   const sel = e.target.closest("select[data-assign]"); if (!sel || !sel.value) return;
   const [site, i] = sel.dataset.assign.split("|");
-  try {
-    const r = await post(`cart/${site}/edit`, { row: +i, refs: sel.value.split(" "), keep: $("cartkeep")?.checked });
-    CART = r; drafts = r.drafts; render(); markBoards(); cartDialog();
-  } catch (err) { alert(err.message); }
+  try { await assign(site, i, sel.value.split(" ")); render(); markBoards(); cartDialog(); }
+  catch (err) { alert(err.message); }
 });
 $("cartbody").addEventListener("click", async (e) => {
   const un = e.target.closest("[data-unassign]"), rm = e.target.closest("[data-rmcart]");
@@ -2097,7 +2206,10 @@ const board2d = (() => {
     setVb({ x: p.x - (p.x - vb.x) * f, y: p.y - (p.y - vb.y) * f, w, h: vb.h * f });
   }, { passive: false });
   let drag = null;
-  svg.addEventListener("pointerdown", (e) => { if (!vb) return; drag = { x: e.clientX, y: e.clientY, vb: { ...vb }, s: pt(e).s }; svg.setPointerCapture(e.pointerId); svg.classList.add("drag"); });
+  svg.addEventListener("pointerdown", (e) => { if (!vb) return; drag = { x: e.clientX, y: e.clientY, vb: { ...vb }, s: pt(e).s, ref: e.target.closest?.(".pad")?.dataset.ref || null }; svg.setPointerCapture(e.pointerId); svg.classList.add("drag"); });
+  svg.addEventListener("pointerup", (e) => {  // a click, not a drag: pick the part's line
+    if (drag && Math.hypot(e.clientX - drag.x, e.clientY - drag.y) < 4) window.bomPick(drag.ref, e);
+  });
   svg.addEventListener("pointermove", (e) => {
     if (drag) { setVb({ ...drag.vb, x: drag.vb.x - (e.clientX - drag.x) * drag.s, y: drag.vb.y - (e.clientY - drag.y) * drag.s }); return; }
     const ref = e.target.closest?.(".pad")?.dataset.ref || null;
@@ -2365,6 +2477,12 @@ renderer.domElement.addEventListener("pointermove", (e) => {
   if (first) requestAnimationFrame(() => { const [x, y] = queued; queued = null; window.bomHover(at(x, y), x, y); });
 });
 renderer.domElement.addEventListener("pointerleave", () => window.bomHover(null));
+let downAt = null;  // a click, not an orbit: pick the part's line
+renderer.domElement.addEventListener("pointerdown", (e) => { downAt = [e.clientX, e.clientY]; });
+renderer.domElement.addEventListener("pointerup", (e) => {
+  if (downAt && Math.hypot(e.clientX - downAt[0], e.clientY - downAt[1]) < 4) window.bomPick(at(e.clientX, e.clientY), e);
+  downAt = null;
+});
 document.getElementById("parts3d").addEventListener("click", (e) => {
   partsGroup.visible = !partsGroup.visible; e.target.classList.toggle("on", partsGroup.visible); redraw(); });
 

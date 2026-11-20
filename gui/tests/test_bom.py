@@ -403,3 +403,33 @@ def test_loaded_carts_show_in_the_toolbar() -> None:
     page = _page()
     assert 'id="cartchips"' in page and "function cartChips()" in page and "data-rmchip=" in page
     assert "  cartChips();" in page  # drawn with the rest of the page
+
+
+def test_import_cart_warns_of_unmatched_rows() -> None:
+    """Import cart gets a red "!" while the build's carts have rows that
+    match no line, so they get matched."""
+    page = _page()
+    assert '<span id="cartbadge" hidden>!</span></button>' in page
+    assert "#cartbadge {" in page and "background: var(--bad)" in page
+    assert '$("cartbadge").hidden = !left;' in page
+    assert "const left = BUILD ? (CART.match.unmatched || []).length : 0;" in page
+
+
+def test_unmatched_rows_are_called_out() -> None:
+    """Cart rows that match no line: a bar under the header that says so and
+    leads to matching them; the dialog's "Rows to match" with suggestions."""
+    page = _page()
+    assert 'id="unmatchbar"' in page and 'id="unmatchgo"' in page and "cartDialog(true)" in page
+    assert 'id="tomatch"' in page and "data-accept=" in page and 'id="acceptall"' in page
+
+
+def test_lines_select_like_files() -> None:
+    """Click picks a line, Ctrl/Cmd+click adds or removes one, Shift+click a
+    range (from the last clicked, in the order shown); parts clicked on the
+    board pick their line; Esc or Clear selection lets go."""
+    page = _page()
+    assert "let sel = new Set(), anchor = null" in page and "function select(i, e, ordered)" in page
+    assert "e.ctrlKey || e.metaKey" in page and "e.shiftKey && anchor !== null" in page
+    assert "window.bomPick(drag.ref, e)" in page and "window.bomPick(at(e.clientX, e.clientY), e)" in page
+    assert 'id="selinfo"' in page and '$("selclear").addEventListener("click", clearSel)' in page
+    assert "pinned" not in page.split("// What's lit")[1].split("// ---------------------------------------------------------------- the table")[0]

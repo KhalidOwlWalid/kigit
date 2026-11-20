@@ -336,6 +336,7 @@ def match_carts(data: dict, state: dict) -> dict:
                 line, by = mpn_of[_norm(row["mpn"])], "MPN"
             entry = {**row, "site": site, "i": i, "by": by}
             if line is None:
+                entry["suggest"] = suggest_line(row, lines, drafts, fn)
                 out["unmatched"].append(entry)
                 continue
             m = out["lines"].setdefault(line_key(line), {"qty": {}, "rows": []})
@@ -345,6 +346,88 @@ def match_carts(data: dict, state: dict) -> dict:
 
 
 SITE_NAMES = {"mouser": "Mouser", "lcsc": "LCSC"}
+
+# A cart row's description says what kind of part it is ("Thick Film Resistor", "MLCC").
+_KIND_WORDS = {"resistor": ("resistor",), "capacitor": ("capacitor", "mlcc"), "inductor": ("inductor",),
+               "ferrite": ("ferrite",), "led": ("led",), "diode": ("diode", "rectifier"), "crystal": ("crystal", "xtal")}
+
+
+# What a passive's value is measured in, as a description writes it.
+_UNITS = {"resistor": r"(?:Ω|ohms?|R\b)", "ferrite": r"(?:Ω|ohms?)", "capacitor": r"F\b", "inductor": r"H\b",
+          "crystal": r"Hz\b"}
+_PREFIX = {"p": 1e-12, "n": 1e-9, "u": 1e-6, "µ": 1e-6, "μ": 1e-6, "m": 1e-3, "": 1.0, "k": 1e3, "K": 1e3, "M": 1e6,
+           "G": 1e9, "r": 1.0, "R": 1.0}
+
+
+def si_value(text: str, kind: str = "") -> float | None:
+    """A passive's value as a number: 10k, 4k7, 100nF, 0.1uF, 32k768, 8MHz,
+    10kR, 4R7. An "M" is mega (1M resistor); "m" is milli except for
+    resistors and ferrites, where it's mega too (1m resistor)."""
+    t = re.sub(r"\s+", "", str(text or "")).replace("Ω", "").replace("ohms", "").replace("ohm", "")
+    t = re.sub(r"(?<=[\dpnuµμmkKMGRr])(F|H|Hz)$", "", t)
+    t = re.sub(r"(?<=[pnuµμmkKMG])[Rr]$", "", t)                  # 10kR: the R is "ohms"
+    m = re.fullmatch(r"(\d+)([pnuµμmkKMGRr])(\d+)", t)            # 4k7, 32k768, 4R7
+    if m:
+        t = f"{m.group(1)}.{m.group(3)}{m.group(2)}"
+    m = re.fullmatch(r"(\d+(?:[.,]\d+)?)([pnuµμmkKMGRr]?)", t)
+    if not m:
+        return None
+    prefix = m.group(2)
+    if prefix == "m" and kind in ("resistor", "ferrite"):
+        prefix = "M"
+    return float(m.group(1).replace(",", ".")) * _PREFIX[prefix]
+
+
+def _values_in(text: str, kind: str) -> list[float]:
+    """The values a description gives in this kind's unit: "47 pF", "0.1uF", "10kΩ", "32.768kHz"."""
+    unit = _UNITS.get(kind)
+    if not unit:
+        return []
+    out = []
+    for m in re.finditer(rf"(\d+(?:[.,]\d+)?)\s*([pnuµμmkKMG]?)\s*{unit}", text):
+        v = si_value(m.group(1) + m.group(2), kind)
+        if v is not None:
+            out.append(v)
+    return out
+
+
+def suggest_line(row: dict, lines: list[dict], drafts: dict, field_names: dict) -> dict | None:
+    """A line a cart row is most likely for, from its description and part
+    number: a passive by kind + value (+ package), anything else by its
+    value (part name) in the row's MPN or description. Only a clear best is
+    suggested; it's never matched until you accept it. {key, refs, why}."""
+    from .inventory import norm_value
+    desc = f"{row.get('description', '')} {row.get('mpn', '')}"
+    low = desc.lower()
+    tokens = {norm_value(t) for t in re.split(r"[\s,;/()]+", desc) if t}
+    scored = []
+    for l in lines:
+        if l.get("dnp"):
+            continue
+        kind, value, package = l.get("kind", ""), l.get("value", ""), (l.get("package") or "").lower()
+        score, why = 0, []
+        if kind in _KIND_WORDS:
+            if not any(w in low for w in _KIND_WORDS[kind]):
+                continue
+            v = si_value(value, kind)
+            same = v is not None and any(abs(x - v) <= 1e-6 * max(abs(v), 1e-15) for x in _values_in(desc, kind))
+            if not same and norm_value(value) not in tokens:  # a value as a word: "RED" for an LED
+                continue
+            score, why = 2, [f"{kind} {value}"]
+            if package and package in low:
+                score, why = 3, why + [package]
+        elif len(value) >= 4 and _norm(value) and (_norm(value) in _norm(row.get("mpn", "")) or value.lower() in low):
+            score, why = 2, [f"{value} in its part number or description"]
+        if score:
+            scored.append((score, l, why))
+    if not scored:
+        return None
+    scored.sort(key=lambda x: -x[0])
+    if len(scored) > 1 and scored[1][0] == scored[0][0]:
+        return None  # two lines fit as well: no guess
+    _, l, why = scored[0]
+    return {"key": line_key(l), "refs": l["refs"], "label": f"{l['value']} · {', '.join(l['refs'][:6])}"
+            + (" …" if len(l["refs"]) > 6 else ""), "why": " + ".join(why)}
 
 
 def import_cart(board: str | Path, build: str, site: str, filename: str, data: bytes) -> dict:
