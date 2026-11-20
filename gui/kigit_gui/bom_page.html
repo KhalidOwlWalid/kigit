@@ -159,7 +159,7 @@ td.placed button { padding: 0 6px; font-size: 11px; margin-left: 2px; }
   box-shadow: 0 6px 18px rgba(0,0,0,.35); padding: 4px; width: 18rem; }
 #cmenu.on { display: block; }
 #cmenu button { display: block; width: 100%; text-align: left; border: 0; background: none; padding: 6px 10px; border-radius: 6px; }
-#cmenu button:hover { background: var(--hl); } #cmenu small { display: block; color: var(--muted); font-size: 11.5px; }
+#cmenu button:hover { background: var(--hl); } #cmenu button:disabled { opacity: .45; cursor: default; background: none; } #cmenu small { display: block; color: var(--muted); font-size: 11.5px; }
 #invdlg { max-width: min(64rem, 94vw); width: 64rem; }
 #invdlg table { font-size: 12px; } #invdlg td, #invdlg th { padding: 3px 6px; }
 #invdlg input.q { width: 6rem; text-align: right; }
@@ -291,6 +291,8 @@ design before saving. The search links only open the distributors' sites; kigit 
 <div id="fmenu" role="dialog" aria-label="Filter"></div>
 <div id="bmenu" role="menu" aria-label="Build"><button data-b="rename">Rename&hellip;</button><button data-b="delete" class="bad">Delete&hellip;</button></div>
 <div id="cmenu" role="menu" aria-label="Import cart">
+  <div id="cnobuild" class="sub" style="padding:6px 10px">A cart belongs to a build (a batch of boards): pick one next to the title, or
+    <button data-cart="newbuild" style="display:inline;width:auto;padding:1px 8px;border:1px solid var(--line)">+ New build&hellip;</button></div>
   <button data-cart="mouser" role="menuitem"><b>Mouser cart&hellip;</b><small>Cart &rarr; Export (the .xls), or .xlsx / .csv</small></button>
   <button data-cart="lcsc" role="menuitem"><b>LCSC cart&hellip;</b><small>Cart &rarr; Export (the .csv), or .xlsx</small></button>
   <button data-cart="show" role="menuitem" id="cartshow"><b>Carts and unmatched rows&hellip;</b><small>What was imported; give rows kigit couldn't match to a line</small></button>
@@ -1056,7 +1058,8 @@ $("rows").addEventListener("change", async (e) => {
   catch (err) { box.checked = !box.checked; box.disabled = false; alert("Not saved: " + err.message); }
 });
 $("addtracker").addEventListener("click", async () => {
-  if (!BUILD) return;
+  if (!BUILD && !(confirm("Trackers belong to a build (a batch of boards you're making), so each batch starts fresh. " +
+    "Pick one next to the title, or make one now?") && await newBuild())) return;
   const name = (prompt("A tracker column to tick off as you go (e.g. Carted, Ordered, Received, Placed, Tested):") || "").trim().slice(0, 60);
   if (!name) return;
   if (trackers().includes(name)) { alert(`There's already a "${name}" tracker.`); return; }
@@ -1108,8 +1111,8 @@ async function loadBuilds() {
 async function loadState() {
   const b = BUILD ? BUILD.id : "";
   try { drafts = await (await fetch(`/bom/${KEY}/drafts?build=${encodeURIComponent(b)}`)).json(); } catch {}
-  $("addtracker").disabled = $("cartbtn").disabled = !BUILD;
-  for (const id of ["addtracker", "cartbtn"]) $(id).title = BUILD ? $(id).dataset.title : "Pick or make a build first (next to the title): what's bought and ticked belongs to a build";
+  for (const id of ["addtracker", "cartbtn"]) $(id).title = BUILD ? $(id).dataset.title :
+    $(id).dataset.title + " (it asks for a build first: what's bought and ticked belongs to one)";
   await refreshCart();
   await loadBoards();
   render(); qtyChanged(); markBoards();
@@ -1128,13 +1131,17 @@ $("build").addEventListener("change", async () => {
   const sel = $("build");
   if (sel.value !== "+") { pickBuild(sel.value); return; }
   sel.value = BUILD ? BUILD.id : "";
-  const name = (prompt("A name for the build (a batch of boards you're making):", `Build ${new Date().toISOString().slice(0, 10)}`) || "").trim();
-  if (!name) return;
-  const boards = parseInt(prompt("How many boards?", String(buildQty())) || "", 10);
-  if (!(boards >= 1)) return;
-  try { const b = await buildAction({ action: "new", name, boards }); pickBuild(b.id); }
-  catch (e) { alert("No build made: " + e.message); }
+  await newBuild();
 });
+// A new build (asked for its name and boards), picked once made. True if made.
+async function newBuild() {
+  const name = (prompt("A name for the build (a batch of boards you're making):", `Build ${new Date().toISOString().slice(0, 10)}`) || "").trim();
+  if (!name) return false;
+  const boards = parseInt(prompt("How many boards?", String(buildQty())) || "", 10);
+  if (!(boards >= 1)) return false;
+  try { const b = await buildAction({ action: "new", name, boards }); pickBuild(b.id); await loadState(); return true; }
+  catch (e) { alert("No build made: " + e.message); return false; }
+}
 let boardsTimer = 0;
 $("boards").addEventListener("input", () => {
   if (!BUILD) return;
@@ -1484,14 +1491,17 @@ $("cartbtn").addEventListener("click", (e) => {
   e.stopPropagation();
   const m = $("cmenu"), r = $("cartbtn").getBoundingClientRect();
   $("cartshow").hidden = !hasCarts();
+  $("cnobuild").hidden = !!BUILD;
+  m.querySelectorAll("[data-cart='mouser'], [data-cart='lcsc']").forEach((x) => (x.disabled = !BUILD));
   m.classList.toggle("on"); m.style.top = r.bottom + 4 + "px";
   m.style.left = Math.max(8, Math.min(r.left, innerWidth - m.offsetWidth - 8)) + "px";
 });
-$("cmenu").addEventListener("click", (e) => {
+$("cmenu").addEventListener("click", async (e) => {
   e.stopPropagation();
   const b = e.target.closest("[data-cart]"); if (!b) return;
   $("cmenu").classList.remove("on");
   if (b.dataset.cart === "show") { cartDialog(); return; }
+  if (b.dataset.cart === "newbuild") { await newBuild(); return; }
   if (!BUILD) { alert("Pick or make a build first (next to the title): a cart belongs to a build."); return; }
   cartSite = b.dataset.cart; $("cartfile").value = ""; $("cartfile").click();
 });

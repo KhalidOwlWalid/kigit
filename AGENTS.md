@@ -649,6 +649,8 @@ at once. localStorage settings are per origin, so per port.
   `?build=`. `receive_cart`: rows -> inventory.change deltas (ids = row's
   mpn/site number/manufacturer + its line's kind/value/package), kept as
   `moved` for `undo`; received carts aren't "ordered" in match_carts;
+  without a build, Import cart and + Tracker stay enabled (a disabled
+  button swallows the click): `#cnobuild` in the menu and `newBuild()`;
   lines with no number get the row's as drafts. Page: `buyOf(l)` {need,
   stock, ordered, toBuy}, `covers()`, column "tobuy", export rule
   "tobuy" (`exportQty`).

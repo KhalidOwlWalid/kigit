@@ -315,6 +315,10 @@ def test_buy_on_the_page() -> None:
     assert "stock covers <b>" in page and "data-receive=" in page and "data-unreceive=" in page
     assert '["tobuy", "Only what\'s still to buy (and that many)"]' in page
     assert 'exportRule === "tobuy" && BUILD ? buyOf(l).toBuy : l.qty * boards' in page
+    # Without a build, Import cart and + Tracker still answer (a disabled button just ignores the click):
+    # the menu says why and offers a new build; + Tracker offers to make one.
+    assert '$("cartbtn").disabled' not in page and '$("addtracker").disabled' not in page
+    assert 'id="cnobuild"' in page and 'data-cart="newbuild"' in page and "await newBuild()" in page
 
 
 def test_assemble_on_the_page() -> None:
