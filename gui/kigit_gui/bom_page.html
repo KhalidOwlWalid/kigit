@@ -44,6 +44,11 @@ button.primary, button.on { border-color: var(--accent); color: var(--accent); }
 .pane { flex: 1; min-height: 0; position: relative; display: flex; flex-direction: column; }
 .pane + .pane { border-top: 1px solid var(--line); }
 .pane.gone { display: none; }
+#panenotes { flex: 2; } #panenotes .view { background: #161a20; }
+#notesframe { width: 100%; height: 100%; border: 0; display: block; background: #161a20; }
+.pane-head .faint { margin-right: auto; }
+button.nbtn { margin-top: 4px; padding: 0 7px; font-size: 11px; border-radius: 999px; color: var(--muted); }
+button.nbtn.has { color: var(--ok); border-color: var(--ok); }
 .pane-head { display: flex; gap: 6px; align-items: center; padding: 5px 8px; color: var(--muted); font-size: 12px;
   border-bottom: 1px solid var(--line); }
 .pane-head b { color: var(--text); font-size: 12.5px; margin-right: auto; }
@@ -170,6 +175,7 @@ dialog a { color: var(--link); }
     <button id="showlist" class="on" title="The list of parts">List</button>
     <button id="show2d" class="on" title="The board in 2D beside the list">PCB</button>
     <button id="show3d" class="on" title="The board in 3D beside the list">3D</button>
+    <button id="shownotes" title="Notes about the BOM's lines (+ Notes on a line): why a part was chosen">Notes</button>
   </div>
 </header>
 <div id="split">
@@ -187,6 +193,12 @@ design before saving. The search links only open the distributors' sites; kigit 
   <button id="write" class="primary">Write to schematic</button></div>
 </main>
 <aside id="side">
+  <section class="pane gone" id="panenotes">
+    <div class="pane-head"><b>Notes</b><span class="faint" id="noteswhat"></span>
+      <button id="notestab" title="Open the notes in a tab of their own (this pane closes)">&#8599; New tab</button>
+      <button data-hide="shownotes" title="Hide this panel (the Notes button above brings it back)">Hide</button></div>
+    <div class="view"><iframe id="notesframe" title="BOM notes"></iframe></div>
+  </section>
   <section class="pane" id="pane2d">
     <div class="pane-head"><b>PCB</b><button id="front" class="on" title="The top side">Top</button>
       <button id="back" class="on" title="The bottom side">Bottom</button><button id="fit2d" title="Fit the board">Fit</button>
@@ -230,7 +242,7 @@ design before saving. The search links only open the distributors' sites; kigit 
 </dialog>
 <script>
 let DATA = %%DATA%%;
-const KEY = "%%KEY%%", NAME = %%NAME%%, EDITABLE = %%EDITABLE%%;
+const KEY = "%%KEY%%", NAME = %%NAME%%, EDITABLE = %%EDITABLE%%, NOTESKEY = "%%NOTESKEY%%";
 let drafts = { drafts: {}, columns: [], tracking: { columns: [], done: {} } };
 const $ = (id) => document.getElementById(id);
 const esc = (t) => String(t ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
@@ -429,7 +441,7 @@ function tableCols() {
   return [
     { id: "qty", label: "Qty", th: `<th class="qty">Qty</th>`, td: (l) => `<td class="qty">${l.qty}</td>` },
     { id: "refs", label: "References", fixed: true, filter: "text", text: (l) => l.refs.join(" "), th: `<th>References</th>`,
-      td: (l) => `<td class="refs">${esc(l.refs.join(", "))}<div>${status(l)}</div></td>` },
+      td: (l, i) => `<td class="refs">${esc(l.refs.join(", "))}<div>${status(l)}</div>${notesButton(l, i)}</td>` },
     { id: "value", label: "Value", filter: "text", text: (l) => [l.value, l.package, l.description].join(" "), th: `<th>Value</th>`,
       td: (l) => `<td>${esc(l.value)}<div class="pkg">${esc(l.package)}</div>${l.description ? `<div class="desc">${esc(l.description)}</div>` : ""}</td>` },
     ...cols.map((c, ci) => ({ id: "f:" + c.name, label: c.label === c.name ? c.label : `${c.label} (${c.name})`,
@@ -764,7 +776,12 @@ $("rows").addEventListener("click", (e) => {
   const tr = e.target.closest("tr[data-i]"); if (!tr) return;
   pinned = pinned === +tr.dataset.i ? null : +tr.dataset.i;
   light(DATA.lines[+tr.dataset.i].refs);
-  if (pinned !== null) board2d.zoomTo(DATA.lines[pinned].refs);
+  if (pinned !== null) {
+    board2d.zoomTo(DATA.lines[pinned].refs);
+    notesLine = lineInfo(DATA.lines[pinned]);  // the notes follow the line you picked
+    $("noteswhat").textContent = `${notesLine.value} · ${notesLine.refs.join(", ")}`;
+    sendLine(false);
+  }
 });
 async function post(path, body) {
   const r = await fetch(`/bom/${KEY}/${path}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}) });
@@ -923,17 +940,71 @@ $("export").addEventListener("click", () => {
   a.download = `${NAME}-bom.csv`; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 });
 
+// ------------------------------------------------------------ BOM notes
+// + Notes on a line: the Notebook (the same notes, in reviews/) about that
+// line's parts, in the Notes pane (an iframe) or a tab of its own. They talk
+// through a BroadcastChannel; the notes ask which line is picked when they load.
+const bomChan = new BroadcastChannel("kigit-bom");
+let noteCounts = {}, notesLine = null, notesOpen = false, notesTab = null;
+function notesButton(l, i) {
+  const n = Math.max(0, ...l.refs.map((r) => noteCounts[r] || 0));
+  return `<button class="nbtn${n ? " has" : ""}" data-notes="${i}" title="${n ? `${n} note${n === 1 ? "" : "s"} about these parts: open them` :
+    "Write why you chose this part (a note pinned to these parts)"}">${n ? `&#128221; ${n}` : "+ Notes"}</button>`;
+}
+function lineInfo(l) {
+  const [mpn, maker] = columns();
+  return { key: lineKey(l), refs: l.refs, value: l.value, footprint: l.footprint, mpn: shown(l, mpn), manufacturer: shown(l, maker) };
+}
+function sendLine(open) { bomChan.postMessage({ type: "line", job: KEY, line: notesLine, open }); }
+function loadNotes() {
+  const f = $("notesframe");
+  if (!f.getAttribute("src")) f.src = `/bom-notes/${NOTESKEY}?bom=${KEY}&pane=1`;
+}
+async function countNotes() {
+  try { noteCounts = await (await fetch(`/bom/${KEY}/notes`)).json(); } catch { return; }
+  document.querySelectorAll("#rows button.nbtn").forEach((b) => (b.outerHTML = notesButton(DATA.lines[+b.dataset.notes], +b.dataset.notes)));
+}
+bomChan.onmessage = (e) => {
+  const m = e.data || {};
+  if (m.job !== KEY) return;
+  if (m.type === "hello") { sendLine(notesOpen); notesOpen = false; }  // a Notes pane or tab just loaded
+  if (m.type === "notes") countNotes();                                   // a note was made or (un)pinned
+};
+$("rows").addEventListener("click", (e) => {
+  const b = e.target.closest("button.nbtn"); if (!b) return;
+  const l = DATA.lines[+b.dataset.notes];
+  notesLine = lineInfo(l); notesOpen = true;
+  $("noteswhat").textContent = `${l.value} · ${l.refs.join(", ")}`;
+  if (notesTab && !notesTab.closed) { sendLine(true); notesOpen = false; notesTab.focus(); return; }
+  if (!$("shownotes").classList.contains("on")) {
+    // Notes take the PCB's place (the PCB button brings it back).
+    $("shownotes").classList.add("on"); $("show2d").classList.remove("on"); panes();
+  }
+  if ($("notesframe").contentWindow && $("notesframe").dataset.ready) { sendLine(true); notesOpen = false; }
+});
+$("notesframe").addEventListener("load", () => { if ($("notesframe").getAttribute("src")) $("notesframe").dataset.ready = "1"; });
+$("notestab").addEventListener("click", () => {
+  // The notes in a tab of their own; the pane closes (one copy of a note open at a time).
+  notesTab = window.open(`/bom-notes/${NOTESKEY}?bom=${KEY}`, "_blank");
+  notesOpen = true;
+  const f = $("notesframe"); f.src = "about:blank"; f.removeAttribute("src"); delete f.dataset.ready;  // unload the pane's copy
+  $("shownotes").classList.remove("on"); panes();
+});
+countNotes();
+
 // ------------------------------------------------------- the panes on the side
 // Each panel (the list, PCB, 3D) can be hidden, from its button in the
 // header or its own Hide; one always stays. Remembered in this browser.
-const PANES = ["showlist", "show2d", "show3d"];
+const PANES = ["showlist", "show2d", "show3d", "shownotes"];
 function panes() {
-  const [list, two, three] = PANES.map((id) => $(id).classList.contains("on"));
+  const [list, two, three, notes] = PANES.map((id) => $(id).classList.contains("on"));
   $("list").classList.toggle("gone", !list);
   $("pane2d").classList.toggle("gone", !two); $("pane3d").classList.toggle("gone", !three);
-  $("side").classList.toggle("gone", !two && !three);
+  $("panenotes").classList.toggle("gone", !notes);
+  $("side").classList.toggle("gone", !two && !three && !notes);
+  if (notes) loadNotes();
   dispatchEvent(new Event("resize"));
-  try { localStorage.setItem("kigit.bomPanes", JSON.stringify({ list, two, three })); } catch {}
+  try { localStorage.setItem("kigit.bomPanes", JSON.stringify({ list, two, three, notes })); } catch {}
 }
 function toggle(id) {
   const b = $(id);
@@ -947,9 +1018,10 @@ function toggle(id) {
 for (const id of PANES) $(id).addEventListener("click", () => toggle(id));
 document.querySelectorAll("[data-hide]").forEach((b) => b.addEventListener("click", () => toggle(b.dataset.hide)));
 try { const p = JSON.parse(localStorage.getItem("kigit.bomPanes") || "null");
-  if (p && (p.list !== false || p.two || p.three)) {
+  if (p && (p.list !== false || p.two || p.three || p.notes)) {
     $("showlist").classList.toggle("on", p.list !== false);
     $("show2d").classList.toggle("on", !!p.two); $("show3d").classList.toggle("on", !!p.three);
+    $("shownotes").classList.toggle("on", !!p.notes);
   } } catch {}
 panes();
 

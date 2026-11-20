@@ -624,6 +624,26 @@ at once. localStorage settings are per origin, so per port.
   render's row filter (a filter on a column that's gone is ignored;
   DNP lines fail tracker filters). Not saved across reloads. A rename or
   tracker removal moves or drops its filter.
+  BOM notes: each References cell has `.nbtn` (+ Notes, or 📝 N from
+  `/bom/{key}/notes` = `notebook.counts_by_part`, max over the line's
+  refs). The Notes pane (`#panenotes`, `shownotes` in PANES; + Notes
+  shows it in the PCB's place) is an iframe of `/bom-notes/{notes key}?
+  bom={job key}&pane=1` (`NOTESKEY` = `project_key(board folder)`, the
+  same key as kigit's Notebook), loaded on first show; ↗ opens the same
+  page without pane=1 in a tab and blanks the iframe (one copy of a note
+  open). They talk over `BroadcastChannel("kigit-bom")`, messages carry
+  `job`: page -> notes `line` {line: {key, refs, value, footprint, mpn,
+  manufacturer}, open} (+ Notes: open=true opens the newest note about
+  its parts; a row click: open=false); notes -> page `hello` (on load, the
+  page answers with the current line) and `notes` (a note made or
+  (un)pinned: recount). The notes page is `notebook_page(key, bom, compact)`
+  (route in app.py): `NotebookPanel` with `bom` set shows `bom_view` (the
+  line, `notebook.notes_for_parts`, New note = `notebook.bom_note` in
+  reviews/BOM/ pinned with `part_anchors` (sch parts, seen HEAD..working
+  tree) and a template with `commit_ref`, Pin this line, Commit =
+  `commit_dialog` from `kigit.history`, appended as "- Commit `abc1234`
+  (date · subject)"); `compact` is one column. `set_pinned` posts
+  `notes`. Tests: test_notebook (helpers), test_app `test_bom_notes_page`.
   Renaming columns (`renameColumn`, double-click a `th[data-rename]` or
   ✎ in Columns): only added fields (`custom`, no `kind`) and trackers.
   Tracker or a field with no schematic values: `rename_tracker` /

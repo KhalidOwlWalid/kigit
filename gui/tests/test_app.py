@@ -1661,6 +1661,60 @@ async def test_notebook_in_its_own_tab(user: User, monkeypatch, tmp_path: Path) 
     assert nb.remote_pinned.name == "C1"  # another project's: not ours
 
 
+async def test_bom_notes_page(user: User, monkeypatch, tmp_path: Path) -> None:
+    """The BOM page's notes (/bom-notes/{key}?bom=job&pane=1): the line picked
+    there, a new note about it (pinned to its parts), + Notes opening its
+    note, Pin this line, a commit added, and another job's lines ignored."""
+    from kigit_gui import notebook
+    from kigit_gui.notebook_panel import NotebookPanel
+    from kigit_gui.review_panel import project_key
+
+    project = make_fixture_repo(tmp_path / "repo")
+    key = project_key(project)
+    await user.open(f"/bom-notes/{key}?bom=JOB1&pane=1")
+    await user.should_see("BOM notes")
+    nb = NotebookPanel.current
+    assert nb.bom == "JOB1" and nb.compact and nb.standalone
+    await user.should_see("Press + Notes on a BOM line")
+    line = {"key": "1k|R_0603", "refs": ["R1", "R3"], "value": "1k", "mpn": "RC0603FR-071KL",
+            "manufacturer": "YAGEO", "footprint": "R_0603"}
+    emit(user, "kigit_bom_message", {"type": "line", "job": "OTHER", "line": {**line, "refs": ["R9"]}})
+    assert nb.bom_line is None  # another BOM page's
+    emit(user, "kigit_bom_message", {"type": "line", "job": "JOB1", "line": line, "open": True})
+    await user.should_see("no notes yet")
+    user.find(marker="bom-notes-new").click()
+    await user.should_see(marker="notebook-text")
+    made = project / "reviews" / notebook.BOM / "1k (R1, R3).md"
+    assert made.exists()
+    note = notebook.read(made)
+    assert [a.name for a in note.pins] == ["R1", "R3"]
+    assert note.pins[0].seen.old == git(project, "rev-parse", "HEAD")
+    assert "- **Chosen at:** `" in note.text
+
+    # Another line with an extra part: Pin this line adds only what's new.
+    emit(user, "kigit_bom_message", {"type": "line", "job": "JOB1", "line": {**line, "refs": ["R1", "R3", "R5"]}})
+    await user.should_see(marker="bom-notes-pin-line")
+    user.find(marker="bom-notes-pin-line").click()
+    assert [a.name for a in notebook.read(made).pins] == ["R1", "R3", "R5"]
+
+    # A commit, picked from the history, goes at the end of the note.
+    user.find(marker="bom-notes-commit").click()
+    await user.should_see(marker="bom-notes-commit-row", retries=50)
+    from nicegui.testing.user_interaction import UserInteraction
+    first = next(iter(user.find(marker="bom-notes-commit-row").elements))
+    UserInteraction(user, {first}, None).click()
+    for _ in range(30):
+        if "- Commit `" in made.read_text(encoding="utf-8"):
+            break
+        await asyncio.sleep(0.1)
+    assert "- Commit `" in made.read_text(encoding="utf-8")
+
+    # + Notes on a line that has a note: that note opens.
+    nb.note = None
+    emit(user, "kigit_bom_message", {"type": "line", "job": "JOB1", "line": {**line, "refs": ["R5"]}, "open": True})
+    assert nb.note is not None and nb.note.path == made
+
+
 def review_anchor(name: str, seen: dict):
     from kigit_gui.review import Anchor
     return Anchor.from_dict({"tab": "pcb", "kind": "footprint", "name": name, "seen": seen})

@@ -362,6 +362,16 @@ async def _undo(key: str) -> Response:
     return JSONResponse({"result": result, "data": job.data})
 
 
+@app.get("/bom/{key}/notes")
+async def _notes(key: str) -> Response:
+    """How many notes pin each part ({ref: n}), for the + Notes buttons."""
+    from . import notebook
+    job = _job(key)
+    if job is None:
+        return JSONResponse({"error": "gone"}, status_code=404)
+    return JSONResponse(await asyncio.to_thread(notebook.counts_by_part, Path(job.board).parent))
+
+
 @app.get("/bom/{key}/keys")
 async def _keys(key: str) -> Response:
     if _job(key) is None:
@@ -450,10 +460,12 @@ async def _lookup_state(key: str) -> Response:
 
 
 def page(key: str, job: Job) -> str:
+    from .review_panel import project_key
     data = json.dumps(job.data, ensure_ascii=False).replace("<", "\\u003c")
     name = re.sub(r"[^\w.-]+", "_", Path(job.board).stem) or "board"
     return (_PAGE.replace("%%TITLE%%", html.escape(job.title))
             .replace("%%KEY%%", key)
+            .replace("%%NOTESKEY%%", project_key(Path(job.board).parent))
             .replace("%%NAME%%", json.dumps(name))
             .replace("%%EDITABLE%%", "true" if job.rev == "LOCAL" else "false")
             .replace("%%DRAFTS_FILE%%", html.escape(str(drafts_path(job.board))))

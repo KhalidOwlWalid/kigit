@@ -1962,6 +1962,12 @@ def _notebook(key: str) -> None:
     notebook_page(key)
 
 
+@ui.page("/bom-notes/{key}")
+def _bom_notes(key: str, bom: str = "", pane: str = "") -> None:
+    """Notes about BOM lines: the BOM page's Notes pane (pane=1, narrow) or a tab of its own."""
+    notebook_page(key, bom=bom, compact=pane == "1")
+
+
 @ui.page("/")
 async def index(folder: str = "", board: str = "") -> None:
     # The starting folder comes from `kigit gui [PROJECT_DIR]` (see main()),

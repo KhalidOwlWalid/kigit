@@ -7,6 +7,9 @@ folders, [[links]], pictures). kigit adds a little on top, all optional:
   file, which Obsidian and GitHub don't show:
       <!-- kigit-pins [{"tab": "pcb", "kind": "footprint", "name": "U1", "seen": {...}}] -->
 - Notes about a part: the notes that pin it, or mention it by name.
+- Notes about a BOM line (the BOM page's + Notes): ordinary notes in
+  reviews/BOM/, pinned to every part on the line, so they're found from
+  the viewer too; why that part was chosen, and when.
 - Today's log: a line added under today's heading in a Logs.md
   ("## 16th November 2026", the style of a hand-kept log), with the time,
   what's pinned and the commit you're on.
@@ -32,6 +35,7 @@ from .review import Anchor
 PINS = re.compile(r"\n*<!-- kigit-pins (\[.*?\]) -->\s*\Z", re.DOTALL)
 SKIP = {review.ASSETS, "threads"}
 LOG = "Logs.md"
+BOM = "BOM"  # where notes about BOM lines go, in reviews/
 
 
 @dataclass
@@ -319,3 +323,64 @@ def log(folder: Path, line: str, when: datetime | None = None, pinned: Anchor | 
     note.text = "\n".join(lines) + "\n"
     write(note)
     return path
+
+
+# ------------------------------------------------------- notes about BOM lines
+def part_anchors(refs: list[str], head: str = "") -> list[Anchor]:
+    """A BOM line's parts as pins (schematic parts, so the PCB's footprints
+    match too). Seen in HEAD..working tree, where the BOM was read."""
+    from .review import Seen
+    seen = Seen(head, "", "new") if head else None
+    return [Anchor("sch", "part", r, seen) for r in refs if r]
+
+
+def notes_for_parts(project_dir: str | Path, refs: list[str]) -> list[Note]:
+    """The notes that pin any of these parts (on either tab), newest first."""
+    want = set(refs)
+    out = []
+    for p in all_notes(project_dir):
+        try:
+            n = read(p)
+        except (OSError, UnicodeDecodeError):
+            continue
+        if any(a.kind in ("part", "footprint") and a.name in want for a in n.pins):
+            out.append(n)
+    return sorted(out, key=lambda n: n.path.stat().st_mtime if n.path.exists() else 0, reverse=True)
+
+
+def counts_by_part(project_dir: str | Path) -> dict[str, int]:
+    """How many notes pin each part (by reference), for the BOM's + Notes."""
+    counts: dict[str, int] = {}
+    for p in all_notes(project_dir):
+        try:
+            n = read(p)
+        except (OSError, UnicodeDecodeError):
+            continue
+        for ref in {a.name for a in n.pins if a.kind in ("part", "footprint")}:
+            counts[ref] = counts.get(ref, 0) + 1
+    return counts
+
+
+def bom_note(project_dir: str | Path, line: dict, head: str = "", subject: str = "") -> Note:
+    """A new note about a BOM line, in reviews/BOM/: pinned to its parts,
+    started with what the part is and the commit you're on."""
+    refs = [r for r in line.get("refs", []) if isinstance(r, str)]
+    value = review.one_line(str(line.get("value", ""))).strip()
+    title = f"{value or 'Part'} ({_refs_short(refs)})"
+    facts = [("Parts", ", ".join(refs)), ("Value", value), ("MPN", line.get("mpn", "")),
+             ("Manufacturer", line.get("manufacturer", "")), ("Footprint", line.get("footprint", ""))]
+    text = "\n".join(f"- **{k}:** {review.one_line(str(v)).strip()}" for k, v in facts if str(v or "").strip())
+    if head:
+        text += "\n- **Chosen at:** " + commit_ref(head, subject)
+    text += "\n\n## Why this part\n\n"
+    return new_note(root(project_dir) / BOM, title, part_anchors(refs, head), text)
+
+
+def _refs_short(refs: list[str]) -> str:
+    return ", ".join(refs[:4]) + (f" +{len(refs) - 4}" if len(refs) > 4 else "")
+
+
+def commit_ref(full_hash: str, subject: str = "", date: str = "") -> str:
+    """A commit in a note: its short hash (code), date and subject."""
+    bits = [f"`{full_hash[:7]}`"] + ([date[:10]] if date else []) + ([review.one_line(subject).strip()] if subject else [])
+    return " ".join(bits[:1]) + (" (" + " · ".join(bits[1:]) + ")" if len(bits) > 1 else "")

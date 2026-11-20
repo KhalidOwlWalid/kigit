@@ -5,6 +5,12 @@ Top to bottom: what's pinned in the viewer and the notes about it; a search
 box; your folders and notes (as deep as they go); the open note, saved as
 you type (no Write). N anywhere (outside a text box) jots a new note about
 what's pinned.
+
+On the BOM page (bom=<job key>): the line picked there (+ Notes, or a row
+clicked) and the notes about its parts come first, with New note about
+this line, Pin this line and + Commit. It talks to the BOM page through a
+BroadcastChannel("kigit-bom"), whether it's the page's Notes pane (an
+iframe, compact) or a tab of its own.
 """
 
 from __future__ import annotations
@@ -35,9 +41,14 @@ class NotebookPanel:
     def __init__(self, project: Callable[[], Path | None], editors: Editors,
                  pinned: Callable[[], Anchor | None], head: Callable[[], str],
                  focus: Callable[[Anchor], bool], compare: Callable[[str, str, Anchor], Awaitable[None]],
-                 counted: Callable[[int], None], standalone: bool = False) -> None:
+                 counted: Callable[[int], None], standalone: bool = False, bom: str = "", compact: bool = False,
+                 subject: Callable[[str], str] | None = None) -> None:
         self.project_cb, self.editors, self.pinned_cb, self.head = project, editors, pinned, head
         self.standalone = standalone  # in a tab of its own (/notebook/{key}), not beside the viewer
+        self.bom = bom                # the BOM page's job key: notes about its lines
+        self.compact = compact        # narrow (the BOM page's Notes pane): one column
+        self.subject = subject or (lambda h: "")
+        self.bom_line: dict | None = None  # the BOM line picked: {key, refs, value, mpn, manufacturer, footprint}
         self.focus_cb, self.compare_cb, self.counted = focus, compare, counted
         self.folder: Path | None = None   # where new notes and the log go
         self.note: notebook.Note | None = None
@@ -71,6 +82,12 @@ window.kigitNotebook.onmessage = (e) => emitEvent("kigit_nb_message", e.data);
         ui.on("kigit_nb_message", self._message)
         self.remote_pinned: Anchor | None = None  # in a tab of its own: what kigit's tab has pinned
         self.client = ui.context.client  # its page (messages go out from here, whatever's open)
+        if bom:
+            ui.add_body_html("""<script>
+window.kigitBomNotes = new BroadcastChannel("kigit-bom");
+window.kigitBomNotes.onmessage = (e) => emitEvent("kigit_bom_message", e.data);
+</script>""")
+            ui.on("kigit_bom_message", self._bom_message)
 
     @property
     def project(self) -> Path | None:
@@ -98,6 +115,136 @@ window.kigitNotebook.onmessage = (e) => emitEvent("kigit_nb_message", e.data);
                 self.go_to(a)
         elif not self.standalone and kind == "hello":
             self.tell_pinned()
+
+    # ------------------------------------------------------------- BOM lines
+    def _bom_post(self, message: dict) -> None:
+        import json
+        message = {**message, "job": self.bom}
+        self.client.run_javascript(f"window.kigitBomNotes && window.kigitBomNotes.postMessage({json.dumps(message)})")
+
+    def _bom_message(self, e) -> None:
+        m = e.args if isinstance(e.args, dict) else {}
+        if m.get("job") != self.bom or m.get("type") != "line":
+            return
+        line = m.get("line") if isinstance(m.get("line"), dict) else None
+        self.bom_line = line
+        if line and m.get("open"):  # + Notes: its newest note, if it has one
+            found = notebook.notes_for_parts(self.project, line.get("refs", [])) if self.project else []
+            if found and (self.note is None or self.note.path not in [n.path for n in found]):
+                self.open(found[0].path)
+        self.bom_view.refresh()
+
+    def hello_bom(self) -> None:
+        """Ask the BOM page which line is picked (on load)."""
+        self._bom_post({"type": "hello"})
+
+    def _line_refs(self) -> list[str]:
+        return [r for r in (self.bom_line or {}).get("refs", []) if isinstance(r, str)]
+
+    @ui.refreshable_method
+    def bom_view(self) -> None:
+        if not self.bom or not self.project:
+            return
+        line = self.bom_line
+        with ui.column().classes("w-full gap-1 rounded bg-[#1d2620] px-2 py-1").mark("bom-notes-line"):
+            if not line:
+                with ui.row().classes("w-full items-center gap-1 no-wrap"):
+                    ui.icon("receipt_long", size="xs").classes("text-emerald-400")
+                    ui.label("Press + Notes on a BOM line (or click a line) to see its notes here.").classes(
+                        "text-xs text-gray-400 flex-grow")
+                    self._commit_button()
+                return
+            refs = self._line_refs()
+            found = notebook.notes_for_parts(self.project, refs)
+            with ui.row().classes("w-full items-center gap-1 no-wrap"):
+                ui.icon("receipt_long", size="xs").classes("text-emerald-400")
+                ui.label(f"{line.get('value', '')} · {', '.join(refs)}").classes(
+                    "text-xs font-semibold truncate").tooltip(", ".join(refs)).mark("bom-notes-refs")
+                ui.label(f"{len(found)} note{'s' if len(found) != 1 else ''}" if found else "no notes yet").classes(
+                    "text-xs text-gray-400 whitespace-nowrap")
+                ui.space()
+                if self.note is not None:
+                    ui.button("Pin this line", icon="add_location_alt", on_click=self.pin_line).props(
+                        "flat dense no-caps size=sm color=green-4").tooltip(
+                        "Pin this line's parts to the open note").mark("bom-notes-pin-line")
+                self._commit_button()
+                ui.button("New note", icon="note_add", on_click=self.new_bom_note).props(
+                    "flat dense no-caps size=sm color=green-4").tooltip(
+                    "A note about this line, in reviews/BOM/, pinned to its parts").mark("bom-notes-new")
+            if mpn := line.get("mpn"):
+                ui.label(f"{line.get('manufacturer', '')} {mpn}".strip()).classes("text-xs text-gray-400 font-mono")
+            for n in found[:6]:
+                current = self.note is not None and self.note.path == n.path
+                with ui.row().classes("w-full items-center gap-2 no-wrap cursor-pointer hover:text-emerald-300 " +
+                                      ("text-emerald-300" if current else "")).on(
+                        "click", lambda n=n: self.open(n.path)).mark("bom-notes-note"):
+                    ui.icon("description", size="xs").classes("text-gray-500")
+                    ui.label(n.title).classes("text-sm truncate")
+                    ui.label(self._rel(n.path.parent)).classes("text-xs text-gray-500 truncate")
+
+    def _commit_button(self) -> None:
+        if self.note is not None:
+            ui.button("Commit", icon="commit", on_click=self.commit_dialog).props(
+                "flat dense no-caps size=sm color=grey-5").tooltip(
+                "Add a commit to the note (when it was chosen, changed...)").mark("bom-notes-commit")
+
+    def new_bom_note(self) -> None:
+        if not self.project or not self.bom_line:
+            return
+        self._save()
+        head = self.head()
+        n = notebook.bom_note(self.project, self.bom_line, head, self.subject(head) if head else "")
+        activity.record("note")
+        logs.log.info("notebook: new BOM note %s", n.path)
+        self.open(n.path)
+        self.set_pinned()
+
+    def pin_line(self) -> None:
+        if self.note is None or not self.bom_line:
+            return
+        added = [a for a in notebook.part_anchors(self._line_refs(), self.head())
+                 if not any(notebook.same_component(a, b) for b in self.note.pins)]
+        if not added:
+            ui.notify("This line's parts are pinned already")
+            return
+        self.note.pins.extend(added)
+        self.dirty_at = time.monotonic() - SAVE_AFTER
+        self._save()
+        self.view.refresh()
+        self.set_pinned()
+
+    async def commit_dialog(self) -> None:
+        """Pick a commit; a line for it goes at the end of the note."""
+        from . import kigit
+        if self.note is None or not self.project:
+            return
+        try:
+            hist = await kigit.history(str(self.project), max_count=60)
+        except kigit.KigitError as e:
+            ui.notify(f"Couldn't read the history: {e}", type="warning")
+            return
+        with self.host, ui.dialog() as dialog, ui.card().classes("bg-[#161a20] gap-1 w-[34rem]").mark("bom-notes-commits"):
+            ui.label("Add a commit to the note").classes("text-sm font-semibold")
+            ui.label("A line with its short hash, date and subject goes at the end.").classes("text-xs text-gray-500")
+            with ui.scroll_area().classes("w-full").style("height: 22rem"):
+                for c in hist.commits:
+                    with ui.row().classes("w-full items-center gap-2 no-wrap px-1 py-0.5 cursor-pointer rounded "
+                                          "hover:bg-[#1c2128]").on("click", lambda c=c: dialog.submit(c)).mark(
+                            "bom-notes-commit-row"):
+                        ui.label(c.short).classes("font-mono text-xs text-amber-400")
+                        ui.label(c.date[:10]).classes("text-xs text-gray-500")
+                        ui.label(c.subject).classes("text-sm truncate")
+            with ui.row().classes("w-full justify-end"):
+                ui.button("Cancel", on_click=lambda: dialog.submit(None)).props("flat")
+        dialog.open()
+        c = await dialog
+        dialog.delete()
+        if c is None or self.note is None:
+            return
+        self.note.text = self.note.text.rstrip("\n") + "\n\n- Commit " + notebook.commit_ref(c.hash, c.subject, c.date) + "\n"
+        self.dirty_at = time.monotonic() - SAVE_AFTER
+        self._save()
+        self.view.refresh()
 
     def tell_pinned(self) -> None:
         """kigit's tab: what's pinned, for a Notebook in its own tab."""
@@ -138,7 +285,7 @@ window.kigitNotebook.onmessage = (e) => emitEvent("kigit_nb_message", e.data);
     def view(self) -> None:
         with ui.row().classes("w-full items-center gap-1 no-wrap"):
             ui.icon("menu_book").classes("text-amber-500")
-            ui.label("Notebook").classes("text-base font-semibold")
+            ui.label("BOM notes" if self.bom else "Notebook").classes("text-base font-semibold")
             self.where_label = ui.label(self._where()).classes("text-xs text-gray-500 truncate")
             ui.space()
             ui.button(icon="today", on_click=self.log_dialog).props("flat dense round size=sm").tooltip(
@@ -151,10 +298,11 @@ window.kigitNotebook.onmessage = (e) => emitEvent("kigit_nb_message", e.data);
                 ui.button(icon="open_in_new", on_click=self.open_in_tab).props("flat dense round size=sm").tooltip(
                     "Open the Notebook in a tab of its own (pins still come from here)").mark("notebook-tab")
                 ui.button(icon="close", on_click=self.close).props("flat dense round size=sm")
-        if self.standalone:
+        if self.standalone and not self.compact:
             # Wide: folders and notes on the left, the note on the right.
             with ui.row().classes("w-full flex-grow no-wrap gap-4 min-h-0"):
                 with ui.column().classes("gap-2 min-h-0 h-full").style("width: 34%; min-width: 18rem"):
+                    self.bom_view()
                     self.about_view()
                     self._search_box()
                     with ui.scroll_area().classes("w-full flex-grow rounded bg-[#11151a]"):
@@ -162,9 +310,11 @@ window.kigitNotebook.onmessage = (e) => emitEvent("kigit_nb_message", e.data);
                 with ui.column().classes("flex-grow min-w-0 h-full gap-2"):
                     self.note_view()
             return
+        self.bom_view()
         self.about_view()
         self._search_box()
-        with ui.scroll_area().classes("w-full rounded bg-[#11151a]").style("height: 30%; min-height: 8rem"):
+        with ui.scroll_area().classes("w-full rounded bg-[#11151a]").style(
+                "height: 15%; min-height: 4.5rem" if self.compact else "height: 30%; min-height: 8rem"):
             self.list_view()
         self.note_view()
 
@@ -217,6 +367,9 @@ window.kigitNotebook.onmessage = (e) => emitEvent("kigit_nb_message", e.data);
         self.tell_pinned()
         if self.standalone or (self.dialog is not None and not self.dialog.is_deleted and self.dialog.value):
             self.about_view.refresh()
+        if self.bom:
+            self.bom_view.refresh()
+            self._bom_post({"type": "notes"})  # the BOM page updates its + Notes counts
 
     # ---------------------------------------------------------------- tree
     @ui.refreshable_method
@@ -576,9 +729,10 @@ window.kigitNotebook.onmessage = (e) => emitEvent("kigit_nb_message", e.data);
 
 # ------------------------------------------------------------- its own tab
 # (The page, /notebook/{key}, is registered in app.py with kigit's others.)
-def notebook_page(key: str) -> None:
+def notebook_page(key: str, bom: str = "", compact: bool = False) -> None:
     """The Notebook in a browser tab of its own. Pins come from kigit's tab
-    (the same project, in the same browser), through a BroadcastChannel."""
+    (the same project, in the same browser), through a BroadcastChannel.
+    bom: a BOM page's job key (its Notes pane, compact, or its own tab)."""
     import subprocess
 
     from . import lightbox
@@ -591,7 +745,7 @@ def notebook_page(key: str) -> None:
         ui.label("This Notebook's project isn't open in kigit: open it there, then use the Notebook's "
                  "open-in-new-tab button.").classes("p-6 text-gray-400")
         return
-    ui.page_title(f"Notebook · {project.name}")
+    ui.page_title(f"{'BOM notes' if bom else 'Notebook'} · {project.name}")
 
     def head() -> str:
         try:
@@ -604,10 +758,22 @@ def notebook_page(key: str) -> None:
     async def no_compare(old: str, new: str, anchor: Anchor) -> None:
         return None
 
+    def subject(h: str) -> str:
+        try:
+            r = subprocess.run(["git", "-C", str(project), "log", "-1", "--format=%s", h], capture_output=True,
+                               text=True, timeout=5)
+            return r.stdout.strip() if r.returncode == 0 else ""
+        except (OSError, subprocess.TimeoutExpired):
+            return ""
+
     ui.add_body_html(_PAGE_JS)  # rendered Markdown's look, links opening outside
     ui.add_body_html(lightbox.html(".kigit-md-view"))
-    with ui.column().classes("w-full p-4 gap-2 bg-[#161a20]").style("height: 100vh"):
+    pad = "p-2" if compact else "p-4"
+    with ui.column().classes(f"w-full {pad} gap-2 bg-[#161a20]").style("height: 100vh"):
         panel = NotebookPanel(project=lambda: project, editors=Editors(), pinned=lambda: None, head=head,
-                              focus=lambda a: False, compare=no_compare, counted=lambda n: None, standalone=True)
+                              focus=lambda a: False, compare=no_compare, counted=lambda n: None, standalone=True,
+                              bom=bom, compact=compact, subject=subject)
         panel.view()
     panel._post({"type": "hello", "key": key})  # kigit's tab: say what's pinned
+    if bom:
+        panel.hello_bom()  # the BOM page: say which line is picked

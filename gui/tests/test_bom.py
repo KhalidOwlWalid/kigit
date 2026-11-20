@@ -206,7 +206,7 @@ def test_every_panel_and_column_can_be_hidden() -> None:
     for button in ("showlist", "show2d", "show3d", "colsbtn"):
         assert f'id="{button}"' in page
     assert 'data-hide="show2d"' in page and 'data-hide="show3d"' in page
-    assert 'const PANES = ["showlist", "show2d", "show3d"]' in page
+    assert 'const PANES = ["showlist", "show2d", "show3d", "shownotes"]' in page
     for col in ('id: "qty"', 'id: "value"', 'id: "f:" + c.name', 'id: "site:" + site', 'id: "price:" + site', 'id: "search"'):
         assert col in page
     assert 'id: "refs", label: "References", fixed: true' in page  # always shown
@@ -235,6 +235,18 @@ def test_every_column_kind_can_be_filtered() -> None:
     assert page.count('filter: "text"') >= 3  # References, Value, the fields
     assert 'filter: "site"' in page
     assert "passesFilters(l)" in page
+
+
+def test_notes_on_the_page() -> None:
+    """+ Notes on every line, a Notes pane (the Notebook in an iframe) with
+    its own tab, all on the same notes key as kigit's Notebook."""
+    from kigit_gui.review_panel import project_key
+    page = _page()
+    key = project_key(Path("/p/owl.kicad_pcb").parent)
+    assert f'NOTESKEY = "{key}"' in page
+    assert 'id="panenotes"' in page and 'id="notestab"' in page and 'data-hide="shownotes"' in page
+    assert "notesButton(l, i)" in page and 'new BroadcastChannel("kigit-bom")' in page
+    assert "/bom-notes/${NOTESKEY}?bom=${KEY}&pane=1" in page
 
 
 def test_trackers_on_the_page() -> None:

@@ -102,6 +102,17 @@ kigit is not a schematic editor, and this can't change your design:
 
 Only the working tree can be edited: a commit's BOM is read-only.
 
+## Notes about parts
+
+Why did you pick that regulator, that crystal, that 0603 over a 0402? **+ Notes** under a line's references keeps the reason with the part.
+
+- **+ Notes** opens the **Notes** panel where the PCB was (the **PCB** button brings it back) with that line picked. **New note** makes a note about it in `reviews/BOM/`, named after the part ("1k (R1, R3, R5)"), started with the parts, value, MPN, manufacturer, footprint and the commit you're on, and a **Why this part** heading to write under.
+- A line with notes shows **📝 N** instead: press it and its newest note opens. Clicking a line (to light it up) picks it in the Notes panel too.
+- It's the [Notebook](gui.md#notebook): the same editor, saved as you type, the same files. A BOM note is pinned to every part on its line, so it's also one of the notes about R1 when you pin R1 in the viewer, it's on the Reviews page, and search finds it.
+- **Pin this line** pins the picked line's parts to the open note (for a note about several lines); **Pin it here** pins what's selected in kigit's main tab, as in the Notebook. Click a pin to show it in kigit's tab.
+- **Commit** adds a line to the note for a commit you pick from the history (its short hash, date and subject): when the part changed, when it was ordered...
+- **↗ New tab** opens the notes in a tab of their own, laid out wide; the panel closes, and **+ Notes** on the BOM page then goes to that tab. **Hide** (or the **Notes** button) hides the panel.
+
 ## Filtering
 
 Every column you can filter has a **▾** in its header; filters add up, so *Placed: not done* plus *Carted: done* plus *Mouser: short of stock* shows exactly those lines.

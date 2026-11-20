@@ -129,3 +129,27 @@ def test_obsidian_pictures_show_in_the_gui(tmp_path: Path) -> None:
     assert "![[missing.png]]" in out and "![[Logs]]" in out  # not there / not a picture: as written
     assert f"](/review-files/{key}/a.png)" in out
     assert r
+
+
+def test_bom_notes_pin_the_lines_parts(tmp_path: Path) -> None:
+    """A note about a BOM line: in reviews/BOM/, pinned to every part on the
+    line (so the viewer finds it too), started with the part and commit."""
+    vault(tmp_path)
+    line = {"refs": ["R1", "R3", "R5"], "value": "1k", "mpn": "RC0603FR-071KL", "manufacturer": "YAGEO",
+            "footprint": "Resistor_SMD:R_0603_1608Metric"}
+    n = notebook.bom_note(tmp_path, line, "b" * 40, "Pick resistors")
+    assert n.path.parent == tmp_path / "reviews" / notebook.BOM
+    assert n.title == "1k (R1, R3, R5)"
+    assert [a.name for a in n.pins] == ["R1", "R3", "R5"] and all(a.kind == "part" for a in n.pins)
+    assert n.pins[0].seen.old == "b" * 40 and n.pins[0].seen.new == ""  # HEAD..working tree
+    text = notebook.read(n.path).text
+    assert "- **MPN:** RC0603FR-071KL" in text and "## Why this part" in text
+    assert "- **Chosen at:** `bbbbbbb` (Pick resistors)" in text
+    # Tied to the rest: found from the viewer's pin on the PCB, counted per part.
+    assert n.path in [m.path for m, _ in notebook.about(tmp_path, Anchor("pcb", "footprint", "R3"))]
+    assert [m.path for m in notebook.notes_for_parts(tmp_path, ["R5", "R9"])] == [n.path]
+    counts = notebook.counts_by_part(tmp_path)
+    assert counts["R1"] == 1 and "R9" not in counts
+    assert notebook.commit_ref("c" * 40, "Fix", "2026-11-20T10:00:00") == "`ccccccc` (2026-11-20 · Fix)"
+    assert notebook.commit_ref("c" * 40) == "`ccccccc`"
+    assert notebook.part_anchors(["R1", ""], "")[0].seen is None

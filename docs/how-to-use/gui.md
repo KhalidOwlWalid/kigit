@@ -99,6 +99,7 @@ The Notebook opens on the right without covering the viewer, so you can keep cli
 - **Pins:** pin a part, net or footprint in the viewer, then **Pin it here**. Unlike a review note, a note isn't tied to a commit: a pin remembers where it was pinned, so clicking it later shows it in the comparison on screen, or opens the one it came from. ✕ unpins.
 - **Notes about what's pinned:** pin something in the viewer and the Notebook lists every note that pins it (on the PCB or the schematic: footprint C2 and part C2 are the same thing) or mentions it by name. The **Notebook** button shows how many.
 - ++n++ anywhere (outside a text box): a new note about what's pinned, pinned already.
+- Notes about a BOM line (why you chose a part) are made from the [BOM page](bom.md#notes-about-parts): they're ordinary notes in `reviews/BOM/`, pinned to the line's parts.
 - :material-open-in-new: opens the Notebook in a browser tab of its own, laid out wide (your folders on the left, the note on the right). It still works with kigit's tab: what you pin in the viewer there shows up in the Notebook's tab (for **Pin it here** and the notes about it), and clicking a pin in the Notebook's tab shows it in kigit's. The side panel closes, so a note is only open in one place.
 - :material-calendar-today: **Today's log**: one line, added to `Logs.md` in the folder you're in, under today's date (`## 16th November 2026`), with the time, what's pinned and the commit you're on.
 
