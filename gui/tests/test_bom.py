@@ -395,3 +395,11 @@ def test_page_looks_like_kigit() -> None:
     assert "--bg: #121212; --panel: #1d1d1d; --bar: #161a20" in page and "prefers-color-scheme: light" not in page
     assert '<span class="logo">kigit</span>' in page and page.count('class="material-icons"') >= 19
     assert "[hidden] { display: none !important; }" in page
+
+
+def test_loaded_carts_show_in_the_toolbar() -> None:
+    """A build's carts are chips beside Import cart: what's loaded, with a
+    plain way to remove one (not only inside the menu's dialog)."""
+    page = _page()
+    assert 'id="cartchips"' in page and "function cartChips()" in page and "data-rmchip=" in page
+    assert "  cartChips();" in page  # drawn with the rest of the page

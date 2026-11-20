@@ -228,6 +228,15 @@ td.placed button { padding: 0 6px; font-size: 11px; margin-left: 2px; }
 .fslist .f::before { content: "📄 "; } .fslist .d::before { content: "📁 "; }
 td.stock2 { white-space: nowrap; font-variant-numeric: tabular-nums; }
 td.stock2 button { padding: 0 6px; font-size: 12px; }
+#cartchips { display: inline-flex; gap: 6px; }
+.cartchip { display: inline-flex; align-items: center; gap: 4px; padding: 1px 2px 1px 10px; border-radius: 16px; font-size: 12.5px;
+  background: rgba(88,152,212,.14); border: 1px solid rgba(88,152,212,.45); color: var(--text); cursor: pointer; white-space: nowrap; }
+.cartchip:hover { background: rgba(88,152,212,.24); }
+.cartchip .material-icons { font-size: 16px; color: var(--primary); }
+.cartchip.received { background: rgba(33,186,69,.12); border-color: rgba(33,186,69,.45); } .cartchip.received .material-icons { color: var(--ok); }
+.cartchip button.x { padding: 2px; border-radius: 50%; color: var(--muted); }
+.cartchip button.x:hover { color: var(--bad); background: rgba(248,81,73,.15); }
+.cartchip button.x .material-icons { color: inherit; font-size: 16px; }
 td.ordered { white-space: nowrap; font-variant-numeric: tabular-nums; }
 .oq { font-weight: 600; } .oq.ok { color: var(--ok); } .oq.short { color: var(--bad); }
 .osite { display: inline-block; font-size: 11px; color: var(--muted); margin-right: 6px; }
@@ -308,6 +317,7 @@ dialog a { color: var(--link); }
     <button id="invbtn" title="Your inventory: a CSV of yours, anywhere, shared by every project"><i class="material-icons">inventory_2</i>Inventory</button>
     <button id="cartbtn" data-title="Import a cart exported from Mouser or LCSC into this build: what's ordered, line by line, and on the board" title=""><i class="material-icons">add_shopping_cart</i>Import cart<i class="material-icons">arrow_drop_down</i></button>
     <input type="file" id="cartfile" accept=".csv,.xls,.xlsx" hidden>
+    <span id="cartchips"></span>
     <button id="export" class="primary" title="A CSV for LCSC's or Mouser's BOM upload, or with every column"><i class="material-icons">download</i>Export CSV<i class="material-icons">arrow_drop_down</i></button>
     <span id="lookstate"></span>
  </div>
@@ -801,6 +811,7 @@ function render() {
   bar();
   if (lit) light(lit);
   fitAll();
+  cartChips();
   document.querySelectorAll("#rows input[data-some]").forEach((b) => (b.indeterminate = true));
 }
 function stats() {
@@ -1547,6 +1558,28 @@ function orderedCell(l) {
     `<span class="oq ${o.enough ? "ok" : "short"}">${o.total} / ${o.need}</span><br>` +
     Object.entries(o.qty).map(([s, n]) => `<span class="osite">${SITE_NAME[s]} ${n}</span>`).join("") + `</td>`;
 }
+// The build's loaded carts, in the toolbar: what's there, and a plain way to remove one.
+function cartChips() {
+  const carts = BUILD ? Object.entries(CART.match.carts || {}) : [];
+  $("cartchips").innerHTML = carts.map(([site, c]) => {
+    const left = (CART.match.unmatched || []).filter((u) => u.site === site).length;
+    return `<span class="cartchip${c.received ? " received" : ""}" data-chip="${site}" title="${esc(c.file)}, imported ${esc(c.time)}` +
+      `${c.received ? `; received ${esc(c.received)}` : ""}${left ? `; ${left} row(s) match no line` : ""}. Click for its rows.">` +
+      `<i class="material-icons">${c.received ? "inventory" : "shopping_cart"}</i>${SITE_NAME[site]} cart &middot; ${c.rows} rows` +
+      `${c.received ? " &middot; received" : left ? ` &middot; <span style="color:var(--warn)">${left} unmatched</span>` : ""}` +
+      `<button class="x" data-rmchip="${site}" title="Remove this cart from the build"><i class="material-icons">close</i></button></span>`;
+  }).join("");
+}
+$("cartchips").addEventListener("click", async (e) => {
+  const x = e.target.closest("[data-rmchip]"), chip = e.target.closest("[data-chip]");
+  if (x) {
+    const site = x.dataset.rmchip, c = CART.match.carts[site];
+    if (!confirm(`Remove the ${SITE_NAME[site]} cart (${c.file}, ${c.rows} rows) from the build "${BUILD.name}"?` +
+      (c.received ? "\n\nIt was received: its parts stay in your inventory (Undo received first to take them out)." : ""))) return;
+    try { CART = await post(`cart/${site}/edit`, { remove: true }); drafts = CART.drafts; render(); markBoards(); }
+    catch (err) { alert(err.message); }
+  } else if (chip) cartDialog();
+});
 async function refreshCart() {
   try { CART = await (await fetch(`/bom/${KEY}/cart?build=${encodeURIComponent(BUILD ? BUILD.id : "")}`)).json(); } catch { return; }
   render(); markBoards();

@@ -191,7 +191,7 @@ Fill your carts at Mouser and LCSC (the CSVs from **Export CSV** upload straight
 - **Rows that match no line** (most often, passives without a part number yet): **Import cart ▾** → **Carts and unmatched rows…** lists them; give each its line, and (ticked by default) keep its MPN, manufacturer and site number as that line's drafts, to write into the schematic. **Let go** undoes it.
 - **On the board:** **Ordered** on the PCB and 3D panes colours every part **green** if the carts cover it and **red** if not, so you can see at a glance that everything's ordered before you check out. Parts without a 3D model show as a flat tile over their pads.
 - **Not enough for every position:** each board needs the line's parts once, so a cart of *c* parts for *b* boards fills ⌊*c* / *b*⌋ of the line's positions on every board: the first ones by reference (C1, C2, C3...) are green, the rest red. For example, 10 capacitors for a line of four (C1 to C4) on 3 boards: C1, C2 and C3 green (3 per board), C4 red.
-- Carts belong to the [build](#builds) you've picked (its `build.json`), one per site; importing a site's cart again replaces it. **Remove** in the carts dialog forgets one; **Mark received** puts it in your inventory (see [Buying for a build](#buying-for-a-build)).
+- Carts belong to the [build](#builds) you've picked (its `build.json`), one per site; importing a site's cart again replaces it. A loaded cart shows beside **Import cart** as a chip ("LCSC cart · 7 rows"): click it for its rows, **✕** removes it from the build (a received cart's parts stay in your inventory); **Mark received** puts it in your inventory (see [Buying for a build](#buying-for-a-build)).
 
 ## Filtering
 
