@@ -1077,12 +1077,15 @@ async def _lookup_state(key: str) -> Response:
 
 
 def page(key: str, job: Job) -> str:
+    from nicegui import __version__ as nicegui_version
+
     from .review_panel import project_key
     data = json.dumps(job.data, ensure_ascii=False).replace("<", "\\u003c")
     name = re.sub(r"[^\w.-]+", "_", Path(job.board).stem) or "board"
     return (_PAGE.replace("%%TITLE%%", html.escape(job.title))
             .replace("%%KEY%%", key)
             .replace("%%NOTESKEY%%", project_key(Path(job.board).parent))
+            .replace("%%NGV%%", nicegui_version)  # kigit's own fonts, served by NiceGUI
             # Stable across GUI sessions (the keys above aren't): what this page remembers is per board.
             .replace("%%BOARDID%%", hashlib.sha1(str(Path(job.board).resolve()).encode()).hexdigest()[:16])
             .replace("%%NAME%%", json.dumps(name))

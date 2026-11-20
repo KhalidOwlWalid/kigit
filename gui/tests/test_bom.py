@@ -383,3 +383,15 @@ def test_panels_are_resizable() -> None:
     assert '"kigit.bomSplit"' in page and '"kigit.bomPaneSizes"' in page and "function paneGrips()" in page
     assert "unit * PANE_SHARE[id]" in page
     assert "body.resizing iframe, body.resizing canvas, body.resizing svg { pointer-events: none; }" in page
+
+
+def test_page_looks_like_kigit() -> None:
+    """The BOM page wears kigit's look: its fonts (NiceGUI's, served locally),
+    the dark Quasar palette, the amber logo, icons on the buttons; and
+    hidden always hides (buttons are inline-flex)."""
+    from nicegui import __version__
+    page = _page()
+    assert f'href="/_nicegui/{__version__}/static/fonts.css"' in page
+    assert "--bg: #121212; --panel: #1d1d1d; --bar: #161a20" in page and "prefers-color-scheme: light" not in page
+    assert '<span class="logo">kigit</span>' in page and page.count('class="material-icons"') >= 19
+    assert "[hidden] { display: none !important; }" in page

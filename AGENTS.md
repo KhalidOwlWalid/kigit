@@ -680,6 +680,17 @@ at once. localStorage settings are per origin, so per port.
   `#nmenu` POSTs `/notices/read` (notices.py, marks read for every page);
   `#logbtn` opens `/log`; window errors and unhandled rejections are
   `sendBeacon`ed to `/bom/{key}/clientlog` (a warning in the log).
+  Look: the page wears kigit's window's look (NiceGUI / Quasar, dark):
+  NiceGUI's own `fonts.css` (Roboto, Material Icons) from
+  `/_nicegui/<version>/static/` (`%%NGV%%`, served locally); tokens on
+  `:root` (`--bg #121212`, `--panel #1d1d1d`, `--bar #161a20`, `--line
+  #29303a`, `--primary #5898d4`, `--accent #e8b84d`, `--amber #ffa000`);
+  always dark. Buttons are flat, uppercase, primary-blue, with a
+  `<i class="material-icons">`; `.primary` is the amber action; small
+  buttons in cells, menus and dialogs aren't uppercase. Header: `.topbar`
+  (logo, build, stats, pane toggles, bell, log) then `.tools`. Buttons
+  are `inline-flex`, so `[hidden] { display: none !important }` (else
+  they'd show). Code that sets a button's text keeps its icon (innerHTML).
   Resizing: `#splitgrip` between `#list` and `#side` sets `--side-w`
   (`--side-h` in the narrow, stacked layout) on `#split.sized`
   (`kigit.bomSplit` {w, h}); `paneGrips()` puts a `.pgrip` between each

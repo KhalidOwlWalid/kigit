@@ -4,30 +4,61 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>BOM · %%TITLE%%</title>
+<link rel="stylesheet" href="/_nicegui/%%NGV%%/static/fonts.css"><!-- Roboto and Material Icons, as kigit's window has them -->
 <script type="importmap">
 {"imports": {"three": "/kigit-three/three.module.js", "GLTFLoader": "/kigit-three/modules/GLTFLoader.js",
  "OrbitControls": "/kigit-three/modules/OrbitControls.js",
  "BufferGeometryUtils": "/kigit-three/modules/BufferGeometryUtils.js"}}
 </script>
 <style>
-:root { --bg: #0f1115; --panel: #161a20; --line: #29303a; --text: #e6e9ee; --muted: #9aa4b2; --faint: #6b7584;
-  --accent: #e8b84d; --ok: #3fb950; --warn: #e8b84d; --bad: #f85149; --link: #79b8ff; --hl: rgba(232,184,77,.13);
-  --board: #0b0d11; }
-@media (prefers-color-scheme: light) { :root { --bg: #f6f7f9; --panel: #fff; --line: #d8dde4; --text: #1d2229;
-  --muted: #5b6573; --faint: #8a94a3; --accent: #9a6b00; --ok: #1a7f37; --warn: #9a6b00; --bad: #cf222e; --link: #0969da;
-  --hl: rgba(154,107,0,.12); --board: #1b1f26; } }
+:root { /* kigit's window (NiceGUI / Quasar, dark) */
+  --bg: #121212; --panel: #1d1d1d; --bar: #161a20; --line: #29303a; --text: #ffffff; --muted: #9ca3af; --faint: #6b7280;
+  --primary: #5898d4; --accent: #e8b84d; --amber: #ffa000; --ok: #21ba45; --warn: #f2c037; --bad: #f85149; --link: #5898d4;
+  --hl: rgba(232,184,77,.10); --board: #0b0d11; --field: rgba(255,255,255,.24); --hover: rgba(255,255,255,.08); }
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }  /* whatever display a rule gives (buttons are inline-flex) */
 html, body { height: 100%; }
-body { margin: 0; background: var(--bg); color: var(--text); font: 13px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
-  display: flex; flex-direction: column; }
-header { border-bottom: 1px solid var(--line); padding: 10px 16px; display: flex; flex-wrap: wrap; gap: 8px 18px; align-items: center; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.45 Roboto, "-apple-system", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  -webkit-font-smoothing: antialiased; display: flex; flex-direction: column; }
+.material-icons { font-size: 20px; line-height: 1; vertical-align: middle; }
+/* the header, as kigit's: a bar, then the tools */
+header { background: var(--bar); border-bottom: 1px solid var(--line); }
+header .topbar { display: flex; flex-wrap: wrap; gap: 6px 18px; align-items: center; padding: 6px 16px; }
+header .tools { display: flex; gap: 4px 6px; align-items: center; flex-wrap: wrap; padding: 4px 12px 8px; }
+header .tools .sep { width: 1px; height: 22px; background: var(--line); margin: 0 4px; }
+.brand { display: flex; align-items: baseline; gap: 10px; }
+.brand .logo { font-size: 18px; font-weight: 700; color: var(--accent); }
+.brand .pagename { display: inline-flex; align-items: center; gap: 4px; font-weight: 500; letter-spacing: .06em; text-transform: uppercase;
+  color: var(--primary); font-size: 14px; } .brand .pagename .material-icons { font-size: 20px; }
+.brand .boardname { font-size: 13px; }
+header .right { margin-left: auto; display: flex; gap: 2px; align-items: center; }
 h1 { font-size: 16px; margin: 0; } .sub { color: var(--muted); }
-.stats { display: flex; gap: 14px; color: var(--muted); } .stats b { color: var(--text); }
-.tools { margin-left: auto; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-input, select, button { font: inherit; color: var(--text); background: var(--panel); border: 1px solid var(--line);
-  border-radius: 6px; padding: 4px 8px; }
-button { cursor: pointer; } button:hover { border-color: var(--accent); }
-button.primary, button.on { border-color: var(--accent); color: var(--accent); }
+.stats { display: flex; flex-wrap: wrap; gap: 4px 14px; color: var(--muted); font-size: 13px; } .stats b { color: var(--text); }
+/* buttons as kigit's: flat, uppercase, primary blue; amber for the main action */
+button { font: 500 13px/1.6 Roboto, sans-serif; letter-spacing: .05em; text-transform: uppercase; color: var(--primary);
+  background: none; border: 0; border-radius: 4px; padding: 4px 8px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;
+  white-space: nowrap; }
+button:hover { background: var(--hover); }
+button:disabled { opacity: .4; cursor: default; background: none; }
+button.icon { padding: 4px 6px; }
+button.primary { background: var(--amber); color: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.3); }
+button.primary:hover { background: #ffb300; }
+button.on { color: var(--accent); background: rgba(232,184,77,.12); }
+/* inputs as Quasar's outlined dark fields */
+input, select, textarea { font: 14px Roboto, sans-serif; color: var(--text); background: transparent; border: 1px solid var(--field);
+  border-radius: 4px; padding: 5px 10px; }
+input:hover, select:hover, textarea:hover { border-color: rgba(255,255,255,.6); }
+input:focus, select:focus, textarea:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 1px var(--primary) inset; }
+select option { background: var(--panel); color: var(--text); }
+input[type=checkbox] { accent-color: var(--primary); width: 16px; height: 16px; vertical-align: -3px; }
+/* small buttons in the list, menus and dialogs: plain text, not shouting */
+td button, th button, .cand button, #colmenu button, #xmenu button, #cmenu button, #bmenu button, #fmenu button,
+dialog .row button, dialog p button, .pane-head button, #asmbar button, .fslist button, #nmenu button {
+  text-transform: none; letter-spacing: 0; font-weight: 500; }
+td button, .cand button { color: var(--text); border: 1px solid var(--field); padding: 0 8px; font-size: 12px; }
+#xmenu button, #cmenu button, #bmenu button { display: block; white-space: normal; text-align: left; color: var(--text); }
+#xmenu button b, #cmenu button b { color: var(--primary); }
+td button:hover, .cand button:hover { border-color: var(--primary); background: none; }
 #split { flex: 1; min-height: 0; display: flex; }
 #list { flex: 1 1 55%; min-width: 0; overflow: auto; padding: 0 12px 30px; }
 #side { flex: 1 1 45%; min-width: 0; display: flex; flex-direction: column; }
@@ -239,15 +270,25 @@ dialog a { color: var(--link); }
 </head>
 <body>
 <header>
-  <div><h1>Bill of materials</h1><div class="sub">%%TITLE%%</div></div>
+ <div class="topbar">
+  <div class="brand"><span class="logo">kigit</span><span class="pagename"><i class="material-icons">receipt_long</i>BOM</span><span class="sub boardname">%%TITLE%%</span></div>
   <div class="buildpick">
-    <select id="build" aria-label="Build" title="A build: a batch of boards you're making (its board count, and soon what's bought and what's placed). Design only: just the schematic's parts"></select>
-    <button id="buildmore" title="Rename or delete this build" hidden>&#8943;</button>
-    <span id="views" hidden><button data-view-mode="buy" title="What to buy for this build: in stock, ordered, to buy">Buy</button><button data-view-mode="assemble" title="Boards #1, #2...: tick parts off as you place them">Assemble</button></span>
+    <select id="build" aria-label="Build" title="A build: a batch of boards you're making (its board count, what's bought and what's placed). Design only: just the schematic's parts"></select>
+    <button id="buildmore" class="icon" title="Rename or delete this build" hidden><i class="material-icons">more_vert</i></button>
+    <span id="views" hidden><button data-view-mode="buy" title="What to buy for this build: in stock, ordered, to buy"><i class="material-icons">shopping_cart</i>Buy</button><button data-view-mode="assemble" title="Boards #1, #2...: tick parts off as you place them"><i class="material-icons">handyman</i>Assemble</button></span>
     <div class="sub" id="buildinfo"></div>
   </div>
   <div class="stats" id="stats"></div>
-  <div class="tools">
+  <div class="right">
+    <button id="showlist" class="on" title="The list of parts"><i class="material-icons">list</i>List</button>
+    <button id="show2d" class="on" title="The board in 2D beside the list"><i class="material-icons">developer_board</i>PCB</button>
+    <button id="show3d" class="on" title="The board in 3D beside the list"><i class="material-icons">view_in_ar</i>3D</button>
+    <button id="shownotes" title="Notes about the BOM's lines (+ Notes on a line): why a part was chosen"><i class="material-icons">edit_note</i>Notes</button>
+    <button id="bell" class="icon" title="Notifications: what went wrong, and what was done (the same as kigit's bell)"><i class="material-icons">notifications</i><span id="bellbadge" hidden></span></button>
+    <button id="logbtn" class="icon" title="kigit's session log, live, in a tab of its own"><i class="material-icons">article</i></button>
+  </div>
+ </div>
+ <div class="tools">
     <input id="filter" placeholder="Filter (ref, value, part...)" aria-label="Filter">
     <select id="show" aria-label="Show">
       <option value="all">All lines</option><option value="need">Needs a part number</option>
@@ -255,25 +296,21 @@ dialog a { color: var(--link); }
     </select>
     <label class="sub" title="How many boards you're building: multiplies the quantities in the exported CSV (the list itself doesn't change)">Build qty <input id="boards" type="number" min="1" value="1" style="width:4.5rem" aria-label="Build quantity"></label>
     <label class="sub" title="Only for All columns: LCSC's and Mouser's files leave DNP parts out (they aren't bought)"><input id="dnp" type="checkbox"> DNP in export</label>
-    <button id="addfield" title="Add a column for another part information field (e.g. Tolerance, Supplier): written into the schematic">+ Field</button>
-    <button id="addtracker" data-title="Add a tick column to track this build: Sourced, Carted, Received... Kept with the build, never in the schematic" title="">+ Tracker</button>
-    <button id="export" class="primary" title="A CSV for LCSC's or Mouser's BOM upload, or with every column">Export CSV &#9662;</button>
-    <button id="invbtn" title="Your inventory: a CSV of yours, anywhere, shared by every project">Inventory</button>
-    <button id="cartbtn" data-title="Import a cart exported from Mouser or LCSC into this build: what's ordered, line by line, and on the board" title="">Import cart &#9662;</button>
+    <span class="sep"></span>
+    <button id="addfield" title="Add a column for another part information field (e.g. Tolerance, Supplier): written into the schematic"><i class="material-icons">add</i>Field</button>
+    <button id="addtracker" data-title="Add a tick column to track this build: Sourced, Carted, Received... Kept with the build, never in the schematic" title=""><i class="material-icons">checklist</i>Tracker</button>
+    <button id="colsbtn" title="Show or hide columns"><i class="material-icons">view_column</i>Columns</button>
+    <button id="clearf" hidden title="Show every line again (filters from the column headers' &#9662;)"><i class="material-icons">filter_alt_off</i>Clear filters</button>
+    <button id="resetw" hidden title="Put every column back to its own width (double-click a column's edge for just that one)"><i class="material-icons">width_normal</i>Reset widths</button>
+    <span class="sep"></span>
+    <button id="lookup" title="Ask Mouser and Digi-Key (those you have a key for) for stock, prices and lifecycle, for Build qty boards (answers are kept a day; Shift+click asks again)"><i class="material-icons">travel_explore</i>Look up</button>
+    <button id="keybtn" title="Your Mouser and Digi-Key keys"><i class="material-icons">key</i>Keys</button>
+    <button id="invbtn" title="Your inventory: a CSV of yours, anywhere, shared by every project"><i class="material-icons">inventory_2</i>Inventory</button>
+    <button id="cartbtn" data-title="Import a cart exported from Mouser or LCSC into this build: what's ordered, line by line, and on the board" title=""><i class="material-icons">add_shopping_cart</i>Import cart<i class="material-icons">arrow_drop_down</i></button>
     <input type="file" id="cartfile" accept=".csv,.xls,.xlsx" hidden>
-    <button id="lookup" title="Ask Mouser and Digi-Key (those you have a key for) for stock, prices and lifecycle, for Build qty boards (answers are kept a day; Shift+click asks again)">Look up</button>
-    <button id="keybtn" title="Your Mouser and Digi-Key keys">Keys</button>
+    <button id="export" class="primary" title="A CSV for LCSC's or Mouser's BOM upload, or with every column"><i class="material-icons">download</i>Export CSV<i class="material-icons">arrow_drop_down</i></button>
     <span id="lookstate"></span>
-    <button id="colsbtn" title="Show or hide columns">Columns</button>
-    <button id="clearf" hidden title="Show every line again (filters from the column headers' &#9662;)">Clear filters</button>
-    <button id="resetw" hidden title="Put every column back to its own width (double-click a column's edge for just that one)">Reset widths</button>
-    <button id="showlist" class="on" title="The list of parts">List</button>
-    <button id="show2d" class="on" title="The board in 2D beside the list">PCB</button>
-    <button id="show3d" class="on" title="The board in 3D beside the list">3D</button>
-    <button id="shownotes" title="Notes about the BOM's lines (+ Notes on a line): why a part was chosen">Notes</button>
-    <button id="bell" title="Notifications: what went wrong, and what was done (the same as kigit's bell)">&#128276;<span id="bellbadge" hidden></span></button>
-    <button id="logbtn" title="kigit's session log, live, in a tab of its own">Log</button>
-  </div>
+ </div>
 </header>
 <div id="nmenu" role="dialog" aria-label="Notifications">
   <div class="nhead"><b>Notifications</b><span class="sub">this session</span>
@@ -752,7 +789,7 @@ function render() {
     (c.filter ? `<button class="fbtn${colFilters[c.id] ? " on" : ""}" data-filter="${esc(c.id)}" title="${colFilters[c.id] ? "Filtered: " + esc(filterText(colFilters[c.id])) : "Filter by this column"}">&#9662;</button>` : "") +
     `<span class="grip" data-col="${esc(c.id)}" title="Drag to resize; double-click for its own width"></span></th>`)).join("");
   const nf = Object.keys(colFilters).length;
-  $("clearf").hidden = !nf; $("clearf").textContent = `Clear filters (${nf})`;
+  $("clearf").hidden = !nf; $("clearf").innerHTML = `<i class="material-icons">filter_alt_off</i>Clear filters (${nf})`;
   $("colsbtn").classList.toggle("on", shownCols.length < tableCols().length);  // lit while some are hidden
   const rows = shownLines();
   $("rows").innerHTML = rows.map((l) => {
@@ -1518,7 +1555,8 @@ let marking = false;
 function markBoards() {
   const asm = !!BUILD && VIEW === "assemble" && !!BOARD, can = asm || (hasCarts() && VIEW !== "assemble");
   document.querySelectorAll("[data-ordered]").forEach((b) => {
-    b.classList.toggle("on", marking); b.hidden = !can; b.textContent = asm ? "Placed" : "Ordered";
+    b.classList.toggle("on", marking); b.hidden = !can;
+    b.innerHTML = `<i class="material-icons">${asm ? "handyman" : "shopping_cart"}</i>${asm ? "Placed" : "Ordered"}`;
     b.title = asm ? `Colour board #${BOARD.board}'s parts: green placed, red still to place` : "Colour each part by whether the build's carts cover it: green ordered, red not";
   });
   const marks = marking && can ? (asm ? placedMarks() : orderedMarks()) : null;
