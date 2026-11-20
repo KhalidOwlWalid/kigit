@@ -22,7 +22,7 @@ DATA = {"lines": [{"refs": ["R1", "R2"], "qty": 2, "value": "10k", "footprint": 
 
 def test_drafts_kept_next_to_the_board(tmp_path: Path) -> None:
     board = tmp_path / "x.kicad_pcb"
-    assert bom.load_drafts(board) == {"drafts": {}, "columns": []}
+    assert bom.load_drafts(board) == {"drafts": {}, "columns": [], "tracking": {"columns": [], "done": {}}}
     state = bom.set_draft(board, "10k|R_0603", "MPN", " RC0603FR-0710KL ")
     assert state["drafts"]["10k|R_0603"]["MPN"] == "RC0603FR-0710KL"
     saved = json.loads((tmp_path / bom.DRAFTS).read_text(encoding="utf-8"))
@@ -40,6 +40,49 @@ def test_drafts_kept_next_to_the_board(tmp_path: Path) -> None:
     assert not (tmp_path / bom.DRAFTS).exists()  # nothing left: no file
 
 
+def test_trackers_tick_parts_and_stay_out_of_the_schematic(tmp_path: Path) -> None:
+    """Trackers are tick columns kept in kigit-bom.json, per part reference,
+    beside the drafts (which they never disturb)."""
+    board = tmp_path / "x.kicad_pcb"
+    bom.set_draft(board, "10k|R_0603", "MPN", "RC0603FR-0710KL")
+    bom.add_tracker(board, "Carted")
+    bom.add_tracker(board, "Placed")
+    bom.add_tracker(board, "Carted")  # once
+    state = bom.set_tracked(board, "Carted", ["R1", "R2"], True)
+    assert state["tracking"] == {"columns": ["Carted", "Placed"], "done": {"Carted": ["R1", "R2"]}}
+    state = bom.set_tracked(board, "Carted", ["R2", "R3"], True)
+    assert state["tracking"]["done"]["Carted"] == ["R1", "R2", "R3"]
+    state = bom.set_tracked(board, "Carted", ["R1"], False)
+    assert state["tracking"]["done"]["Carted"] == ["R2", "R3"]
+    assert state["drafts"]["10k|R_0603"]["MPN"] == "RC0603FR-0710KL"  # drafts untouched
+    saved = json.loads((tmp_path / bom.DRAFTS).read_text(encoding="utf-8"))
+    assert saved["tracking"]["columns"] == ["Carted", "Placed"]
+    state = bom.remove_tracker(board, "Carted")
+    assert state["tracking"] == {"columns": ["Placed"], "done": {}}
+    # The drafts dropped (written to the schematic): the file stays for the tracker.
+    bom.set_draft(board, "10k|R_0603", "MPN", None)
+    assert (tmp_path / bom.DRAFTS).exists()
+    bom.remove_tracker(board, "Placed")
+    assert not (tmp_path / bom.DRAFTS).exists()  # nothing left
+    # A broken tracking block is ignored, not fatal.
+    (tmp_path / bom.DRAFTS).write_text('{"version": 2, "tracking": {"columns": "x", "done": 3}}', encoding="utf-8")
+    assert bom.load_drafts(board)["tracking"] == {"columns": [], "done": {}}
+
+
+def test_renaming_columns_keeps_their_drafts_and_ticks(tmp_path: Path) -> None:
+    board = tmp_path / "x.kicad_pcb"
+    bom.add_column(board, "Voltage")
+    bom.add_column(board, "Supplier")
+    bom.set_draft(board, "10k|R_0603", "Voltage", "50V")
+    state = bom.rename_column(board, "Voltage", "Voltage rating")
+    assert state["columns"] == ["Voltage rating", "Supplier"]  # in place
+    assert state["drafts"]["10k|R_0603"] == {"Voltage rating": "50V"}
+    bom.add_tracker(board, "Carted")
+    bom.set_tracked(board, "Carted", ["R1"], True)
+    state = bom.rename_tracker(board, "Carted", "In cart")
+    assert state["tracking"] == {"columns": ["In cart"], "done": {"In cart": ["R1"]}}
+
+
 def test_version_1_picks_are_read_as_drafts(tmp_path: Path) -> None:
     (tmp_path / bom.DRAFTS).write_text(json.dumps({"version": 1, "picks": {
         "10k|R_0603": {"mpn": "RC0603FR-0710KL", "manufacturer": "Yageo", "note": "cheap", "updated": "2026-11-18"}}}),
@@ -51,7 +94,7 @@ def test_version_1_picks_are_read_as_drafts(tmp_path: Path) -> None:
 
 def test_broken_drafts_file_is_ignored(tmp_path: Path) -> None:
     (tmp_path / bom.DRAFTS).write_text("{not json", encoding="utf-8")
-    assert bom.load_drafts(tmp_path / "x.kicad_pcb") == {"drafts": {}, "columns": []}
+    assert bom.load_drafts(tmp_path / "x.kicad_pcb") == {"drafts": {}, "columns": [], "tracking": {"columns": [], "done": {}}}
 
 
 def test_line_key() -> None:
@@ -180,3 +223,23 @@ def test_cells_wrap_and_columns_resize() -> None:
     assert '"kigit.bomColWidths"' in page
     assert 'id="resetw"' in page and 'id="colsreset"' in page
     assert '<colgroup id="colgroup">' in page
+
+
+def test_every_column_kind_can_be_filtered() -> None:
+    """Headers get a filter button: text columns (contains / empty / not
+    empty), trackers (done / not / partly), sites (found, short, ...)."""
+    page = _page()
+    assert 'class="fbtn' in page and 'id="fmenu"' in page and 'id="clearf"' in page
+    for kind in ("track:", "text:", "site:"):
+        assert f"  {kind} [[" in page
+    assert page.count('filter: "text"') >= 3  # References, Value, the fields
+    assert 'filter: "site"' in page
+    assert "passesFilters(l)" in page
+
+
+def test_trackers_on_the_page() -> None:
+    page = _page()
+    assert 'id="addtracker"' in page
+    assert 'id: "t:" + name' in page and "data-track=" in page  # a column like the others: hide, resize
+    assert 'filter: "track"' in page  # filtered from its header
+    assert "...trackers()]" in page  # and the CSV has them

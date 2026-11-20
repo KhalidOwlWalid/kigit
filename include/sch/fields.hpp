@@ -8,7 +8,8 @@
 // Edits are the smallest change to the text: a property's value is
 // replaced in place; a new property is a copy of one of the symbol's own
 // hidden fields (so it's in that file's KiCad format and stays hidden),
-// put after its last property. The rest of the file is left byte for byte.
+// put after its last property. A rename replaces only the property's name.
+// The rest of the file is left byte for byte.
 #include "sch/schematic.hpp"
 
 #include <set>
@@ -21,6 +22,7 @@ struct FieldEdit {
     std::string uuid;  // the placed symbol's uuid (each unit of a part is its own symbol)
     std::string name;  // the field, e.g. "MPN"
     std::string value; // "" empties an existing field (a missing one stays missing)
+    std::string rename; // if set: the field gets this name instead (its value stays); value is unused
 };
 
 struct FieldsResult {

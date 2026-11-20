@@ -112,7 +112,25 @@ textarea.cell.changed { border-color: var(--accent); box-shadow: inset 3px 0 var
 .stock a { color: var(--link); text-decoration: none; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; }
 .stock a:hover { text-decoration: underline; }
 .short { color: var(--bad); font-weight: 600; } .faint { color: var(--faint); font-size: 12px; }
-.chip.bad { color: var(--bad); } .chip.warn { color: var(--warn); }
+.chip.bad { color: var(--bad); }
+/* trackers: your own tick columns */
+td.track { text-align: center; } td.track input { width: 17px; height: 17px; cursor: pointer; accent-color: var(--ok); }
+th .count { color: var(--faint); font-weight: 400; margin-left: 4px; } th .count.all { color: var(--ok); }
+#colmenu .rm { margin: 0 0 0 auto; padding: 0 6px; font-size: 12px; color: var(--faint); border-color: transparent; background: none; }
+#colmenu .rm:hover { color: var(--bad); border-color: var(--bad); }
+#colmenu .rm.ed:hover { color: var(--accent); border-color: var(--accent); }
+#colmenu .rm + .rm { margin-left: 2px; }
+th[data-rename] { cursor: text; }
+/* column filters */
+th .fbtn { margin-left: 4px; padding: 0 4px; font-size: 10px; line-height: 14px; color: var(--faint); background: none;
+  border: 1px solid transparent; border-radius: 4px; vertical-align: 1px; }
+th:hover .fbtn { border-color: var(--line); } th .fbtn.on { color: var(--accent); border-color: var(--accent); background: var(--hl); }
+#fmenu { position: fixed; z-index: 8; display: none; background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
+  box-shadow: 0 6px 18px rgba(0,0,0,.35); padding: 8px 10px; width: 15rem; }
+#fmenu.on { display: block; } #fmenu b { display: block; margin-bottom: 4px; }
+#fmenu label { display: flex; gap: 8px; align-items: center; padding: 2px 0; cursor: pointer; }
+#fmenu input[type=text] { width: 100%; margin: 4px 0; } #fmenu .row { display: flex; justify-content: flex-end; margin-top: 6px; }
+#clearf { border-color: var(--accent); color: var(--accent); } .chip.warn { color: var(--warn); }
 button.more { padding: 1px 7px; font-size: 12px; }
 tr.choices td { background: var(--panel); padding: 4px 8px 10px 30px; cursor: default; }
 .cand { width: 100%; font-size: 12px; } .cand td { border-bottom: 1px dashed var(--line); padding: 4px 6px; }
@@ -140,12 +158,14 @@ dialog a { color: var(--link); }
     </select>
     <label class="sub" title="How many boards you're building: multiplies the quantities in the exported CSV (the list itself doesn't change)">Build qty <input id="boards" type="number" min="1" value="1" style="width:4.5rem" aria-label="Build quantity"></label>
     <label class="sub"><input id="dnp" type="checkbox"> DNP in export</label>
-    <button id="addfield" title="Add a column for another part information field (e.g. Tolerance, Supplier)">+ Field</button>
+    <button id="addfield" title="Add a column for another part information field (e.g. Tolerance, Supplier): written into the schematic">+ Field</button>
+    <button id="addtracker" title="Add a tick column to track a build: Carted, Ordered, Received, Placed... Kept in kigit-bom.json, never in the schematic">+ Tracker</button>
     <button id="export" class="primary" title="A CSV for Digi-Key's BOM Manager or Mouser's BOM Tool">Export CSV</button>
     <button id="lookup" title="Ask Mouser and Digi-Key (those you have a key for) for stock, prices and lifecycle, for Build qty boards (answers are kept a day; Shift+click asks again)">Look up</button>
     <button id="keybtn" title="Your Mouser and Digi-Key keys">Keys</button>
     <span id="lookstate"></span>
     <button id="colsbtn" title="Show or hide columns">Columns</button>
+    <button id="clearf" hidden title="Show every line again (filters from the column headers' &#9662;)">Clear filters</button>
     <button id="resetw" hidden title="Put every column back to its own width (double-click a column's edge for just that one)">Reset widths</button>
     <button id="showlist" class="on" title="The list of parts">List</button>
     <button id="show2d" class="on" title="The board in 2D beside the list">PCB</button>
@@ -183,6 +203,7 @@ design before saving. The search links only open the distributors' sites; kigit 
 </div>
 <div id="tip"></div>
 <div id="colmenu" role="menu" aria-label="Columns"></div>
+<div id="fmenu" role="dialog" aria-label="Filter"></div>
 <dialog id="keydlg">
   <b>Parts sites' keys</b>
   <p class="sub">Look up asks every site you have a key for. Both are free. kigit keeps them in <code>parts-keys.json</code> in
@@ -210,7 +231,7 @@ design before saving. The search links only open the distributors' sites; kigit 
 <script>
 let DATA = %%DATA%%;
 const KEY = "%%KEY%%", NAME = %%NAME%%, EDITABLE = %%EDITABLE%%;
-let drafts = { drafts: {}, columns: [] };
+let drafts = { drafts: {}, columns: [], tracking: { columns: [], done: {} } };
 const $ = (id) => document.getElementById(id);
 const esc = (t) => String(t ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 const enc = (q) => encodeURIComponent(q).replace(/%20/g, "+");
@@ -299,6 +320,105 @@ function cell(l, c, i, ci) {
     `data-i="${i}" data-c="${ci}" placeholder="${esc(c.label)}" aria-label="${esc(c.name)} for ${esc(l.refs.join(" "))}" ` +
     `title="${esc(c.name)}${changed(l, c) ? ` (in the schematic: ${esc(current(l, c)) || "empty"})` : ""}">${esc(shown(l, c))}</textarea>`;
 }
+// ------------------------------------------------------------ column filters
+// Each column's ▾: trackers by done / not done / partly, text columns by
+// contains / empty / not empty, site columns by what the lookup found.
+// Filters add up (all must hold), with the search box and Show.
+let colFilters = {};  // column id -> {mode, q}
+const FILTERS = {
+  track: [["done", "Done"], ["not", "Not done"], ["some", "Partly done"]],
+  text: [["has", "Contains..."], ["filled", "Not empty"], ["empty", "Empty"]],
+  site: [["ok", "Found"], ["short", "Short of stock"], ["ending", "Ending (obsolete, last buy...)"], ["choose", "To choose"],
+    ["not_found", "Not found"], ["error", "Error or skipped"]],
+};
+function filterText(f) {
+  const all = Object.values(FILTERS).flat(), label = (all.find(([m]) => m === f.mode) || [, f.mode])[1];
+  return f.mode === "has" ? `contains "${f.q}"` : label.toLowerCase();
+}
+function passes(col, f, l) {
+  if (col.filter === "track") {
+    if (l.dnp) return false;  // not bought: not part of a build's progress
+    const st = trackState(l, col.tracker);
+    return f.mode === "done" ? st === "all" : f.mode === "not" ? st !== "all" : st === "some";
+  }
+  if (col.filter === "text") {
+    const t = String(col.text(l) || "").trim();
+    return f.mode === "empty" ? !t : f.mode === "filled" ? !!t : t.toLowerCase().includes((f.q || "").toLowerCase());
+  }
+  const m = lookOf(l, col.site); if (!m) return false;
+  if (f.mode === "short") return !!m.pick?.short;
+  if (f.mode === "ending") return !!m.pick?.winding_down;
+  if (f.mode === "error") return m.status === "error" || m.status === "skipped";
+  return m.status === f.mode;
+}
+function passesFilters(l) {
+  const cols = new Map(tableCols().map((c) => [c.id, c]));
+  for (const [id, f] of Object.entries(colFilters)) {
+    const col = cols.get(id);
+    if (col && !passes(col, f, l)) return false;  // a filter on a column that's gone (Look up not run) doesn't count
+  }
+  return true;
+}
+function openFilter(id, button) {
+  const col = tableCols().find((c) => c.id === id); if (!col) return;
+  const f = colFilters[id] || {}, m = $("fmenu");
+  m.innerHTML = `<b>${esc(col.label)}</b>` +
+    `<label><input type="radio" name="fm" value=""${!f.mode ? " checked" : ""}> All lines</label>` +
+    FILTERS[col.filter].map(([v, t]) => `<label><input type="radio" name="fm" value="${v}"${f.mode === v ? " checked" : ""}> ${t}</label>`).join("") +
+    (col.filter === "text" ? `<input type="text" id="fq" placeholder="text" value="${esc(f.q || "")}" aria-label="Contains">` : "") +
+    `<div class="row"><button id="fdone">Done</button></div>`;
+  m.dataset.col = id;
+  m.classList.add("on");
+  const r = button.getBoundingClientRect();
+  m.style.top = r.bottom + 4 + "px";
+  m.style.left = Math.max(8, Math.min(r.left - 8, innerWidth - m.offsetWidth - 8)) + "px";
+  (m.querySelector("#fq") && f.mode === "has" ? m.querySelector("#fq") : m.querySelector("input:checked"))?.focus();
+}
+function readFilter() {
+  const m = $("fmenu"), id = m.dataset.col, mode = m.querySelector("input[name=fm]:checked")?.value || "", q = m.querySelector("#fq")?.value.trim() || "";
+  if (!mode || (mode === "has" && !q)) delete colFilters[id]; else colFilters[id] = { mode, q };
+  render();
+}
+$("head").addEventListener("click", (e) => {
+  const b = e.target.closest(".fbtn"); if (!b) return;
+  e.stopPropagation();
+  if ($("fmenu").classList.contains("on") && $("fmenu").dataset.col === b.dataset.filter) { $("fmenu").classList.remove("on"); return; }
+  openFilter(b.dataset.filter, b);
+});
+$("fmenu").addEventListener("click", (e) => { e.stopPropagation(); if (e.target.id === "fdone") $("fmenu").classList.remove("on"); });
+$("fmenu").addEventListener("change", readFilter);
+$("fmenu").addEventListener("input", (e) => {
+  if (e.target.id !== "fq") return;
+  const has = $("fmenu").querySelector("input[value=has]");
+  if (has && !has.checked) has.checked = true;  // typing means "contains"
+  readFilter();
+});
+$("fmenu").addEventListener("keydown", (e) => { if (e.key === "Enter") $("fmenu").classList.remove("on"); });
+document.addEventListener("click", () => $("fmenu").classList.remove("on"));
+addEventListener("keydown", (e) => { if (e.key === "Escape") $("fmenu").classList.remove("on"); });
+$("clearf").addEventListener("click", () => { colFilters = {}; $("fmenu").classList.remove("on"); render(); });
+
+// ------------------------------------------------------------ the trackers
+// Your own tick columns for a build (Carted, Placed...), ticked per part:
+// a line is ticked when all its parts are, part-ticked when some are.
+const trackers = () => drafts.tracking?.columns || [];
+const tickedRefs = (name) => new Set(drafts.tracking?.done?.[name] || []);
+function trackState(l, name) {
+  const set = tickedRefs(name), n = l.refs.filter((r) => set.has(r)).length;
+  return n === 0 ? "none" : n === l.refs.length ? "all" : "some";
+}
+function trackCount(name) {  // lines done / lines to do (DNP lines aren't bought)
+  const lines = DATA.lines.filter((l) => !l.dnp);
+  return [lines.filter((l) => trackState(l, name) === "all").length, lines.length];
+}
+function trackCell(l, i, name) {
+  if (l.dnp) return `<td class="track"><span class="faint" title="Not populated">&ndash;</span></td>`;
+  const st = trackState(l, name), set = tickedRefs(name);
+  const title = st === "some" ? `${name}: ${l.refs.filter((r) => set.has(r)).join(", ")} of ${l.refs.join(", ")}` : `${name}: ${l.refs.join(", ")}`;
+  return `<td class="track"><input type="checkbox" data-track="${esc(name)}" data-i="${i}"${st === "all" ? " checked" : ""}` +
+    `${st === "some" ? ' data-some="1"' : ""} title="${esc(title)}" aria-label="${esc(title)}"></td>`;
+}
+
 // ------------------------------------------------------------- the columns
 // Every column of the table, by id; any but References can be hidden
 // (remembered in this browser).
@@ -308,14 +428,23 @@ function tableCols() {
   const cols = columns();
   return [
     { id: "qty", label: "Qty", th: `<th class="qty">Qty</th>`, td: (l) => `<td class="qty">${l.qty}</td>` },
-    { id: "refs", label: "References", fixed: true, th: `<th>References</th>`,
+    { id: "refs", label: "References", fixed: true, filter: "text", text: (l) => l.refs.join(" "), th: `<th>References</th>`,
       td: (l) => `<td class="refs">${esc(l.refs.join(", "))}<div>${status(l)}</div></td>` },
-    { id: "value", label: "Value", th: `<th>Value</th>`,
+    { id: "value", label: "Value", filter: "text", text: (l) => [l.value, l.package, l.description].join(" "), th: `<th>Value</th>`,
       td: (l) => `<td>${esc(l.value)}<div class="pkg">${esc(l.package)}</div>${l.description ? `<div class="desc">${esc(l.description)}</div>` : ""}</td>` },
     ...cols.map((c, ci) => ({ id: "f:" + c.name, label: c.label === c.name ? c.label : `${c.label} (${c.name})`,
-      th: `<th title="${esc(c.name)}">${esc(c.label)}</th>`, td: (l, i) => `<td>${cell(l, c, i, ci)}</td>` })),
+      custom: c.kind ? null : c.name,  // a field you added: its title can be changed
+      filter: "text", text: (l) => shown(l, c),
+      th: `<th title="${esc(c.name)}${c.kind ? "" : " (double-click to rename)"}"${c.kind ? "" : ` data-rename="f:${esc(c.name)}"`}>${esc(c.label)}</th>`,
+      td: (l, i) => `<td>${cell(l, c, i, ci)}</td>` })),
+    ...trackers().map((name) => {
+      const [done, all] = trackCount(name);
+      return { id: "t:" + name, label: `${name} (tracker)`, tracker: name, filter: "track",
+        th: `<th data-rename="t:${esc(name)}" title="Your tracker: ${esc(name)} (${done} of ${all} lines; double-click to rename)">${esc(name)}<span class="count${done === all && all ? " all" : ""}">${done}/${all}</span></th>`,
+        td: (l, i) => trackCell(l, i, name) };
+    }),
     ...lookSites().flatMap((site) => [
-      { id: "site:" + site, label: siteName(site), th: `<th title="${esc(siteName(site))}: the part, its stock and lifecycle">${esc(siteName(site))}</th>`,
+      { id: "site:" + site, label: siteName(site), filter: "site", site, th: `<th title="${esc(siteName(site))}: the part, its stock and lifecycle">${esc(siteName(site))}</th>`,
         td: (l, i) => `<td class="stock">${stockCell(l, i, site)}</td>` },
       { id: "price:" + site, label: `${siteName(site)} price`,
         th: `<th title="What the parts cost at ${esc(siteName(site))} for ${LOOK.summary.boards} board${LOOK.summary.boards === 1 ? "" : "s"}">Price</th>`,
@@ -327,7 +456,9 @@ const visibleCols = () => tableCols().filter((c) => c.fixed || !hiddenCols.has(c
 function colMenu() {
   const all = tableCols();
   $("colmenu").innerHTML = all.map((c) => `<label class="${c.fixed ? "fixed" : ""}"><input type="checkbox" data-col="${esc(c.id)}"` +
-    `${c.fixed || !hiddenCols.has(c.id) ? " checked" : ""}${c.fixed ? " disabled" : ""}> ${esc(c.label)}</label>`).join("") +
+    `${c.fixed || !hiddenCols.has(c.id) ? " checked" : ""}${c.fixed ? " disabled" : ""}> ${esc(c.label)}` +
+    (c.tracker || c.custom ? `<button class="rm ed" data-rename="${esc(c.id)}" title="Rename this column">&#9998;</button>` : "") +
+    (c.tracker ? `<button class="rm" data-rmtracker="${esc(c.tracker)}" title="Remove this tracker and its ticks">&times;</button>` : "") + `</label>`).join("") +
     (LOOK ? "" : `<div class="sep"></div><div class="faint" style="padding:2px 10px">Each site's part and price come with Look up.</div>`) +
     `<div class="sep"></div><button id="colsall">Show all</button><button id="colsreset">Reset widths</button>`;
 }
@@ -342,8 +473,21 @@ $("colsbtn").addEventListener("click", (e) => {
   m.style.top = r.bottom + 4 + "px";
   m.style.left = Math.max(8, Math.min(r.left, innerWidth - m.offsetWidth - 8)) + "px";
 });
-$("colmenu").addEventListener("click", (e) => { e.stopPropagation(); if (e.target.id === "colsall") { hiddenCols.clear(); saveCols(); }
-  if (e.target.id === "colsreset") { colWidths = {}; saveWidths(); render(); } });
+$("colmenu").addEventListener("click", (e) => {
+  e.stopPropagation();
+  if (e.target.id === "colsall") { hiddenCols.clear(); saveCols(); }
+  if (e.target.id === "colsreset") { colWidths = {}; saveWidths(); render(); }
+  const ed = e.target.closest("button[data-rename]");
+  if (ed) { e.preventDefault(); $("colmenu").classList.remove("on"); renameColumn(ed.dataset.rename); return; }
+  const rm = e.target.closest("[data-rmtracker]");
+  if (rm) {
+    e.preventDefault();
+    const name = rm.dataset.rmtracker, [done] = trackCount(name);
+    if (!confirm(`Remove the tracker "${name}"${done ? ` and its ticks (${done} line${done === 1 ? "" : "s"} done)` : ""}?`)) return;
+    post("drafts", { tracker: name, remove: true }).then((d) => { drafts = d; hiddenCols.delete("t:" + name); delete colFilters["t:" + name]; saveCols(); })
+      .catch((err) => alert(err.message));
+  }
+});
 $("colmenu").addEventListener("change", (e) => {
   const id = e.target.dataset.col; if (!id) return;
   e.target.checked ? hiddenCols.delete(id) : hiddenCols.add(id); saveCols();
@@ -361,6 +505,7 @@ function defaultWidth(id) {
   if (id === "value") return 150;
   if (id === "search") return 84;
   if (id.startsWith("price:")) return 120;
+  if (id.startsWith("t:")) return Math.max(100, 56 + 8 * id.length);  // title, count and filter button on one line
   if (id.startsWith("site:")) return 210;
   return id === "f:" + (columns()[0]?.name) ? 200 : 170;  // MPN a bit wider than the other fields
 }
@@ -394,7 +539,11 @@ $("head").addEventListener("pointerdown", (e) => {
   grip.addEventListener("pointermove", move); grip.addEventListener("pointerup", up); grip.addEventListener("pointercancel", up);
 });
 $("head").addEventListener("dblclick", (e) => {
-  const grip = e.target.closest(".grip"); if (!grip) return;
+  const grip = e.target.closest(".grip");
+  if (!grip) {
+    if (e.target.closest(".fbtn")) return;
+    const th = e.target.closest("th[data-rename]"); if (th) renameColumn(th.dataset.rename); return;
+  }
   delete colWidths[grip.dataset.col]; saveWidths(); render();
 });
 $("resetw").addEventListener("click", () => { colWidths = {}; saveWidths(); render(); });
@@ -403,7 +552,10 @@ function render() {
   const cols = columns(), shownCols = visibleCols();
   applyWidths(shownCols);
   $("head").innerHTML = shownCols.map((c) => c.th.replace(/<\/th>$/,
+    (c.filter ? `<button class="fbtn${colFilters[c.id] ? " on" : ""}" data-filter="${esc(c.id)}" title="${colFilters[c.id] ? "Filtered: " + esc(filterText(colFilters[c.id])) : "Filter by this column"}">&#9662;</button>` : "") +
     `<span class="grip" data-col="${esc(c.id)}" title="Drag to resize; double-click for its own width"></span></th>`)).join("");
+  const nf = Object.keys(colFilters).length;
+  $("clearf").hidden = !nf; $("clearf").textContent = `Clear filters (${nf})`;
   $("colsbtn").classList.toggle("on", shownCols.length < tableCols().length);  // lit while some are hidden
   const f = $("filter").value.trim().toLowerCase(), show = $("show").value;
   const rows = DATA.lines.filter((l) => {
@@ -411,6 +563,7 @@ function render() {
     if (show === "need" && (has || l.dnp)) return false;
     if (show === "has" && !has) return false;
     if (show === "changed" && !cols.some((c) => changed(l, c))) return false;
+    if (!passesFilters(l)) return false;
     if (!f) return true;
     return [l.refs.join(" "), l.value, l.footprint, l.description, ...cols.map((c) => shown(l, c))].join(" ").toLowerCase().includes(f);
   });
@@ -423,6 +576,7 @@ function render() {
   bar();
   if (lit) light(lit);
   fitAll();
+  document.querySelectorAll("#rows input[data-some]").forEach((b) => (b.indeterminate = true));
 }
 function stats() {
   const lines = DATA.lines, need = lines.filter((l) => !l.dnp && !numberOf(l)).length;
@@ -683,8 +837,68 @@ $("addfield").addEventListener("click", async () => {
   }
   try { drafts = await post("drafts", { column: name }); render(); } catch (e) { alert(e.message); }
 });
+// A column's new title. A tracker, or a field with no values in the
+// schematic yet, is renamed in kigit-bom.json; a field with values in the
+// schematic is renamed there too (written now, Undo puts it back).
+async function renameColumn(id) {
+  const tracker = id.startsWith("t:"), old = id.slice(2);
+  if (!tracker && !EDITABLE) { alert("This is a commit's BOM: fields can be renamed on the working tree."); return; }
+  const name = (prompt(`Rename the column "${old}" to:`, old) || "").trim();
+  if (!name || name === old) return;
+  const taken = [...columns().map((c) => c.name), ...trackers()].some((n) => n.toLowerCase() === name.toLowerCase() && n !== old);
+  if (taken) { alert(`There's already a "${name}" column.`); return; }
+  const low = name.toLowerCase();
+  if (!tracker && (KICAD_OWN.includes(low) || low.startsWith("ki_") || low.startsWith("sim."))) {
+    alert(`"${name}" is one of KiCad's own fields: kigit only writes part information.`); return;
+  }
+  const move = (from, to) => {  // its hidden state and width go with it
+    if (hiddenCols.delete(from)) hiddenCols.add(to);
+    if (colWidths[from]) { colWidths[to] = colWidths[from]; delete colWidths[from]; saveWidths(); }
+    if (colFilters[from]) { colFilters[to] = colFilters[from]; delete colFilters[from]; }
+  };
+  try {
+    if (tracker) {
+      drafts = await post("drafts", { rename_tracker: old, to: name });
+    } else {
+      const lines = DATA.lines.filter((l) => l.fields?.[old]);
+      if (!lines.length) {
+        drafts = await post("drafts", { rename_column: old, to: name });
+      } else {
+        const parts = lines.reduce((n, l) => n + l.refs.length, 0);
+        if (!confirm(`Parts on ${lines.length} line${lines.length === 1 ? "" : "s"} (${parts} part${parts === 1 ? "" : "s"}) have a "${old}" ` +
+          `field in the schematic. Renaming the column renames that field on them to "${name}" (written now; Undo puts it back).`)) return;
+        const go = (force) => post("write", { cells: [], renames: [{ from: old, to: name }], force });
+        let r;
+        try { r = await go(false); }
+        catch (e) {
+          if (!e.info?.locked || !confirm(e.message + "\n\nWrite anyway? KiCad will offer to reload the schematic.")) throw e;
+          r = await go(true);
+        }
+        DATA = r.data; drafts = r.drafts; index();
+        lastWrite = `Renamed the field "${old}" to "${name}" on ${r.result.fields} part${r.result.fields === 1 ? "" : "s"}. If KiCad has the schematic open, it'll offer to reload it.`;
+      }
+    }
+    move((tracker ? "t:" : "f:") + old, (tracker ? "t:" : "f:") + name);
+    saveCols();
+  } catch (e) { alert("Not renamed: " + e.message); }
+}
 if (!EDITABLE) { $("addfield").hidden = true;
   $("foot").insertAdjacentHTML("afterbegin", "<b>This is a commit's BOM: editing works on the working tree.</b> "); }
+// Ticking a tracker cell ticks (or unticks) all the line's parts.
+$("rows").addEventListener("change", async (e) => {
+  const box = e.target.closest("input[data-track]"); if (!box) return;
+  const l = DATA.lines[+box.dataset.i], name = box.dataset.track;
+  box.disabled = true;
+  try { drafts = await post("drafts", { track: name, refs: l.refs, done: box.checked }); render(); }
+  catch (err) { box.checked = !box.checked; box.disabled = false; alert("Not saved: " + err.message); }
+});
+$("addtracker").addEventListener("click", async () => {
+  const name = (prompt("A tracker column to tick off as you go (e.g. Carted, Ordered, Received, Placed, Tested):") || "").trim().slice(0, 60);
+  if (!name) return;
+  if (trackers().includes(name)) { alert(`There's already a "${name}" tracker.`); return; }
+  try { drafts = await post("drafts", { tracker: name }); hiddenCols.delete("t:" + name); saveCols(); }
+  catch (e) { alert(e.message); }
+});
 $("filter").addEventListener("input", render);
 $("show").addEventListener("change", render);
 // The CSV: what Digi-Key's BOM Manager and Mouser's BOM Tool read (they let you match the columns).
@@ -694,11 +908,12 @@ function csv() {
   const kind = (k, l) => { const c = cols.find((x) => x.kind === k); return c ? shown(l, c) : l[k]; };
   const extra = cols.filter((c) => !c.kind);
   const out = [["Quantity", "Manufacturer", "Manufacturer Part Number", "Digi-Key Part Number", "Mouser Part Number", "LCSC Part Number",
-    "References", "Value", "Footprint", "DNP", ...extra.map((c) => c.name)]];
+    "References", "Value", "Footprint", "DNP", ...extra.map((c) => c.name), ...trackers()]];
   for (const l of DATA.lines) {
     if (l.dnp && !withDnp) continue;
     out.push([l.dnp ? 0 : l.qty * boards, kind("manufacturer", l), kind("mpn", l), kind("digikey", l), kind("mouser", l), kind("lcsc", l),
-      l.refs.join(" "), l.value, l.footprint, l.dnp ? "DNP" : "", ...extra.map((c) => shown(l, c))]);
+      l.refs.join(" "), l.value, l.footprint, l.dnp ? "DNP" : "", ...extra.map((c) => shown(l, c)),
+      ...trackers().map((t) => ({ all: "yes", some: "partly", none: "" })[trackState(l, t)])]);
   }
   return out.map((r) => r.map(cell).join(",")).join("\r\n") + "\r\n";
 }

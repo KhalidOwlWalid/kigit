@@ -100,7 +100,12 @@ FieldsResult set_fields(const std::string& text, const std::vector<FieldEdit>& e
             result.problems.push_back(why);
             continue;
         }
-        if (e.value.find_first_of("\r\n") != std::string::npos || e.value.size() > 500) {
+        if (!e.rename.empty()) {
+            if (auto why = field_refused(e.rename); !why.empty()) {
+                result.problems.push_back(why);
+                continue;
+            }
+        } else if (e.value.find_first_of("\r\n") != std::string::npos || e.value.size() > 500) {
             result.problems.push_back(e.name + ": a value must be one line, at most 500 characters");
             continue;
         }
@@ -131,6 +136,17 @@ FieldsResult set_fields(const std::string& text, const std::vector<FieldEdit>& e
         for (const Node* p : props)
             if (const Node* id = p->child("id")) next_id = std::max(next_id, static_cast<int>(id->num(0)) + 1);
 
+        // Renaming to a name that's also being set on this part would make two fields of one name.
+        std::set<std::string> targets, set_names;
+        for (const FieldEdit* e : list) (e->rename.empty() ? set_names : targets).insert(e->rename.empty() ? e->name : e->rename);
+        bool clash = false;
+        for (const auto& t : targets)
+            if (set_names.count(t)) {
+                result.problems.push_back("can't rename a field to " + t + " and set " + t + " at once: left as it is");
+                clash = true;
+            }
+        if (clash) continue;
+
         std::string added;
         std::set<std::string> done; // the same field twice in one go: the last wins
         for (auto it = list.rbegin(); it != list.rend(); ++it) {
@@ -139,6 +155,19 @@ FieldsResult set_fields(const std::string& text, const std::vector<FieldEdit>& e
             const Node* existing = nullptr;
             for (const Node* p : props)
                 if (sexpr::unescape(p->arg(0)) == e.name) existing = p;
+            if (!e.rename.empty()) {
+                if (!existing || e.rename == e.name) continue; // nothing to rename on this part
+                bool taken = false;
+                for (const Node* p : props) taken = taken || sexpr::unescape(p->arg(0)) == e.rename;
+                if (taken) {
+                    result.problems.push_back("a part already has both " + e.name + " and " + e.rename + ": left as it is");
+                    continue;
+                }
+                auto [at, len] = where(*existing->arg_node(0), text);
+                changes.push_back({at, len, "\"" + escape(e.rename) + "\""});
+                ++result.changed;
+                continue;
+            }
             if (existing) {
                 if (sexpr::unescape(existing->arg(1)) == e.value) continue;
                 const Node* v = existing->arg_node(1);

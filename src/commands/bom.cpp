@@ -90,8 +90,12 @@ int write_fields(const fs::path& sch_file, const std::string& edits_arg, bool fo
     std::set<std::string> edited, seen;
     std::vector<std::tuple<std::string, std::string, std::string>> expect; // uuid, field, value
     for (const auto& e : edits) {
-        std::string field = e.value("field", ""), value = e.value("value", "");
+        std::string field = e.value("field", ""), value = e.value("value", ""), rename = e.value("rename", "");
         if (auto why = field_refused(field); !why.empty()) throw std::runtime_error(why + "; nothing was written");
+        if (!rename.empty()) {
+            if (auto why = field_refused(rename); !why.empty()) throw std::runtime_error(why + "; nothing was written");
+            edited.insert(rename);
+        }
         edited.insert(field);
         for (const auto& r : e.value("refs", nlohmann::json::array())) {
             std::string ref = r.get<std::string>();
@@ -101,7 +105,15 @@ int write_fields(const fs::path& sch_file, const std::string& edits_arg, bool fo
                 // A sheet used twice is one file: its symbols once.
                 std::string file = before.sheets[s->sheet].file;
                 if (!seen.insert(file + "|" + s->uuid + "|" + field).second) continue;
-                per_file[file].push_back({s->uuid, field, value});
+                if (!rename.empty()) {
+                    auto had = s->fields.find(field);
+                    if (had == s->fields.end()) continue; // no such field on this part: nothing to rename
+                    per_file[file].push_back({s->uuid, field, "", rename});
+                    expect.emplace_back(s->uuid, rename, had->second); // the value under its new name
+                    expect.emplace_back(s->uuid, field, "");           // and the old name gone
+                    continue;
+                }
+                per_file[file].push_back({s->uuid, field, value, ""});
                 expect.emplace_back(s->uuid, field, value);
             }
         }
@@ -209,7 +221,9 @@ const char* kHelp =
     "\n"
     "  Writing part numbers (the working tree only):\n"
     "  --write EDITS.json     set fields on parts: [{\"refs\": [\"R1\", \"R2\"], \"field\": \"MPN\",\n"
-    "                         \"value\": \"RC0603FR-0710KL\"}, ...] (- = stdin). Only part information:\n"
+    "                         \"value\": \"RC0603FR-0710KL\"}, ...] (- = stdin), or rename one:\n"
+    "                         {\"refs\": [...], \"field\": \"Voltage\", \"rename\": \"Voltage rating\"}.\n"
+    "                         Only part information:\n"
     "                         KiCad's own fields (Reference, Value, Footprint, ...) are refused, and\n"
     "                         nothing is written unless the schematic is the same design after.\n"
     "                         The old files are kept in .kigit/bom-backup/ (printed).\n"

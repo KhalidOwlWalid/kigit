@@ -11,7 +11,11 @@ lights its parts up in both; hovering a part lights its line up.
 
 Edits are drafts until you write them, kept next to the board in
 kigit-bom.json (in git, so they go with the project): {"version": 2,
-"drafts": {line key: {field name: value}}, "columns": [added fields]}.
+"drafts": {line key: {field name: value}}, "columns": [added fields],
+"tracking": {"columns": [tracker names], "done": {name: [refs]}}}.
+Trackers ("Carted", "Placed"...) are your own tick columns for a build:
+never written into the schematic, ticked per part reference (so they
+survive a line's part number changing or lines regrouping).
 Only made when asked (the header's BOM button); nothing runs in the
 background.
 
@@ -94,9 +98,19 @@ def drafts_path(board: str | Path) -> Path:
     return Path(board).parent / DRAFTS
 
 
+def _tracking(data: dict) -> dict:
+    t = data.get("tracking") if isinstance(data.get("tracking"), dict) else {}
+    cols = t.get("columns") if isinstance(t.get("columns"), list) else []
+    names = list(dict.fromkeys(c for c in cols if isinstance(c, str) and c.strip()))
+    done = t.get("done") if isinstance(t.get("done"), dict) else {}
+    ticked = {n: done[n] for n in names if isinstance(done.get(n), list) and done[n]}
+    return {"columns": names, "done": {n: sorted({r for r in refs if isinstance(r, str)}) for n, refs in ticked.items()}}
+
+
 def load_drafts(board: str | Path) -> dict:
-    """{"drafts": {line key: {field: value}}, "columns": [field, ...]}. A
-    version 1 file (picks: mpn, manufacturer, note) is read as drafts."""
+    """{"drafts": {line key: {field: value}}, "columns": [field, ...],
+    "tracking": {"columns": [...], "done": {name: [refs]}}}. A version 1
+    file (picks: mpn, manufacturer, note) is read as drafts."""
     try:
         data = json.loads(drafts_path(board).read_text(encoding="utf-8"))
     except (OSError, ValueError):
@@ -118,17 +132,21 @@ def load_drafts(board: str | Path) -> dict:
         for k, d in (data.get("drafts") or {}).items():
             if isinstance(d, dict):
                 drafts[k] = {str(f): str(v) for f, v in d.items()}
-    return {"drafts": drafts, "columns": columns}
+    return {"drafts": drafts, "columns": columns, "tracking": _tracking(data)}
 
 
 def save_drafts(board: str | Path, state: dict) -> None:
     drafts = {k: dict(sorted(d.items())) for k, d in sorted(state["drafts"].items()) if d}
     columns = list(dict.fromkeys(state.get("columns", [])))
+    tracking = _tracking({"tracking": state.get("tracking") or {}})
     path = drafts_path(board)
-    if not drafts and not columns:
+    if not drafts and not columns and not tracking["columns"]:
         path.unlink(missing_ok=True)
         return
-    text = json.dumps({"version": 2, "drafts": drafts, "columns": columns}, indent=2, ensure_ascii=False) + "\n"
+    out = {"version": 2, "drafts": drafts, "columns": columns}
+    if tracking["columns"]:
+        out["tracking"] = tracking
+    text = json.dumps(out, indent=2, ensure_ascii=False) + "\n"
     tmp = path.with_suffix(".json.tmp")
     tmp.write_text(text, encoding="utf-8", newline="\n")
     tmp.replace(path)
@@ -151,6 +169,60 @@ def add_column(board: str | Path, name: str) -> dict:
     state = load_drafts(board)
     if name not in state["columns"]:
         state["columns"].append(name)
+    save_drafts(board, state)
+    return load_drafts(board)
+
+
+def rename_column(board: str | Path, old: str, new: str) -> dict:
+    """An added field column's new title, with its drafts. (Values already in
+    the schematic are renamed there by kigit bom --write.)"""
+    state = load_drafts(board)
+    state["columns"] = [new if c == old else c for c in state["columns"]]
+    if new not in state["columns"]:
+        state["columns"].append(new)
+    for d in state["drafts"].values():
+        if old in d:
+            d[new] = d.pop(old)
+    save_drafts(board, state)
+    return load_drafts(board)
+
+
+def rename_tracker(board: str | Path, old: str, new: str) -> dict:
+    state = load_drafts(board)
+    t = state["tracking"]
+    t["columns"] = [new if c == old else c for c in t["columns"]]
+    if old in t["done"]:
+        t["done"][new] = t["done"].pop(old)
+    save_drafts(board, state)
+    return load_drafts(board)
+
+
+def add_tracker(board: str | Path, name: str) -> dict:
+    state = load_drafts(board)
+    if name not in state["tracking"]["columns"]:
+        state["tracking"]["columns"].append(name)
+    save_drafts(board, state)
+    return load_drafts(board)
+
+
+def remove_tracker(board: str | Path, name: str) -> dict:
+    state = load_drafts(board)
+    t = state["tracking"]
+    t["columns"] = [c for c in t["columns"] if c != name]
+    t["done"].pop(name, None)
+    save_drafts(board, state)
+    return load_drafts(board)
+
+
+def set_tracked(board: str | Path, name: str, refs: list[str], done: bool) -> dict:
+    """Ticks (or unticks) parts in a tracker. Re-reads the file first."""
+    state = load_drafts(board)
+    t = state["tracking"]
+    if name not in t["columns"]:
+        t["columns"].append(name)
+    have = set(t["done"].get(name, []))
+    have = have | set(refs) if done else have - set(refs)
+    t["done"][name] = sorted(have)
     save_drafts(board, state)
     return load_drafts(board)
 
@@ -204,6 +276,19 @@ async def _set_draft(key: str, request: Request) -> Response:
     try:
         if body.get("column"):
             return JSONResponse(add_column(job.board, str(body["column"]).strip()[:100]))
+        if body.get("rename_column") or body.get("rename_tracker"):  # {rename_column | rename_tracker, to}
+            new = str(body.get("to", "")).strip()[:100]
+            if not new or any(ch in new for ch in "\r\n"):
+                return JSONResponse({"error": "a column needs a name (one line)"}, status_code=400)
+            if body.get("rename_tracker"):
+                return JSONResponse(rename_tracker(job.board, str(body["rename_tracker"]), new[:60]))
+            return JSONResponse(rename_column(job.board, str(body["rename_column"]), new))
+        if body.get("tracker"):  # {tracker, remove?}: add or remove a tracker column
+            name = str(body["tracker"]).strip()[:60]
+            return JSONResponse(remove_tracker(job.board, name) if body.get("remove") else add_tracker(job.board, name))
+        if body.get("track"):  # {track, refs, done}: tick parts
+            refs = [str(r) for r in body.get("refs", []) if isinstance(r, str)][:5000]
+            return JSONResponse(set_tracked(job.board, str(body["track"]).strip()[:60], refs, bool(body.get("done"))))
         line, name = str(body.get("key", "")), str(body.get("field", ""))
         if not line or not name:
             return JSONResponse({"error": "no line or field"}, status_code=400)
@@ -230,7 +315,14 @@ async def _write(key: str, request: Request) -> Response:
         return JSONResponse({"error": "only the working tree can be written"}, status_code=400)
     body = await request.json()
     refs = {line_key(l): l["refs"] for l in job.data.get("lines", [])}
-    edits, cells = [], []
+    every_ref = [r for l in job.data.get("lines", []) for r in l["refs"]]
+    edits, cells, renames = [], [], []
+    for rn in body.get("renames", []):  # a field column's new title: the field renamed on every part that has it
+        old, new = str(rn.get("from", "")), str(rn.get("to", "")).strip()
+        if not old or not new:
+            return JSONResponse({"error": "a rename needs both names"}, status_code=400)
+        edits.append({"refs": every_ref, "field": old, "rename": new})
+        renames.append((old, new))
     for c in body.get("cells", []):
         k, name, value = str(c.get("key", "")), str(c.get("field", "")), str(c.get("value", ""))
         if k not in refs or not name:
@@ -248,6 +340,8 @@ async def _write(key: str, request: Request) -> Response:
     for k, name in cells:
         state["drafts"].get(k, {}).pop(name, None)
     save_drafts(job.board, state)
+    for old, new in renames:
+        rename_column(job.board, old, new)
     await _refresh(job)
     logs.log.info("bom: wrote %s fields into %s", result.get("fields"), ", ".join(result.get("written", [])))
     return JSONResponse({"result": result, "data": job.data, "drafts": load_drafts(job.board)})

@@ -251,6 +251,21 @@ TEST_CASE("kigit bom --write: part information only, checked, with a backup to r
     CHECK(back.code == 0);
     CHECK(read_text(sch) == before);
     CHECK(run_kigit("bom --no-log --restore " + quote(tmp.path().string())).code == 1); // not a backup folder
+
+    // Renaming a field (a column's title): the values move to the new name.
+    REQUIRE(write(R"([{"refs": ["R1", "R3"], "field": "Voltage", "value": "50V"}])").code == 0);
+    r = write(R"([{"refs": ["R1", "R2", "R3"], "field": "Voltage", "rename": "Voltage rating"}])");
+    REQUIRE(r.code == 0);
+    CHECK(json::parse(r.out)["fields"] == 2); // R2 has no Voltage field: left alone
+    std::string after = read_text(sch);
+    auto count = [&](const std::string& what) {
+        int n = 0;
+        for (size_t at = after.find(what); at != std::string::npos; at = after.find(what, at + 1)) ++n;
+        return n;
+    };
+    CHECK(count("(property \"Voltage rating\" \"50V\"") == 2);
+    CHECK(count("(property \"Voltage\"") == 0);
+    CHECK(write(R"([{"refs": ["R1"], "field": "Voltage rating", "rename": "Footprint"}])").code == 1); // KiCad's own
 }
 
 TEST_CASE("--rewritten: where an amended commit went") {

@@ -87,6 +87,7 @@ The BOM is also where part numbers go into your schematic, without hunting for p
 </figure>
 
 - The columns are **MPN** and **Manufacturer**, **Digi-Key**, **Mouser** and **LCSC** when your project uses them, and any field you add with **+ Field** (Supplier, Tolerance...). Each uses the name your project already uses for it ("LCSC Part #", "Part Number"...), so nothing ends up under two names.
+- **Rename** a column you added (a field or a tracker): double-click its title, or ✎ beside it in **Columns**. If parts already have that field in the schematic, kigit renames the field on them too (after asking; the values stay, only the name changes, and **Undo** puts it back). The project's own part number columns (MPN, Manufacturer, Digi-Key, Mouser, LCSC) keep their names.
 - Type in a cell: it's a **draft** (marked), saved as you type in `kigit-bom.json` next to the board (commit it to share drafts). A line's value applies to every part on it. Long part numbers wrap onto more lines so you can read them whole; Enter leaves the cell (a field is one line of text).
 - **Column widths**: drag a column header's right edge. Double-click the edge to put that column back to its own width; **Reset widths** (in the header while any is changed, and in **Columns**) puts them all back. Remembered in your browser. When the columns are wider than the list, it scrolls sideways.
 - **Write to schematic** puts the drafts into the schematic files; **Discard** drops them; **Undo** puts the files back as they were before the last write.
@@ -100,6 +101,28 @@ kigit is not a schematic editor, and this can't change your design:
 - The files it replaced are kept in `.kigit/bom-backup/` next to the schematic (not in git), which is what **Undo** uses.
 
 Only the working tree can be edited: a commit's BOM is read-only.
+
+## Filtering
+
+Every column you can filter has a **▾** in its header; filters add up, so *Placed: not done* plus *Carted: done* plus *Mouser: short of stock* shows exactly those lines.
+
+- **Trackers**: *Done*, *Not done*, *Partly done* (DNP lines aren't part of a build, so they're left out).
+- **References, Value and the part number columns** (and fields you added): *Contains...* (type), *Not empty*, *Empty*: *MPN: Empty* is what still needs a part number.
+- **Each site's column** (after Look up): *Found*, *Short of stock*, *Ending* (obsolete, last time buy...), *To choose*, *Not found*, *Error or skipped*.
+
+A filtered column's **▾** is lit. **Clear filters** (in the header while any is on) shows every line again. The search box and **Show** work on top of them. Filters last until you reload the page.
+
+## Tracking a build
+
+**+ Tracker** adds a tick column of your own to follow a build along: *Carted*, *Ordered*, *Received*, *Placed*, *Tested*, whatever your steps are.
+
+- Tick a line when it's done. Its header counts the lines done (**3/12**, green when all are). DNP lines don't count.
+- Ticks are kept **per part** (R1, R3...), so they stay right when a line gets a part number or lines regroup. A line where only some parts are ticked shows a half-ticked box (hover it to see which).
+- Filter by them with the **▾** in their header: *Done*, *Not done* or *Partly done* (see [Filtering](#filtering)).
+- Like any column, a tracker can be hidden or resized. **Columns** → **×** removes one with its ticks.
+- **Export CSV** includes them (*yes*, *partly* or empty).
+
+Trackers are kept in `kigit-bom.json` next to the board, with the drafts (commit it to share progress), **never in the schematic**: they're about this build, not the design. That's the difference from **+ Field**, whose values get written into the schematic.
 
 ## Exporting
 
@@ -121,6 +144,6 @@ kigit bom --write edits.json   # set part information fields (see below)
 kigit bom --restore .kigit/bom-backup/20261118-204925-877   # undo a --write
 ```
 
-`--write` takes a list of `{"refs": ["R1", "R2"], "field": "MPN", "value": "RC0603FR-0710KL"}` (or `-` to read it from stdin), with the same rules and checks as the page, and prints what it wrote and where the backup is. `--force` writes even when KiCad has the schematic open.
+`--write` takes a list of `{"refs": ["R1", "R2"], "field": "MPN", "value": "RC0603FR-0710KL"}` (or `-` to read it from stdin), or `{"refs": [...], "field": "Voltage", "rename": "Voltage rating"}` to rename a field on the parts that have it, with the same rules and checks as the page, and prints what it wrote and where the backup is. `--force` writes even when KiCad has the schematic open.
 
 Without git it reads the files on disk; a revision then is an error.

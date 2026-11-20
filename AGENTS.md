@@ -609,6 +609,32 @@ at once. localStorage settings are per origin, so per port.
   that width, `#resetw`/`#colsreset` drop all. Field cells are
   `textarea.cell` (rows 1, `fit()` sets the height to the text; Enter
   blurs; line breaks become spaces) so long values wrap.
+  Trackers (+ Tracker): the user's own tick columns for a build, in
+  `kigit-bom.json` as `"tracking": {"columns": [names], "done": {name:
+  [refs]}}` (`bom._tracking` cleans it; `add_tracker`, `remove_tracker`,
+  `set_tracked` re-read the file first), posted to `/bom/{key}/drafts` as
+  {tracker, remove?} or {track, refs, done}. Never written to the
+  schematic. Per reference, not line key (keys change when an MPN is
+  written; lines regroup): `trackState` is all/some/none (some =
+  indeterminate box). Column id `t:<name>`; the CSV adds yes/partly/"".
+  Column filters: a column with `filter` ("text" + `text(l)`, "track" +
+  `tracker`, "site" + `site`) gets a `.fbtn` in its header; `#fmenu`
+  (radio modes from `FILTERS`, a text box for "has") sets
+  `colFilters[id] = {mode, q}`; `passesFilters(l)` ANDs them in
+  render's row filter (a filter on a column that's gone is ignored;
+  DNP lines fail tracker filters). Not saved across reloads. A rename or
+  tracker removal moves or drops its filter.
+  Renaming columns (`renameColumn`, double-click a `th[data-rename]` or
+  ✎ in Columns): only added fields (`custom`, no `kind`) and trackers.
+  Tracker or a field with no schematic values: `rename_tracker` /
+  `rename_column` in kigit-bom.json (drafts move with it). A field with
+  values: `/bom/{key}/write` {cells: [], renames: [{from, to}]} -> a
+  `--write` edit {refs: every BOM ref, field, rename}: `FieldEdit.rename`
+  replaces only the property's name atom (parts without it are skipped;
+  refused if the part already has the new name, or the same batch also
+  sets it); same_design gets both names as edited, and the read-back
+  expects the value under the new name and the old one gone. Hidden
+  state and width move to the new column id.
 - 3D diff (beta, `board3d_diff.py`): separate from the 3D view, which
   stays as it is. The header's "3D diff" button (`diff3d_btn`, a "beta"
   badge; shown with `dock_btn`) opens a blank tab in its click

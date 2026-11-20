@@ -118,6 +118,35 @@ TEST_CASE("refused: KiCad's own fields, bad names and values, unknown symbols") 
     CHECK(set_fields(text, {{"sym-r1", "MPN", ""}}).text == text);
 }
 
+TEST_CASE("renaming a field: only its name changes, refused when it would clash") {
+    std::string text = kKicad6;
+    FieldsResult r = set_fields(text, {{"s1", "Part Number", "", "Voltage rating"}});
+    REQUIRE(r.problems.empty());
+    CHECK(r.changed == 1);
+    std::string want = text;
+    want.replace(want.find("\"Part Number\""), 13, "\"Voltage rating\"");
+    CHECK(r.text == want); // the name, nothing else (value, id, position, hide)
+    Schematic before = load(text), after = load(r.text);
+    CHECK(field(after, "R1", "Voltage rating") == "OLD");
+    CHECK(field(after, "R1", "Part Number") == "<none>");
+    CHECK(same_design(before, after, {"Part Number", "Voltage rating"}).empty());
+    CHECK_FALSE(same_design(before, after, {"Part Number"}).empty()); // the new name is a change too
+
+    CHECK(set_fields(text, {{"s1", "Tolerance", "", "Tol"}}).changed == 0);     // no such field: nothing
+    r = set_fields(text, {{"s1", "Part Number", "", "Value"}});                  // KiCad's own: refused
+    CHECK(r.changed == 0);
+    CHECK(r.problems[0].find("KiCad's own") != std::string::npos);
+    r = set_fields(text, {{"s1", "Part Number", "", "Footprint2"}, {"s1", "Footprint2", "x"}});
+    CHECK(r.changed == 0); // a rename to a name also being set: two fields of one name, so refused
+    CHECK(r.problems[0].find("at once") != std::string::npos);
+    std::string two = text;
+    two.replace(two.find("(pin \"1\""), 0, "(property \"Tol\" \"1%\" (id 4) (at 0 0 0) (effects (font (size 1.27 1.27)) hide))\n    ");
+    r = set_fields(two, {{"s1", "Part Number", "", "Tol"}});
+    CHECK(r.changed == 0);
+    REQUIRE(r.problems.size() == 1);
+    CHECK(r.problems[0].find("already has both") != std::string::npos);
+}
+
 TEST_CASE("same_design notices any change to the design") {
     std::string text = read_text(fixture("v2/demo.kicad_sch"));
     Schematic a = load(text);
