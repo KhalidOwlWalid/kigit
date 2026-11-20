@@ -317,6 +317,19 @@ def test_buy_on_the_page() -> None:
     assert 'exportRule === "tobuy" && BUILD ? buyOf(l).toBuy : l.qty * boards' in page
 
 
+def test_assemble_on_the_page() -> None:
+    """Buy / Assemble; boards picked and started; a placement column right
+    after Value; the board view coloured by what's placed; placed parts
+    aren't needed any more."""
+    page = _page()
+    assert 'data-view-mode="buy"' in page and 'data-view-mode="assemble"' in page and 'id="asmbar"' in page
+    assert 'id: "placed", label: "Placed (this board)", filter: "placed"' in page
+    assert page.index('id: "placed"') < page.index('...cols.map((c, ci) => ({ id: "f:"')
+    assert "data-place=" in page and "data-placeall=" in page and "[data-place]\")) return;" in page
+    assert "asm ? placedMarks() : orderedMarks()" in page
+    assert "Math.max(0, l.qty * buildQty() - placedOf(l))" in page
+
+
 def test_trackers_on_the_page() -> None:
     page = _page()
     assert 'id="addtracker"' in page

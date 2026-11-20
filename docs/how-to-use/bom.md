@@ -110,7 +110,17 @@ A **build** is a batch of boards you're making from the design: *Proto run, 3 bo
 - Each build is a folder next to the board, `kigit-builds/<name>/build.json`, in git with the project. **⋯** renames it (the folder follows) or deletes it (git still has it if you committed it).
 - The build you picked is remembered for that board in your browser: it's still there when you reload or open the BOM again, until you pick another.
 - What's bought belongs to a build: its **trackers** and **carts** are kept in its `build.json`, so each batch starts fresh. With **Design only** there are none (+ Tracker and Import cart ask you to pick a build).
-- Coming next, per build: boards #1, #2... with their own placement sheets (**Assemble**).
+- **Buy** / **Assemble** (beside the build) switch between what to buy for it and its boards; the view, and the board you're on, are remembered.
+
+### Assembling boards
+
+**Assemble** is for building the boards one by one, each with its own placement sheet: **Board** → **Start board #1** (then #2...: a board is only made when you start it, so a 50-board build doesn't fill up with empty ones; each is `kigit-builds/<build>/boards/<n>.json`).
+
+- **Placed on #n** (right after Value): the line's parts as chips; click one when it's on the board (**all** / **none** for the whole line). Its **▾** filters *Placed*, *Not placed yet*, *Partly placed*.
+- Each part you place **takes one out of your [inventory](#inventory)** (when it's in it); unticking it puts back exactly what was taken. A part that isn't in your inventory is still marked placed.
+- **Placed** on the PCB and 3D panes colours that board's parts: green placed, red still to place.
+- A board is **done** by itself when every part (not DNP) is placed, with the time; you can also set it. **Notes** keeps a line about the board (a bodge, who has it). **Delete** forgets it (its parts aren't put back: they're on the board).
+- In **Buy**, what's placed no longer counts as needed, and the header counts the boards still to build.
 
 ### Buying for a build
 
@@ -118,7 +128,7 @@ With a build picked (and your [inventory](#inventory) chosen), the list shows, p
 
 - **In stock**: what your inventory has.
 - **Ordered**: what the build's carts have that hasn't arrived yet.
-- **To buy**: what's left: needed (per board × boards) − in stock − ordered; **✓** when nothing is. Its **▾** filters *Still to buy* / *Covered*.
+- **To buy**: what's left: needed (per board × boards, less what's [placed](#assembling-boards) already) − in stock − ordered; **✓** when nothing is. Its **▾** filters *Still to buy* / *Covered*.
 
 The header says how many boards your stock covers ("stock covers 37 of 50 boards", and how many with what's ordered); hover it to see the scarcest line. Your inventory is shared by every build and project, so another build's needs can draw on the same parts.
 
@@ -152,7 +162,7 @@ STM32F103C8T6,STMicroelectronics,,511-STM32F103C8T6,,,,6,Box A,two have bent pin
 - Rows kigit can't use (no quantity, nothing saying what the part is, the same part twice) are listed in the dialog and left alone.
 - Every change re-reads the file first (so edits made elsewhere aren't lost), goes through a temporary file, and keeps the previous version as `<name>.csv.bak`.
 - Windows: if the file is open in Excel, Excel locks it and kigit can't save; close it there and try again.
-- Received carts add to it ([Buying for a build](#buying-for-a-build)); coming with **Assemble**: parts placed on a board taking from it.
+- Received carts add to it ([Buying for a build](#buying-for-a-build)); parts placed on a board take from it ([Assembling boards](#assembling-boards)).
 
 ## Notes about parts
 

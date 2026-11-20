@@ -27,6 +27,7 @@ What it can do:
 - Show your buses and where they're routed
 - Works without git too: just point it at two folders
 - Keep notes and PR-style discussions on why the board changed, and see any commit in 3D
+- A bill of materials: part numbers, stock and prices from Mouser and Digi-Key, carts, your inventory, and builds you assemble board by board
 - Comes with an example project to try it all on: `kigit example`
 
 Have a look at the demo below to get a feel for it.
@@ -38,17 +39,45 @@ https://github.com/user-attachments/assets/f906914c-ffff-49df-a43d-28ec8a625058
 Full documentation can be found here: https://khalidowlwalid.github.io/kigit/
 
 ### PCB diff
+Hover a trace to light up its whole net and see what was added, removed or changed.
 
-![pcb-diff example](docs/blobs/gifs/pcb-diff.gif)
+![kigit's PCB diff: nets added, removed and changed between two commits](docs/blobs/demo/gifs/pcb-diff.gif)
 
 ### Schematic diff
-![sch-diff example](docs/blobs/gifs/sch-diff.gif)
+Every sheet, with nets computed the way KiCad's netlist does: hover a net, part or bus to see what changed.
+
+![kigit's schematic diff: parts, wires and nets changed between two commits](docs/blobs/demo/gifs/sch-diff.gif)
 
 ### 3D Viewer
 Kigit uses kicad-cli backend to render the PCB and displays the 2 commit's board side by side for ease of comparison
 
 ![kigit GUI: a schematic diff with the old and new boards in 3D docked below it](docs/blobs/gifs/kigit-showcase.gif)
 <p align="center"><i>The GUI: pick two commits, see what changed on the schematic and PCB, with both boards in 3D (made by KiCad) docked below, views linked.</i></p>
+
+![Two commits' boards in 3D, side by side below the comparison](docs/blobs/demo/gifs/3d-diff.gif)
+<p align="center"><i>Both commits' boards in 3D, side by side, with their views linked.</i></p>
+
+### 3D diff (beta)
+The comparison's changes on the board in 3D, in a tab of its own: parts added, changed, moved and removed, and the tracks that changed.
+
+![kigit's 3D diff: changed parts and tracks shown on the board in 3D](docs/blobs/demo/gifs/3d-diff-overlay.gif)
+
+### Reviews and discussions
+Review a commit with notes pinned to the parts and nets they're about, and ask for attention with PR-style discussions, all kept as Markdown in your project.
+
+![Reviewing a commit in kigit](docs/blobs/demo/gifs/review-system.gif)
+
+![A review's notes pinned to nets and parts, with open discussions](docs/blobs/demo/gifs/review-system-2.gif)
+
+### Activity
+A heatmap of your work on the board, day by day: comparisons, reviews, discussions and notes.
+
+![kigit's activity heatmap](docs/blobs/demo/gifs/heatmap.gif)
+
+### Bill of materials
+The BOM with the board in 2D and 3D beside it: hover a line to light up its parts. Fill in part numbers, look up stock and prices at Mouser and Digi-Key, export carts, track your inventory, and assemble builds board by board.
+
+![kigit's BOM: the parts list with the board in 2D and 3D](docs/blobs/demo/gifs/bom-system.gif)
 
 ---
 

@@ -141,6 +141,15 @@ th:hover .fbtn { border-color: var(--line); } th .fbtn.on { color: var(--accent)
 .buildpick select { max-width: 16rem; font-weight: 600; }
 .buildpick select.on { border-color: var(--accent); color: var(--accent); }
 .buildpick .sub { flex-basis: 100%; font-size: 12px; }
+#views button { padding: 2px 10px; } #views button.on { border-color: var(--accent); color: var(--accent); background: var(--hl); }
+#views button:first-child { border-radius: 6px 0 0 6px; } #views button:last-child { border-radius: 0 6px 6px 0; margin-left: -1px; }
+#asmbar { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; padding: 6px 16px; border-bottom: 1px solid var(--line);
+  background: var(--panel); }
+#asmbar[hidden] { display: none; }
+td.placed .ref { display: inline-block; margin: 1px 2px; padding: 0 6px; font-size: 11.5px; border-radius: 999px; cursor: pointer;
+  border: 1px solid var(--line); color: var(--muted); user-select: none; }
+td.placed .ref.on { border-color: var(--ok); color: #fff; background: var(--ok); }
+td.placed button { padding: 0 6px; font-size: 11px; margin-left: 2px; }
 #bmenu { position: fixed; z-index: 8; display: none; background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
   box-shadow: 0 6px 18px rgba(0,0,0,.35); padding: 4px; }
 #bmenu.on { display: block; }
@@ -202,6 +211,7 @@ dialog a { color: var(--link); }
   <div class="buildpick">
     <select id="build" aria-label="Build" title="A build: a batch of boards you're making (its board count, and soon what's bought and what's placed). Design only: just the schematic's parts"></select>
     <button id="buildmore" title="Rename or delete this build" hidden>&#8943;</button>
+    <span id="views" hidden><button data-view-mode="buy" title="What to buy for this build: in stock, ordered, to buy">Buy</button><button data-view-mode="assemble" title="Boards #1, #2...: tick parts off as you place them">Assemble</button></span>
     <div class="sub" id="buildinfo"></div>
   </div>
   <div class="stats" id="stats"></div>
@@ -231,6 +241,14 @@ dialog a { color: var(--link); }
     <button id="shownotes" title="Notes about the BOM's lines (+ Notes on a line): why a part was chosen">Notes</button>
   </div>
 </header>
+<div id="asmbar" hidden>
+  <b>Board</b> <select id="boardsel" aria-label="Board"></select>
+  <span id="boardprog" class="sub"></span>
+  <select id="boardstatus" aria-label="Board status" title="A board is done by itself when every part is placed"><option value="in progress">in progress</option><option value="done">done</option></select>
+  <button id="boardnotes" title="Notes about this board (a fix, a bodge, where it went)">Notes</button>
+  <button id="boarddel" title="Forget this board (its placed parts aren't put back: they're on the board)">Delete</button>
+  <span class="sub">Tick parts off as you place them: each takes one from your inventory; unticking puts it back.</span>
+</div>
 <div id="split">
 <main id="list">
 <table id="bom">
@@ -413,6 +431,7 @@ const FILTERS = {
   track: [["done", "Done"], ["not", "Not done"], ["some", "Partly done"]],
   text: [["has", "Contains..."], ["filled", "Not empty"], ["empty", "Empty"]],
   tobuy: [["buy", "Still to buy"], ["covered", "Covered (in stock or ordered)"]],
+  placed: [["done", "Placed"], ["not", "Not placed yet"], ["some", "Partly placed"]],
   stock: [["enough", "Enough in stock"], ["short", "Not enough in stock"], ["none", "Not in the inventory"]],
   ordered: [["enough", "Enough in the carts"], ["short", "Not enough"], ["none", "Not in a cart"],
     ["from:mouser", "In the Mouser cart"], ["from:lcsc", "In the LCSC cart"]],
@@ -428,6 +447,11 @@ function passes(col, f, l) {
     if (l.dnp) return false;  // not bought: not part of a build's progress
     const st = trackState(l, col.tracker);
     return f.mode === "done" ? st === "all" : f.mode === "not" ? st !== "all" : st === "some";
+  }
+  if (col.filter === "placed") {
+    if (l.dnp) return false;
+    const n = l.refs.filter((r) => BOARD.placed.includes(r)).length;
+    return f.mode === "done" ? n === l.refs.length : f.mode === "not" ? n < l.refs.length : n > 0 && n < l.refs.length;
   }
   if (col.filter === "tobuy") return !l.dnp && (f.mode === "buy" ? buyOf(l).toBuy > 0 : buyOf(l).toBuy === 0);
   if (col.filter === "stock") {
@@ -534,17 +558,20 @@ function tableCols() {
       td: (l, i) => `<td class="refs">${esc(l.refs.join(", "))}<div>${status(l)}</div>${notesButton(l, i)}</td>` },
     { id: "value", label: "Value", filter: "text", text: (l) => [l.value, l.package, l.description].join(" "), th: `<th>Value</th>`,
       td: (l) => `<td>${esc(l.value)}<div class="pkg">${esc(l.package)}</div>${l.description ? `<div class="desc">${esc(l.description)}</div>` : ""}</td>` },
+    // Right after Value: in Assemble, this is what you work down.
+    ...(BUILD && VIEW === "assemble" && BOARD ? [{ id: "placed", label: "Placed (this board)", filter: "placed",
+      th: `<th title="Board #${BOARD.board}: click a part when it's on the board">Placed on #${BOARD.board}</th>`, td: (l) => placedCell(l) }] : []),
     ...cols.map((c, ci) => ({ id: "f:" + c.name, label: c.label === c.name ? c.label : `${c.label} (${c.name})`,
       custom: c.kind ? null : c.name,  // a field you added: its title can be changed
       filter: "text", text: (l) => shown(l, c),
       th: `<th title="${esc(c.name)}${c.kind ? "" : " (double-click to rename)"}"${c.kind ? "" : ` data-rename="f:${esc(c.name)}"`}>${esc(c.label)}</th>`,
       td: (l, i) => `<td>${cell(l, c, i, ci)}</td>` })),
-    ...(BUILD ? [{ id: "tobuy", label: "To buy (this build)", filter: "tobuy",
+    ...(BUILD && VIEW === "buy" ? [{ id: "tobuy", label: "To buy (this build)", filter: "tobuy",
       th: `<th title="What's left to buy for this build: needed - in stock - ordered">To buy</th>`, td: (l) => toBuyCell(l) }] : []),
-    ...(hasStock() ? [{ id: "stock", label: "In stock (inventory)", filter: "stock",
+    ...(hasStock() && VIEW !== "assemble" ? [{ id: "stock", label: "In stock (inventory)", filter: "stock",
       th: `<th title="What your inventory has of each line's part, against what you need (Build qty boards)">In stock</th>`,
       td: (l) => stockCell2(l) }] : []),
-    ...(hasCarts() ? [{ id: "ordered", label: "Ordered (carts)", filter: "ordered",
+    ...(hasCarts() && VIEW !== "assemble" ? [{ id: "ordered", label: "Ordered (carts)", filter: "ordered",
       th: `<th title="What the imported carts have for each line, against what you need (Build qty boards)">Ordered</th>`,
       td: (l) => orderedCell(l) }] : []),
     ...trackers().map((name) => {
@@ -618,6 +645,7 @@ function defaultWidth(id) {
   if (id === "ordered") return 150;
   if (id === "stock") return 130;
   if (id === "tobuy") return 90;
+  if (id === "placed") return 190;
   if (id.startsWith("t:")) return Math.max(100, 56 + 8 * id.length);  // title, count and filter button on one line
   if (id.startsWith("site:")) return 210;
   return id === "f:" + (columns()[0]?.name) ? 200 : 170;  // MPN a bit wider than the other fields
@@ -702,9 +730,13 @@ function stats() {
     (DATA.summary.dnp_parts ? `<span><b>${DATA.summary.dnp_parts}</b> not populated</span>` : "") +
     `<span style="color:${need ? "var(--warn)" : "var(--ok)"}"><b>${need}</b> need a part number</span>`;
   if (BUILD && hasStock()) {
-    const c = covers(), b = buildQty(), ok = c.n >= b;
-    $("stats").innerHTML += `<span title="${esc(c.worst && !ok ? `The scarcest: ${c.worst.value} (${c.worst.refs.join(", ")})` : "")}" style="color:${ok ? "var(--ok)" : "var(--bad)"}">` +
-      `stock covers <b>${Math.min(c.n, 99999)}</b> of ${b} boards` + (hasCarts() && c.withOrders > c.n ? `, <b>${Math.min(c.withOrders, 99999)}</b> with what's ordered` : "") + `</span>`;
+    const done = BOARDS.filter((x) => x.status === "done").length, left = Math.max(0, buildQty() - done);
+    const c = covers(), ok = c.n >= left;
+    $("stats").innerHTML += `<span title="${esc((c.worst && !ok ? `The scarcest: ${c.worst.value} (${c.worst.refs.join(", ")}). ` : "") +
+      "Boards started but not done have some parts already: they need less than a whole board.")}" style="color:${ok ? "var(--ok)" : "var(--bad)"}">` +
+      `stock covers <b>${Math.min(c.n, 99999)}</b> of ${left} board${left === 1 ? "" : "s"} still to build` +
+      (hasCarts() && c.withOrders > c.n ? `, <b>${Math.min(c.withOrders, 99999)}</b> with what's ordered` : "") +
+      (done ? ` <span class="faint">(${done} done)</span>` : "") + `</span>`;
   }
   for (const site of lookSites()) {
   const s = LOOK.summary[site];
@@ -883,7 +915,7 @@ $("rows").addEventListener("mouseover", (e) => {
 });
 $("rows").addEventListener("mouseleave", rest);
 $("rows").addEventListener("click", (e) => {
-  if (e.target.closest("a, input, textarea, button, tr.choices")) return;
+  if (e.target.closest("a, input, textarea, button, tr.choices, [data-place]")) return;
   const tr = e.target.closest("tr[data-i]"); if (!tr) return;
   pinned = pinned === +tr.dataset.i ? null : +tr.dataset.i;
   light(DATA.lines[+tr.dataset.i].refs);
@@ -1079,7 +1111,8 @@ async function loadState() {
   $("addtracker").disabled = $("cartbtn").disabled = !BUILD;
   for (const id of ["addtracker", "cartbtn"]) $(id).title = BUILD ? $(id).dataset.title : "Pick or make a build first (next to the title): what's bought and ticked belongs to a build";
   await refreshCart();
-  render(); qtyChanged();
+  await loadBoards();
+  render(); qtyChanged(); markBoards();
 }
 async function buildAction(body) {
   const r = await post("builds", body);
@@ -1266,14 +1299,16 @@ $("invbody").addEventListener("change", async (e) => {
 // For a build: what's still needed (per board x boards), what's in your
 // inventory, what's ordered (carts not received yet) and so what's left to
 // buy. Your inventory is shared by every build and project.
+// Parts of a line placed on any of the build's boards: not needed any more (already taken from stock).
+const placedOf = (l) => BOARDS.reduce((n, b) => n + l.refs.filter((r) => b.placed.includes(r)).length, 0);
 function buyOf(l) {
-  const st = STOCK.lines[lineKey(l)], need = l.qty * buildQty();
+  const st = STOCK.lines[lineKey(l)], need = Math.max(0, l.qty * buildQty() - placedOf(l));
   const stock = st && st.qty !== null && !st.missing ? st.qty : 0, known = !!(st && st.qty !== null);
   const ordered = hasCarts() ? orderedOf(l).total : 0;
   return { need, stock, ordered, known, toBuy: Math.max(0, need - stock - ordered) };
 }
 // How many boards the stock (and what's ordered) covers: the scarcest line.
-function covers() {
+function covers() {  // whole boards the stock covers, beyond what's placed already
   let n = Infinity, withOrders = Infinity, worst = null;
   for (const l of DATA.lines) {
     if (l.dnp) continue;
@@ -1290,6 +1325,104 @@ function toBuyCell(l) {
   const how = `Needed ${b.need} (${l.qty} × ${buildQty()} boards) − in stock ${b.stock}${b.known ? "" : " (not in your inventory)"} − ordered ${b.ordered}`;
   return `<td class="ordered" title="${esc(how)}">` + (b.toBuy ? `<span class="oq short">${b.toBuy}</span>` : `<span class="oq ok">&#10003;</span>`) +
     (b.known || !STOCK.configured ? "" : ` <span class="faint">?</span>`) + `</td>`;
+}
+
+// --------------------------------------------------------------- assemble
+// Boards #1, #2... of the build (builds.py), each started when you start
+// it. Assemble view: pick one and tick parts off as they go on; each placed
+// part comes out of your inventory (bom.py place_parts). The view and board
+// are remembered per build.
+let VIEW = "buy", BOARDS = [], BOARD = null;
+const viewKey = () => `kigit.bomView.${BOARDID}.${BUILD ? BUILD.id : ""}`;
+const boardKey = () => `kigit.bomBoard.${BOARDID}.${BUILD ? BUILD.id : ""}`;
+const lsGet = (k) => { try { return localStorage.getItem(k) || ""; } catch { return ""; } };
+const lsPut = (k, v) => { try { v ? localStorage.setItem(k, v) : localStorage.removeItem(k); } catch {} };
+const partsOnBoard = () => DATA.lines.filter((l) => !l.dnp).reduce((n, l) => n + l.refs.length, 0);
+async function loadBoards() {
+  if (!BUILD) { BOARDS = []; BOARD = null; VIEW = "buy"; assembleBar(); return; }
+  try { BOARDS = (await (await fetch(`/bom/${KEY}/boards?build=${encodeURIComponent(BUILD.id)}`)).json()).boards || []; } catch { BOARDS = []; }
+  VIEW = lsGet(viewKey()) === "assemble" ? "assemble" : "buy";
+  BOARD = BOARDS.find((b) => String(b.board) === lsGet(boardKey())) || null;
+  if (VIEW === "assemble" && BOARD) marking = true;  // its parts coloured on the board, as you left it
+  assembleBar();
+}
+function assembleBar() {
+  $("views").hidden = !BUILD;
+  document.querySelectorAll("[data-view-mode]").forEach((b) => b.classList.toggle("on", b.dataset.viewMode === VIEW));
+  const on = !!BUILD && VIEW === "assemble";
+  $("asmbar").hidden = !on;
+  if (!on) return;
+  const all = partsOnBoard(), next = Array.from({ length: BUILD.boards }, (_, i) => i + 1).find((n) => !BOARDS.some((b) => b.board === n));
+  $("boardsel").innerHTML = (BOARD ? "" : `<option value="">Pick a board&hellip;</option>`) +
+    BOARDS.map((b) => `<option value="${b.board}">#${b.board} &middot; ${b.status === "done" ? "done" : `${b.placed.length}/${all}`}</option>`).join("") +
+    (next ? `<option value="+">Start board #${next}</option>` : "");
+  $("boardsel").value = BOARD ? String(BOARD.board) : "";
+  for (const id of ["boardstatus", "boardnotes", "boarddel"]) $(id).hidden = !BOARD;
+  $("boardprog").textContent = BOARD ? `${BOARD.placed.length} of ${all} parts placed` + (BOARD.started ? ` · started ${BOARD.started}` : "") +
+    (BOARD.finished ? ` · done ${BOARD.finished}` : "") : `${BOARDS.length} of ${BUILD.boards} boards started, ${BOARDS.filter((b) => b.status === "done").length} done`;
+  if (BOARD) $("boardstatus").value = BOARD.status;
+  $("boardnotes").classList.toggle("on", !!(BOARD && BOARD.notes));
+}
+async function boardAction(body) {
+  const r = await post("boards", body);
+  BOARDS = r.boards;
+  if (r.board) BOARD = BOARDS.find((b) => b.board === r.board.board) || null;
+  return r;
+}
+function setView(v) {
+  VIEW = v; lsPut(viewKey(), v);
+  if (v === "assemble" && BOARD) marking = true;
+  assembleBar(); render(); markBoards();
+}
+document.querySelectorAll("[data-view-mode]").forEach((b) => b.addEventListener("click", () => setView(b.dataset.viewMode)));
+$("boardsel").addEventListener("change", async () => {
+  const v = $("boardsel").value;
+  try {
+    if (v === "+") await boardAction({ action: "start" });
+    else BOARD = BOARDS.find((b) => String(b.board) === v) || null;
+  } catch (e) { alert(e.message); }
+  lsPut(boardKey(), BOARD ? String(BOARD.board) : "");
+  if (BOARD && !marking) marking = true;  // the board's parts on the PCB and 3D views
+  assembleBar(); render(); markBoards();
+});
+$("boardstatus").addEventListener("change", async () => {
+  try { await boardAction({ action: "status", n: BOARD.board, status: $("boardstatus").value }); } catch (e) { alert(e.message); }
+  assembleBar();
+});
+$("boardnotes").addEventListener("click", async () => {
+  const t = prompt(`Notes about board #${BOARD.board} (a fix, a bodge, who has it):`, BOARD.notes || "");
+  if (t === null) return;
+  try { await boardAction({ action: "notes", n: BOARD.board, notes: t }); } catch (e) { alert(e.message); }
+  assembleBar();
+});
+$("boarddel").addEventListener("click", async () => {
+  if (!confirm(`Forget board #${BOARD.board}? Its placed parts aren't put back in your inventory (they're on the board).`)) return;
+  try { await boardAction({ action: "delete", n: BOARD.board }); BOARD = null; lsPut(boardKey(), ""); } catch (e) { alert(e.message); }
+  assembleBar(); render(); markBoards();
+});
+function placedCell(l) {
+  if (l.dnp) return `<td class="placed"><span class="faint">DNP</span></td>`;
+  const on = l.refs.filter((r) => BOARD.placed.includes(r)), all = on.length === l.refs.length;
+  return `<td class="placed">` + l.refs.map((r) => `<span class="ref${BOARD.placed.includes(r) ? " on" : ""}" data-place="${esc(r)}" ` +
+    `title="${BOARD.placed.includes(r) ? "Placed: click to take it off (back into your inventory)" : "Click when it's on the board"}">${esc(r)}</span>`).join("") +
+    (l.refs.length > 1 ? `<button data-placeall="${esc(l.refs.join(" "))}" data-on="${all ? 0 : 1}">${all ? "none" : "all"}</button>` : "") + `</td>`;
+}
+async function place(refs, on) {
+  try { await boardAction({ action: "place", n: BOARD.board, refs, placed: on }); }
+  catch (e) { alert("Not saved: " + e.message); return; }
+  assembleBar(); render(); markBoards();
+  if (STOCK.configured) refreshStock();  // placing took parts out of it
+}
+$("rows").addEventListener("click", (e) => {
+  const chip = e.target.closest("[data-place]"), all = e.target.closest("[data-placeall]");
+  if (chip) place([chip.dataset.place], !chip.classList.contains("on"));
+  else if (all) place(all.dataset.placeall.split(" "), all.dataset.on === "1");
+});
+// The picked board's parts on the PCB and 3D views: placed green, still to place red.
+function placedMarks() {
+  const out = {};
+  for (const l of DATA.lines) if (!l.dnp) for (const r of l.refs) out[r] = BOARD.placed.includes(r) ? "ok" : "short";
+  return out;
 }
 
 // ------------------------------------------------------------------ carts
@@ -1336,8 +1469,12 @@ async function refreshCart() {
 }
 let marking = false;
 function markBoards() {
-  document.querySelectorAll("[data-ordered]").forEach((b) => { b.classList.toggle("on", marking); b.hidden = !hasCarts(); });
-  const marks = marking && hasCarts() ? orderedMarks() : null;
+  const asm = !!BUILD && VIEW === "assemble" && !!BOARD, can = asm || (hasCarts() && VIEW !== "assemble");
+  document.querySelectorAll("[data-ordered]").forEach((b) => {
+    b.classList.toggle("on", marking); b.hidden = !can; b.textContent = asm ? "Placed" : "Ordered";
+    b.title = asm ? `Colour board #${BOARD.board}'s parts: green placed, red still to place` : "Colour each part by whether the build's carts cover it: green ordered, red not";
+  });
+  const marks = marking && can ? (asm ? placedMarks() : orderedMarks()) : null;
   board2d.mark(marks); window.bom3d?.mark(marks);
 }
 document.querySelectorAll("[data-ordered]").forEach((b) => b.addEventListener("click", () => { marking = !marking; markBoards(); }));
@@ -1756,7 +1893,7 @@ const board2d = (() => {
   }
   return { light, mark, zoomTo, fit, refs: () => [...padsOf.keys()], box: (r) => boxOf.get(r) };
 })();
-window.kigitBom = { stock: () => STOCK, build: () => BUILD, builds: () => BUILDS, cart: () => CART, orderedMarks, csv, csvLcsc, csvMouser, ruleLines, setExportRule: (r) => (exportRule = r), drafts: () => drafts, pending, light, board2d, lit: () => lit, look: () => LOOK,
+window.kigitBom = { boards: () => BOARDS, board: () => BOARD, view: () => VIEW, stock: () => STOCK, build: () => BUILD, builds: () => BUILDS, cart: () => CART, orderedMarks, csv, csvLcsc, csvMouser, ruleLines, setExportRule: (r) => (exportRule = r), drafts: () => drafts, pending, light, board2d, lit: () => lit, look: () => LOOK,
   columns: () => visibleCols().map((c) => c.id) };  // for scripted checks
 window.kigitBomMarked = () => markBoards();
 loadBuilds();  // the build picked last time on this board

@@ -53,3 +53,66 @@ def test_refused_and_broken(tmp_path: Path) -> None:
     (tmp_path / "kigit-builds" / "empty").mkdir()
     builds.new(board, "Good", 2)
     assert [b.id for b in builds.all_builds(board)] == ["good"]          # the others are skipped, not fatal
+
+
+def test_boards_are_made_when_started(tmp_path: Path) -> None:
+    board = tmp_path / "x.kicad_pcb"
+    b = builds.new(board, "Run", 3).id
+    assert builds.boards(board, b) == []
+    one = builds.start_board(board, b)                  # the next one: #1
+    assert one["board"] == 1 and one["placed"] == [] and one["status"] == "in progress"
+    assert builds.start_board(board, b, 3)["board"] == 3
+    assert builds.start_board(board, b)["board"] == 2   # the first not started
+    assert builds.start_board(board, b, 2)["board"] == 2  # again: the same one
+    with pytest.raises(builds.BuildError, match="#1 to #3"):
+        builds.start_board(board, b, 4)
+    assert [x["board"] for x in builds.boards(board, b)] == [1, 2, 3]
+    assert (tmp_path / "kigit-builds" / b / "boards" / "2.json").exists()
+    builds.delete_board(board, b, 2)
+    assert [x["board"] for x in builds.boards(board, b)] == [1, 3]
+    with pytest.raises(builds.BuildError, match="isn't started"):
+        builds.get_board(board, b, 2)
+    builds.update(board, b, name="Renamed run")           # boards move with the build's folder
+    assert [x["board"] for x in builds.boards(board, "renamed-run")] == [1, 3]
+
+
+def test_placing_takes_from_the_inventory(tmp_path: Path) -> None:
+    """Placing a part takes one out of your inventory (if it's in it);
+    taking it off puts back what was taken; a board is done when all its
+    parts (not DNP) are placed."""
+    from kigit_gui import bom, inventory
+    board = tmp_path / "x.kicad_pcb"
+    b = builds.new(board, "Run", 2).id
+    shelf = tmp_path / "inventory.csv"
+    shelf.write_text("MPN,Kind,Value,Package,Quantity\n"
+                     ",resistor,10k,0603,10\n"
+                     "STM32F103C8T6,,,,1\n", encoding="utf-8")
+    data = {"field_names": {}, "lines": [
+        {"refs": ["R1", "R2"], "value": "10k", "footprint": "R", "package": "0603", "kind": "resistor", "mpn": ""},
+        {"refs": ["U1"], "value": "MCU", "footprint": "Q", "package": "LQFP", "kind": "other", "mpn": "STM32F103C8T6"},
+        {"refs": ["J1"], "value": "Conn", "footprint": "J", "package": "", "kind": "other", "mpn": ""},  # not in it
+        {"refs": ["C9"], "value": "4p", "footprint": "C", "package": "0603", "kind": "capacitor", "dnp": True},
+    ]}
+    builds.start_board(board, b, 1)
+    inventory.remember(shelf)
+    try:
+        qty = lambda ids: inventory.read(shelf).find(ids)[0].qty  # noqa: E731
+        r = bom.place_parts(board, b, data, 1, ["R1", "R2", "C9", "Z9"], True)  # C9 is DNP, Z9 isn't on the BOM
+        assert r["placed"] == ["R1", "R2"] and set(r["taken"]) == {"R1", "R2"}
+        assert qty({"kind": "resistor", "value": "10k", "package": "0603"}) == 8
+        r = bom.place_parts(board, b, data, 1, ["R1"], True)                    # already placed: nothing more
+        assert qty({"kind": "resistor", "value": "10k", "package": "0603"}) == 8
+        r = bom.place_parts(board, b, data, 1, ["J1"], True)                    # not in the inventory: placed, nothing taken
+        assert "J1" in r["placed"] and "J1" not in r["taken"] and len(inventory.read(shelf).rows) == 2
+        assert r["status"] == "in progress"
+        r = bom.place_parts(board, b, data, 1, ["U1"], True)                    # the last one: done
+        assert r["status"] == "done" and r["finished"] and qty({"mpn": "STM32F103C8T6"}) == 0
+        r = bom.place_parts(board, b, data, 1, ["U1", "R2"], False)             # taken off: back in, in progress again
+        assert r["status"] == "in progress" and not r["finished"]
+        assert qty({"mpn": "STM32F103C8T6"}) == 1 and qty({"kind": "resistor", "value": "10k", "package": "0603"}) == 9
+        assert builds.get_board(board, b, 1)["placed"] == ["J1", "R1"]
+        # No inventory chosen: placing is still kept.
+        inventory.remember(None)
+        assert "U1" in bom.place_parts(board, b, data, 1, ["U1"], True)["placed"]
+    finally:
+        inventory.remember(None)

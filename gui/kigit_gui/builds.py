@@ -182,3 +182,81 @@ def save_extra(board: str | Path, build_id: str, extra: dict) -> None:
     b = get(board, build_id)
     b.extra = {k: extra[k] for k in EXTRA if k in extra}
     _write(board, b)
+
+
+# ------------------------------------------------------------------ boards
+# Boards #1, #2... of a build, each made only when you start it:
+#   kigit-builds/<id>/boards/<n>.json  {"version": 1, "board": n, "started",
+#       "finished" (when done), "status": "in progress" | "done", "notes",
+#       "placed": [refs], "taken": {ref: part ids}}
+# taken: what placing a part took out of your inventory (bom.py), so taking
+# it off puts back exactly that.
+BOARD_STATUS = ("in progress", "done")
+
+
+def _board_path(board: str | Path, build_id: str, n: int) -> Path:
+    get(board, build_id)  # the build must exist (and the id be safe)
+    return folder(board) / build_id / "boards" / f"{int(n)}.json"
+
+
+def _clean_board(d: dict, n: int) -> dict:
+    placed = sorted({r for r in d.get("placed", []) if isinstance(r, str)}) if isinstance(d.get("placed"), list) else []
+    taken = {r: ids for r, ids in (d.get("taken") or {}).items()
+             if isinstance(r, str) and isinstance(ids, dict) and r in placed} if isinstance(d.get("taken"), dict) else {}
+    status = d.get("status") if d.get("status") in BOARD_STATUS else "in progress"
+    return {"board": n, "started": str(d.get("started", "")), "finished": str(d.get("finished", "")),
+            "status": status, "notes": str(d.get("notes", ""))[:5000], "placed": placed, "taken": taken}
+
+
+def boards(board: str | Path, build_id: str) -> list[dict]:
+    """The build's started boards, by number."""
+    d = folder(board) / build_id / "boards"
+    get(board, build_id)
+    out = []
+    for p in d.glob("*.json") if d.is_dir() else []:
+        if not p.stem.isdigit():
+            continue
+        try:
+            data = json.loads(p.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if isinstance(data, dict):
+            out.append(_clean_board(data, int(p.stem)))
+    return sorted(out, key=lambda b: b["board"])
+
+
+def get_board(board: str | Path, build_id: str, n: int) -> dict:
+    p = _board_path(board, build_id, n)
+    try:
+        return _clean_board(json.loads(p.read_text(encoding="utf-8")), int(n))
+    except (OSError, ValueError) as e:
+        raise BuildError(f"board #{n} isn't started") from e
+
+
+def save_board(board: str | Path, build_id: str, b: dict) -> dict:
+    p = _board_path(board, build_id, b["board"])
+    p.parent.mkdir(parents=True, exist_ok=True)
+    b = _clean_board(b, b["board"])
+    data = {"version": 1, **{k: v for k, v in b.items() if v or k in ("board", "placed")}}
+    tmp = p.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8", newline="\n")
+    tmp.replace(p)
+    return b
+
+
+def start_board(board: str | Path, build_id: str, n: int | None = None) -> dict:
+    """Board #n (the next one not started, if None): made, nothing placed."""
+    b = get(board, build_id)
+    have = {x["board"] for x in boards(board, build_id)}
+    if n is None:
+        n = next(i for i in range(1, b.boards + 2) if i not in have)
+    n = int(n)
+    if not 1 <= n <= b.boards:
+        raise BuildError(f"this build has boards #1 to #{b.boards}")
+    if n in have:
+        return get_board(board, build_id, n)
+    return save_board(board, build_id, {"board": n, "started": time.strftime("%Y-%m-%d %H:%M"), "placed": []})
+
+
+def delete_board(board: str | Path, build_id: str, n: int) -> None:
+    _board_path(board, build_id, n).unlink(missing_ok=True)

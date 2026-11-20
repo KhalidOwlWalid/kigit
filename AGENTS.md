@@ -651,7 +651,22 @@ at once. localStorage settings are per origin, so per port.
   `moved` for `undo`; received carts aren't "ordered" in match_carts;
   lines with no number get the row's as drafts. Page: `buyOf(l)` {need,
   stock, ordered, toBuy}, `covers()`, column "tobuy", export rule
-  "tobuy" (`exportQty`). Not yet: placed parts (Assemble) in "need".
+  "tobuy" (`exportQty`).
+  Assemble (step 4): boards in `kigit-builds/<id>/boards/<n>.json`
+  {board, started, finished, status in progress|done, notes, placed:
+  [refs], taken: {ref: inventory ids}} (`builds.start_board` (next free
+  if no n), `boards`, `get_board`, `save_board`, `delete_board`).
+  `bom.place_parts`: placing a ref (on the BOM, not DNP) takes 1 via
+  `inventory.change` only when `inv.find(line_ids)` has it (recorded in
+  `taken`); unplacing returns `taken[ref]`; status done when every non-DNP
+  ref is placed (and back). Routes GET/POST `/bom/{key}/boards`
+  {build, action start|place|status|notes|delete}. Page: `VIEW`
+  buy|assemble (`#views`, `kigit.bomView.<BOARDID>.<build>`), `BOARDS`,
+  `BOARD` (`kigit.bomBoard...`), `#asmbar`; column "placed" (after Value,
+  chips `[data-place]`, `[data-placeall]`; row-click ignores them);
+  `markBoards` uses `placedMarks()` in Assemble (button reads "Placed").
+  Buy: `placedOf(l)` comes off "need"; the header counts boards still to
+  build (boards - done).
   Only on request: no background
   lookups. The page is `bom_page.html` (a plain file, read at import: no
   Python escaping), placeholders `%%KEY%%` etc. Beside the list: a 2D

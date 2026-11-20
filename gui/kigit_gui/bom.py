@@ -478,6 +478,52 @@ def _stock_answer(job: Job) -> JSONResponse:
                          "lines": stock_of(job.data, load_drafts(job.board), inv) if inv else {}})
 
 
+# --------------------------------------------------------------- assembly
+def place_parts(board: str | Path, build: str, data: dict, n: int, refs: list[str], placed: bool) -> dict:
+    """Parts placed on (or taken off) board #n of a build. Placing one takes
+    it out of your inventory, if it's in it (by its line's part numbers, or
+    as a passive); taking it off puts back exactly what was taken. The board
+    is done when every part on it (not DNP) is placed."""
+    from . import builds, inventory
+    b = builds.get_board(board, build, n)
+    fn, drafts = data.get("field_names") or {}, load_drafts(board)["drafts"]
+    line_of = {r: l for l in data.get("lines", []) for r in l["refs"]}
+    every = {r for l in data.get("lines", []) if not l.get("dnp") for r in l["refs"]}
+    where = inventory.location()
+    inv = None
+    if where is not None:
+        try:
+            inv = inventory.read(where)
+        except inventory.InventoryError:
+            inv = None  # not there: placing is still kept, nothing taken
+    have, taken = set(b["placed"]), dict(b["taken"])
+    deltas = []
+    for r in refs:
+        if r not in every:
+            continue  # not on the BOM, or DNP
+        if placed and r not in have:
+            have.add(r)
+            ids = line_ids(line_of[r], drafts, fn)
+            if inv is not None and inv.find(ids)[0] is not None:
+                deltas.append((ids, -1))
+                taken[r] = ids
+        elif not placed and r in have:
+            have.discard(r)
+            if r in taken:
+                deltas.append((taken.pop(r), 1))
+    if deltas:
+        inventory.change(where, deltas=deltas)
+    b["placed"], b["taken"] = sorted(have), taken
+    done = bool(every) and every <= have
+    if done and b["status"] != "done":
+        b["status"], b["finished"] = "done", time.strftime("%Y-%m-%d %H:%M")
+    elif not done and b["status"] == "done":
+        b["status"], b["finished"] = "in progress", ""
+    logs.log.info("bom: build %s board #%d: %s %d part(s), %d from the inventory", build, n,
+                  "placed" if placed else "took off", len(refs), len(deltas))
+    return builds.save_board(board, build, b)
+
+
 def _job(key: str) -> Job | None:
     return jobs.get(key)
 
@@ -824,6 +870,63 @@ async def _browse(key: str, dir: str = "") -> Response:
     files = [p.name for p in entries if p.is_file() and p.suffix.lower() == ".csv"]
     return JSONResponse({"dir": str(d), "parent": str(d.parent) if d.parent != d else "", "folders": folders,
                          "files": files, "sep": os.sep})
+
+
+@app.get("/bom/{key}/boards")
+async def _boards(key: str, build: str = "") -> Response:
+    """A build's started boards (#1, #2...), with what's placed on each."""
+    from . import builds
+    job = _job(key)
+    if job is None:
+        return JSONResponse({"error": "gone"}, status_code=404)
+    try:
+        return JSONResponse({"boards": builds.boards(job.board, build) if build else []})
+    except builds.BuildError:
+        return JSONResponse({"boards": []})
+
+
+@app.post("/bom/{key}/boards")
+async def _edit_boards(key: str, request: Request) -> Response:
+    """{build, action: start (n?) | place (n, refs, placed) | status (n, status) |
+    notes (n, notes) | delete (n)}. Answers {boards, board}."""
+    from . import builds, inventory
+    job = _job(key)
+    if job is None:
+        return JSONResponse({"error": "gone"}, status_code=404)
+    body = await request.json()
+    build, action = str(body.get("build") or ""), body.get("action")
+
+    def run() -> dict | None:
+        if not build:
+            raise NoBuild("pick a build first: boards belong to a build")
+        n = body.get("n")
+        if action == "start":
+            return builds.start_board(job.board, build, None if n in (None, "") else int(n))
+        if action == "place":
+            refs = [str(r) for r in body.get("refs", []) if isinstance(r, str)][:5000]
+            return place_parts(job.board, build, job.data, int(n), refs, bool(body.get("placed")))
+        if action in ("status", "notes"):
+            b = builds.get_board(job.board, build, int(n))
+            if action == "status":
+                if body.get("status") not in builds.BOARD_STATUS:
+                    raise builds.BuildError("a board is in progress or done")
+                b["status"] = body["status"]
+                b["finished"] = time.strftime("%Y-%m-%d %H:%M") if b["status"] == "done" else ""
+            else:
+                b["notes"] = str(body.get("notes", ""))
+            return builds.save_board(job.board, build, b)
+        if action == "delete":
+            builds.delete_board(job.board, build, int(n))
+            return None
+        raise builds.BuildError(f"unknown action {action}")
+
+    try:
+        b = await asyncio.to_thread(run)
+    except (NoBuild, builds.BuildError, inventory.InventoryError) as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    except (TypeError, ValueError) as e:
+        return JSONResponse({"error": f"not a board number: {e}"}, status_code=400)
+    return JSONResponse({"board": b, "boards": builds.boards(job.board, build)})
 
 
 @app.get("/bom/{key}/keys")
