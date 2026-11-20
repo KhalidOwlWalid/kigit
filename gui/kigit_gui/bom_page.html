@@ -159,6 +159,7 @@ td.placed button { padding: 0 6px; font-size: 11px; margin-left: 2px; }
   box-shadow: 0 6px 18px rgba(0,0,0,.35); padding: 4px; width: 18rem; }
 #cmenu.on { display: block; }
 #cmenu button { display: block; width: 100%; text-align: left; border: 0; background: none; padding: 6px 10px; border-radius: 6px; }
+#cmenu [hidden], #xmenu [hidden] { display: none; }  /* display: block above would show them anyway */
 #cmenu button:hover { background: var(--hl); } #cmenu button:disabled { opacity: .45; cursor: default; background: none; } #cmenu small { display: block; color: var(--muted); font-size: 11.5px; }
 #invdlg { max-width: min(64rem, 94vw); width: 64rem; }
 #invdlg table { font-size: 12px; } #invdlg td, #invdlg th { padding: 3px 6px; }
@@ -291,8 +292,8 @@ design before saving. The search links only open the distributors' sites; kigit 
 <div id="fmenu" role="dialog" aria-label="Filter"></div>
 <div id="bmenu" role="menu" aria-label="Build"><button data-b="rename">Rename&hellip;</button><button data-b="delete" class="bad">Delete&hellip;</button></div>
 <div id="cmenu" role="menu" aria-label="Import cart">
-  <div id="cnobuild" class="sub" style="padding:6px 10px">A cart belongs to a build (a batch of boards): pick one next to the title, or
-    <button data-cart="newbuild" style="display:inline;width:auto;padding:1px 8px;border:1px solid var(--line)">+ New build&hellip;</button></div>
+  <div id="cnobuild" class="sub" style="padding:6px 10px">A cart belongs to a build (a batch of boards):
+    <select id="cbuild" aria-label="Build for the cart" style="display:block;width:100%;margin-top:4px"></select></div>
   <button data-cart="mouser" role="menuitem"><b>Mouser cart&hellip;</b><small>Cart &rarr; Export (the .xls), or .xlsx / .csv</small></button>
   <button data-cart="lcsc" role="menuitem"><b>LCSC cart&hellip;</b><small>Cart &rarr; Export (the .csv), or .xlsx</small></button>
   <button data-cart="show" role="menuitem" id="cartshow"><b>Carts and unmatched rows&hellip;</b><small>What was imported; give rows kigit couldn't match to a line</small></button>
@@ -1490,8 +1491,11 @@ let cartSite = "";
 $("cartbtn").addEventListener("click", (e) => {
   e.stopPropagation();
   const m = $("cmenu"), r = $("cartbtn").getBoundingClientRect();
-  $("cartshow").hidden = !hasCarts();
+  $("cartshow").hidden = !BUILD || !hasCarts();
   $("cnobuild").hidden = !!BUILD;
+  if (!BUILD) $("cbuild").innerHTML = `<option value="">Pick a build&hellip;</option>` +
+    BUILDS.map((b) => `<option value="${esc(b.id)}">${esc(b.name)} (${b.boards} board${b.boards === 1 ? "" : "s"})</option>`).join("") +
+    `<option value="+">+ New build&hellip;</option>`;
   m.querySelectorAll("[data-cart='mouser'], [data-cart='lcsc']").forEach((x) => (x.disabled = !BUILD));
   m.classList.toggle("on"); m.style.top = r.bottom + 4 + "px";
   m.style.left = Math.max(8, Math.min(r.left, innerWidth - m.offsetWidth - 8)) + "px";
@@ -1501,11 +1505,23 @@ $("cmenu").addEventListener("click", async (e) => {
   const b = e.target.closest("[data-cart]"); if (!b) return;
   $("cmenu").classList.remove("on");
   if (b.dataset.cart === "show") { cartDialog(); return; }
-  if (b.dataset.cart === "newbuild") { await newBuild(); return; }
+
   if (!BUILD) { alert("Pick or make a build first (next to the title): a cart belongs to a build."); return; }
   cartSite = b.dataset.cart; $("cartfile").value = ""; $("cartfile").click();
 });
 document.addEventListener("click", () => $("cmenu").classList.remove("on"));
+// A build picked (or made) from the cart menu: it's the page's build now; the menu stays open, ready.
+$("cbuild").addEventListener("click", (e) => e.stopPropagation());
+$("cbuild").addEventListener("change", async () => {
+  const v = $("cbuild").value;
+  if (!v) return;
+  if (v === "+") { if (!(await newBuild())) { $("cbuild").value = ""; return; } }
+  else { pickBuild(v); await loadState(); }
+  $("cnobuild").hidden = !!BUILD;
+  $("cartshow").hidden = !BUILD || !hasCarts();
+  $("cmenu").querySelectorAll("[data-cart='mouser'], [data-cart='lcsc']").forEach((x) => (x.disabled = !BUILD));
+  $("cmenu").classList.add("on");
+});
 $("cartfile").addEventListener("change", async () => {
   const f = $("cartfile").files[0]; if (!f || !cartSite) return;
   const el = $("lookstate");
@@ -1518,7 +1534,9 @@ $("cartfile").addEventListener("change", async () => {
     const site = SITE_NAME[cartSite], c = j.match.carts[cartSite], left = j.match.unmatched.filter((u) => u.site === cartSite).length;
     el.className = left ? "err" : "";
     el.textContent = `${site} cart: ${c.rows} rows, ${c.rows - left} matched to lines` + (left ? `; ${left} not: Import cart ▾ → Carts to give them a line.` : ".");
-    if (!marking) marking = true;  // show it on the board straight away
+    if (!marking) marking = true;  // show it on the board straight away: colours on,
+    for (const id of ["show2d", "show3d"]) $(id).classList.add("on");  // and the PCB and 3D panes shown
+    panes();
     render(); markBoards();
   } catch (err) { el.className = "err"; el.textContent = `Couldn't read the ${SITE_NAME[cartSite]} cart: ${err.message}`; }
 });

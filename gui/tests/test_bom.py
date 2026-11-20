@@ -284,6 +284,8 @@ def test_carts_on_the_page() -> None:
     # The rule for a line the carts don't fully cover: floor(cart / boards) positions, first refs first.
     assert "Math.min(l.refs.length, Math.floor(orderedOf(l).total / b))" in page
     assert "function mark(marks)" in page and "window.kigitBomMarked" in page
+    # An import shows it on the board: the PCB and 3D panes come on with it.
+    assert 'for (const id of ["show2d", "show3d"]) $(id).classList.add("on");' in page
 
 
 def test_builds_on_the_page() -> None:
@@ -318,7 +320,8 @@ def test_buy_on_the_page() -> None:
     # Without a build, Import cart and + Tracker still answer (a disabled button just ignores the click):
     # the menu says why and offers a new build; + Tracker offers to make one.
     assert '$("cartbtn").disabled' not in page and '$("addtracker").disabled' not in page
-    assert 'id="cnobuild"' in page and 'data-cart="newbuild"' in page and "await newBuild()" in page
+    assert 'id="cnobuild"' in page and 'id="cbuild"' in page and "await newBuild()" in page
+    assert "#cmenu [hidden], #xmenu [hidden] { display: none; }" in page  # else display: block shows hidden items
 
 
 def test_assemble_on_the_page() -> None:
