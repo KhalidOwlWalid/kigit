@@ -13,6 +13,10 @@
 #include <process.h>
 #include <thread>
 #include <windows.h>
+#include <wincred.h>
+#ifdef _MSC_VER
+#pragma comment(lib, "advapi32.lib")
+#endif
 #else
 #include <cerrno>
 #include <csignal>
@@ -514,5 +518,123 @@ std::optional<fs::path> find_kicad_cli() {
         if (fs::is_regular_file(p, ec)) return p;
     return std::nullopt;
 }
+
+// ------------------------------------------------------------------ keyring
+// Secrets are named "kigit:<name>" (Windows) or found by the attributes
+// service=kigit name=<name> (Secret Service).
+
+#if defined(_WIN32)
+
+Keyring keyring() {
+    static const Keyring k = [] {
+        Keyring r;
+        if (env("KIGIT_KEYRING") == "off") { r.why = "turned off (KIGIT_KEYRING=off)"; return r; }
+        r.available = true;
+        r.name = "Windows Credential Manager";
+        return r;
+    }();
+    return k;
+}
+
+std::optional<std::string> secret_get(const std::string& name) {
+    if (!keyring().available) return std::nullopt;
+    PCREDENTIALW cred = nullptr;
+    if (!CredReadW(widen("kigit:" + name).c_str(), CRED_TYPE_GENERIC, 0, &cred)) return std::nullopt;
+    std::string value(reinterpret_cast<const char*>(cred->CredentialBlob), cred->CredentialBlobSize);
+    SecureZeroMemory(cred->CredentialBlob, cred->CredentialBlobSize);
+    CredFree(cred);
+    return value;
+}
+
+bool secret_set(const std::string& name, const std::string& label, const std::string& value) {
+    if (!keyring().available) return false;
+    std::wstring target = widen("kigit:" + name), comment = widen(label), user = L"kigit";
+    std::string blob = value;
+    CREDENTIALW cred{};
+    cred.Type = CRED_TYPE_GENERIC;
+    cred.TargetName = target.data();
+    cred.Comment = comment.data();
+    cred.UserName = user.data();
+    cred.CredentialBlobSize = static_cast<DWORD>(blob.size());
+    cred.CredentialBlob = reinterpret_cast<LPBYTE>(blob.data());
+    cred.Persist = CRED_PERSIST_LOCAL_MACHINE;
+    bool ok = CredWriteW(&cred, 0) != FALSE;
+    SecureZeroMemory(blob.data(), blob.size());
+    return ok;
+}
+
+bool secret_delete(const std::string& name) {
+    if (!keyring().available) return false;
+    return CredDeleteW(widen("kigit:" + name).c_str(), CRED_TYPE_GENERIC, 0) != FALSE || GetLastError() == ERROR_NOT_FOUND;
+}
+
+#elif defined(__APPLE__)
+
+Keyring keyring() { return {false, "", "the macOS Keychain isn't supported yet"}; }
+std::optional<std::string> secret_get(const std::string&) { return std::nullopt; }
+bool secret_set(const std::string&, const std::string&, const std::string&) { return false; }
+bool secret_delete(const std::string&) { return false; }
+
+#else
+
+namespace {
+
+std::string secret_tool() {
+    if (std::string set = env("KIGIT_SECRET_TOOL"); !set.empty()) return set;
+    auto found = find_program("secret-tool");
+    return found ? found->string() : "";
+}
+
+std::string first_line(std::string s) {
+    s = s.substr(0, s.find('\n'));
+    while (!s.empty() && (s.back() == '\r' || s.back() == ' ')) s.pop_back();
+    return s;
+}
+
+} // namespace
+
+Keyring keyring() {
+    static const Keyring k = [] {
+        Keyring r;
+        if (env("KIGIT_KEYRING") == "off") { r.why = "turned off (KIGIT_KEYRING=off)"; return r; }
+        std::string tool = secret_tool();
+        if (tool.empty()) {
+            r.why = "no secret-tool program (install libsecret-tools, or your distribution's libsecret package)";
+            return r;
+        }
+        // Asking for something that isn't there: no output and exit 1 means it answered.
+        RunResult probe = run({tool, "lookup", "service", "kigit", "name", "kigit-probe"}, true);
+        if (probe.code == 0 || (probe.code == 1 && first_line(probe.err).empty())) {
+            r.available = true;
+            r.name = "your login keyring (Secret Service)";
+        } else {
+            r.why = "no keyring answered" + (first_line(probe.err).empty() ? std::string() : ": " + first_line(probe.err));
+        }
+        return r;
+    }();
+    return k;
+}
+
+std::optional<std::string> secret_get(const std::string& name) {
+    if (!keyring().available) return std::nullopt;
+    RunResult r = run({secret_tool(), "lookup", "service", "kigit", "name", name}, true);
+    if (r.code != 0 || r.out.empty()) return std::nullopt;
+    if (r.out.back() == '\n') r.out.pop_back();
+    return r.out;
+}
+
+bool secret_set(const std::string& name, const std::string& label, const std::string& value) {
+    if (!keyring().available) return false;
+    // The secret goes on stdin: never on a command line.
+    return run_input({secret_tool(), "store", "--label=" + label, "service", "kigit", "name", name}, value, true).code == 0;
+}
+
+bool secret_delete(const std::string& name) {
+    if (!keyring().available) return false;
+    run({secret_tool(), "clear", "service", "kigit", "name", name}, true);
+    return true;
+}
+
+#endif
 
 } // namespace kigit::platform

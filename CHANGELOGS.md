@@ -4,6 +4,11 @@ All notable changes to kigit, newest first. The format follows [Keep a Changelog
 
 ## [Unreleased]
 
+### Changed
+
+- **API keys are kept in your system's keyring**, encrypted with your login, instead of a plain file: Credential Manager on Windows, GNOME Keyring or KWallet on Linux (needs `secret-tool`, from `libsecret-tools`). Keys already saved move there by themselves. Without a keyring (or on macOS, for now) they stay in the owner-only file, and the Keys dialog says so, with the steps to fix it: the install command for your Linux to copy, then **Check again**, which moves the keys into the keyring.
+- **Problems on the BOM page can't be missed**: each one pops up (with **Show** to go to it, instead of a plain browser alert), counts on the bell (where **Show** goes to it too), and puts a red **!** on the button that leads to it while it lasts: Keys (keys saved without encryption), Import cart (rows that match no line), Inventory (a file that can't be read, rows skipped), Look up (a site that stopped).
+
 ## [0.3.0] - 2026-11-20
 
 The bill of materials: from the parts list to boards on the bench. Fill in part numbers without opening KiCad, look up stock and prices, plan a build, track what's in your drawers, import what you've ordered and tick parts off as you place them, with the board beside you in 2D and 3D the whole way.

@@ -211,11 +211,30 @@ td.placed button { padding: 0 6px; font-size: 11px; margin-left: 2px; }
 #bellbadge { position: absolute; top: -6px; right: -6px; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 8px;
   font-size: 11px; line-height: 16px; font-weight: 700; color: #fff; background: var(--bad); }
 #bellbadge.mention { background: #a371f7; }
-/* Import cart: a red "!" while cart rows match no line */
-#cartbtn { position: relative; }
-#cartbadge { position: absolute; top: -6px; right: -6px; width: 16px; height: 16px; border-radius: 8px;
-  font-size: 11px; line-height: 16px; font-weight: 700; text-align: center; color: #fff; background: var(--bad); }
-#cartbadge[hidden] { display: none; }
+/* Needs your attention: a red "!" on the button that leads to it (attn()) */
+.tools button, .topbar button { position: relative; }
+.attn { position: absolute; top: -6px; right: -6px; min-width: 16px; height: 16px; padding: 0 3px; border-radius: 8px;
+  font-size: 11px; line-height: 16px; font-weight: 700; text-align: center; color: #fff; background: var(--bad);
+  box-shadow: 0 0 0 2px var(--bar); text-transform: none; pointer-events: none; }
+.attn.warn { background: #c98a00; }
+/* Problems pop up here as well as in the bell */
+#toasts { position: fixed; z-index: 20; right: 16px; top: 64px; display: flex; flex-direction: column; gap: 8px; width: min(26rem, calc(100vw - 32px)); }
+.toast { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border-radius: 6px; background: #2a2f37;
+  border-left: 4px solid var(--warn); box-shadow: 0 6px 24px rgba(0,0,0,.5); font-size: 13px; animation: tin .15s ease-out; }
+.toast.error { border-left-color: var(--bad); }
+.toast > .material-icons { color: var(--warn); } .toast.error > .material-icons { color: var(--bad); }
+.toast .tb { flex: 1; min-width: 0; } .toast .tb b { color: #fff; display: block; } .toast .tb div { color: var(--muted); margin-top: 2px; overflow-wrap: anywhere; }
+.toast .ta { display: flex; gap: 4px; margin-top: 6px; }
+.toast button { font-size: 12px; padding: 2px 8px; }
+@keyframes tin { from { transform: translateX(20px); opacity: 0; } }
+#nlist .n .go { margin-top: 4px; font-size: 12px; padding: 1px 8px; }
+#keystore.ok .material-icons { color: var(--ok); font-size: 16px; vertical-align: -3px; }
+#keystore.fixit { border: 1px solid rgba(242,192,55,.5); background: rgba(242,192,55,.08); border-radius: 6px; padding: 10px 12px; color: var(--text); }
+#keystore .fhead { display: flex; align-items: center; gap: 6px; } #keystore .fhead .material-icons { color: var(--warn); }
+#keystore ol { margin: 8px 0 0; padding-left: 20px; } #keystore li { margin: 4px 0; }
+#keystore .cmd { display: flex; align-items: center; gap: 8px; margin-top: 4px; padding: 4px 4px 4px 10px; border-radius: 4px; background: #0b0d11; }
+#keystore .cmd code { flex: 1; font-size: 13px; color: #e6edf3; user-select: all; }
+#keystore button { font-size: 12px; padding: 2px 8px; }
 #nmenu { position: fixed; z-index: 9; display: none; right: 12px; top: 56px; width: min(30rem, 94vw); max-height: 70vh; overflow: auto;
   background: var(--panel); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 6px 18px rgba(0,0,0,.35); }
 #nmenu.on { display: block; }
@@ -336,7 +355,7 @@ dialog a { color: var(--link); }
     <button id="lookup" title="Ask Mouser and Digi-Key (those you have a key for) for stock, prices and lifecycle, for Build qty boards (answers are kept a day; Shift+click asks again)"><i class="material-icons">travel_explore</i>Look up</button>
     <button id="keybtn" title="Your Mouser and Digi-Key keys"><i class="material-icons">key</i>Keys</button>
     <button id="invbtn" title="Your inventory: a CSV of yours, anywhere, shared by every project"><i class="material-icons">inventory_2</i>Inventory</button>
-    <button id="cartbtn" data-title="Import a cart exported from Mouser or LCSC into this build: what's ordered, line by line, and on the board" title=""><i class="material-icons">add_shopping_cart</i>Import cart<i class="material-icons">arrow_drop_down</i><span id="cartbadge" hidden>!</span></button>
+    <button id="cartbtn" data-title="Import a cart exported from Mouser or LCSC into this build: what's ordered, line by line, and on the board" title=""><i class="material-icons">add_shopping_cart</i>Import cart<i class="material-icons">arrow_drop_down</i></button>
     <input type="file" id="cartfile" accept=".csv,.xls,.xlsx" hidden>
     <span id="cartchips"></span>
     <button id="export" class="primary" title="A CSV for LCSC's or Mouser's BOM upload, or with every column"><i class="material-icons">download</i>Export CSV<i class="material-icons">arrow_drop_down</i></button>
@@ -423,10 +442,11 @@ design before saving. The search links only open the distributors' sites; kigit 
   <button data-export="all" role="menuitem"><b>All columns</b><small>Every part number, references, value, footprint, your fields
     and trackers. For Digi-Key's BOM Manager or a spreadsheet.</small></button>
 </div>
+<div id="toasts" aria-live="polite"></div>
 <dialog id="keydlg">
   <b>Parts sites' keys</b>
-  <p class="sub">Look up asks every site you have a key for. Both are free. kigit keeps them in <code>parts-keys.json</code> in
-    its app folder, readable only by you, and never puts them in logs.</p>
+  <p class="sub">Look up asks every site you have a key for. Both are free. kigit never puts them in logs.</p>
+  <div id="keystore"></div>
   <h4>Mouser <span class="faint" id="mhave"></span></h4>
   <p class="sub">A Search API key from your Mouser account: <i>My Account</i> &rarr; <i>APIs</i>.</p>
   <input id="keyin" type="password" autocomplete="off" placeholder="Mouser API key" aria-label="Mouser API key">
@@ -485,6 +505,53 @@ const changed = (l, c) => draftOf(l, c) !== undefined && draftOf(l, c) !== curre
 const own = (l) => l.mpn || l.digikey || l.mouser || l.lcsc;  // a part number in the schematic
 const mpnCol = () => columns()[0];
 const numberOf = (l) => shown(l, mpnCol()) || l.lcsc || l.digikey || l.mouser || "";
+
+// ------------------------------------------------- what needs your attention
+// The rule: anything that needs you gets a mark you can't miss on the button
+// that leads to it (attn), pops up when it happens (toast), and stays in the
+// bell with a way back to it (go).
+function attn(id, mark, title, kind) {
+  const b = $(id); if (!b) return;
+  let a = b.querySelector(":scope > .attn");
+  if (!mark) { a?.remove(); if (b.dataset.attnTitle !== undefined) { b.title = b.dataset.attnTitle; delete b.dataset.attnTitle; } return; }
+  if (!a) { a = document.createElement("span"); b.appendChild(a); }
+  a.className = "attn" + (kind === "warn" ? " warn" : "");
+  a.textContent = String(mark);
+  if (b.dataset.attnTitle === undefined) b.dataset.attnTitle = b.title || "";
+  b.title = "⚠ " + title + (b.dataset.attnTitle ? "\n\n" + b.dataset.attnTitle : "");
+}
+// Where a problem is fixed: a notice's "go", or the page's own.
+const GO = {
+  keys: () => askKey(),
+  carts: () => cartDialog(true),
+  inventory: async () => { await refreshStock(); invDialog(); },
+  lookup: () => { $("lookstate").scrollIntoView({ block: "nearest" }); $("lookstate").animate([{ background: "rgba(248,81,73,.35)" }, { background: "transparent" }], 1500); },
+  assemble: () => setView("assemble"),
+  build: () => $("build").focus(),
+};
+const goTo = (go) => { const f = GO[String(go || "").replace(/^bom:/, "")]; if (f) { $("nmenu").classList.remove("on"); f(); } };
+const popped = new Map();  // problem text -> when it was popped up (the bell's copy of it isn't popped again)
+function toast(level, title, detail, go) {
+  const key = title.replace(/^BOM: /, "");
+  if (Date.now() - (popped.get(key) || 0) < 30000) return;
+  popped.set(key, Date.now());
+  const t = document.createElement("div");
+  t.className = "toast " + (level === "error" ? "error" : "warning");
+  t.innerHTML = `<i class="material-icons">${level === "error" ? "error" : "warning"}</i><div class="tb"><b>${esc(key)}</b>` +
+    (detail ? `<div>${esc(detail)}</div>` : "") + `<div class="ta">` +
+    (GO[String(go || "").replace(/^bom:/, "")] ? `<button data-tgo="${esc(go)}"><i class="material-icons">arrow_forward</i>Show</button>` : "") +
+    `<button data-tx>Close</button></div></div>`;
+  t.addEventListener("click", (e) => {
+    const g = e.target.closest("[data-tgo]");
+    if (g) goTo(g.dataset.tgo);
+    if (g || e.target.closest("[data-tx]")) t.remove();
+  });
+  $("toasts").prepend(t);
+  while ($("toasts").children.length > 4) $("toasts").lastChild.remove();
+  setTimeout(() => t.remove(), level === "error" ? 30000 : 15000);
+}
+// A problem from this page (in place of alert): pops up; the server's bell copy isn't popped again.
+function problem(message, go) { toast("warning", String(message), "", go); }
 
 // ------------------------------------------------------------ highlighting
 // What's lit: the selected lines' parts, a hovered line's, or one part (hovered on the board).
@@ -787,7 +854,7 @@ $("colmenu").addEventListener("click", (e) => {
     const name = rm.dataset.rmtracker, [done] = trackCount(name);
     if (!confirm(`Remove the tracker "${name}"${done ? ` and its ticks (${done} line${done === 1 ? "" : "s"} done)` : ""}?`)) return;
     post("drafts", { tracker: name, remove: true }).then((d) => { drafts = d; hiddenCols.delete("t:" + name); delete colFilters["t:" + name]; saveCols(); })
-      .catch((err) => alert(err.message));
+      .catch((err) => problem(err.message));
   }
 });
 $("colmenu").addEventListener("change", (e) => {
@@ -941,7 +1008,12 @@ function bar() {
 // draft (MPN and manufacturer), written like any other edit.
 let LOOK = null;
 const opened = new Set();  // "line|site" whose choices are shown
-function setLook(r) { LOOK = r && r.lines ? { ...r, byKey: new Map(r.lines.map((x) => [x.key, x])) } : null; }
+function setLook(r) {
+  LOOK = r && r.lines ? { ...r, byKey: new Map(r.lines.map((x) => [x.key, x])) } : null;
+  // A site that stopped (refused key, daily limit, no network): "!" on Look up.
+  const bad = Object.entries((r && r.sites) || {}).filter(([, i]) => i.error);
+  attn("lookup", bad.length ? "!" : 0, bad.map(([s, i]) => `${i.name || s}: ${i.error}`).join("\n"));
+}
 const lookSites = () => LOOK ? Object.keys(LOOK.sites) : [];
 const siteName = (site) => LOOK?.sites?.[site]?.name || site;
 const lookOf = (l, site) => LOOK?.byKey.get(lineKey(l))?.sites?.[site];
@@ -1003,11 +1075,12 @@ $("rows").addEventListener("click", async (e) => {
   try {
     for (const [c, v] of [[mpn, o.mpn], [maker, o.manufacturer]]) if (v) drafts = await post("drafts", { key: lineKey(l), field: c.name, value: v === current(l, c) ? null : v });
     opened.delete(`${i}|${use.dataset.site}`); render();
-  } catch (err) { alert("Not saved: " + err.message); }
+  } catch (err) { problem("Not saved: " + err.message); }
 });
 function lookState(s) {
   const el = $("lookstate");
   el.className = s.error ? "err" : "";
+  if (s.error) attn("lookup", "!", `Look up failed: ${s.error}`);
   if (s.running) el.textContent = `Asking ${s.sites || "the sites"}... ${s.done}/${s.total}`;
   else if (s.error) el.textContent = s.error;
   else if (s.result) {
@@ -1025,14 +1098,72 @@ async function pollLookup() {
   if (s.running) { setTimeout(pollLookup, 1000); return; }
   if (s.result) { setLook(s.result); render(); }
 }
-async function keys() { try { return await (await fetch(`/bom/${KEY}/keys`)).json(); } catch { return {}; } }
+// Where the keys are kept, and when that's not the keyring, the steps to fix it.
+function keyStore(k) {
+  const st = k.store || {}, fix = st.fix || {}, box = $("keystore");
+  // A keyring, but a key still in the file: the keyring refused it (a work laptop's policy, a locked keyring).
+  const plain = ["mouser", "digikey"].filter((s) => k[s]?.where === "file").map((s) => k[s].name || s);
+  box.className = st.keyring && !plain.length ? "ok" : "fixit";
+  if (st.keyring && !plain.length) {
+    box.innerHTML = `<i class="material-icons">lock</i> Kept in ${esc(st.name)}, encrypted with your login.`;
+    return;
+  }
+  if (st.keyring) {
+    box.innerHTML = `<div class="fhead"><i class="material-icons">lock_open</i><b>${esc(plain.join(" and "))} ` +
+      `${plain.length > 1 ? "keys aren't" : "key isn't"} encrypted</b></div>` +
+      `<div class="sub">${esc(st.name.charAt(0).toUpperCase() + st.name.slice(1))} didn't take ${plain.length > 1 ? "them" : "it"}, so ${plain.length > 1 ? "they're" : "it's"} ` +
+      `in a file only you can read (<code>${esc(st.file || "parts-keys.json")}</code>).</div>` +
+      `<ol><li>If your keyring is locked, unlock it (on Windows, a work computer's policy can block saved ` +
+      `credentials: ask your IT).</li><li>Then <button id="keycheck"><i class="material-icons">refresh</i>Try again</button>: ` +
+      `kigit moves the ${plain.length > 1 ? "keys" : "key"} into ${esc(st.name)}.</li></ol>`;
+    return;
+  }
+  const steps = (fix.steps || []).map((t) => `<li>${esc(t)}` +
+    (fix.command ? `<div class="cmd"><code>${esc(fix.command)}</code><button data-copy="${esc(fix.command)}">` +
+      `<i class="material-icons">content_copy</i>Copy</button></div>` : "") + `</li>`).join("");
+  box.innerHTML = `<div class="fhead"><i class="material-icons">lock_open</i><b>Your keys aren't encrypted</b></div>` +
+    `<div class="sub">They're in a file only you can read (<code>${esc(st.file || "parts-keys.json")}</code>), ` +
+    `not in your system's keyring.</div>` +
+    `<ol>${steps}<li>Then <button id="keycheck"><i class="material-icons">refresh</i>Check again</button>: ` +
+    `kigit moves your saved keys into the keyring by itself.</li></ol>`;
+}
+$("keystore").addEventListener("click", async (e) => {
+  const c = e.target.closest("[data-copy]");
+  if (c) {
+    try { await navigator.clipboard.writeText(c.dataset.copy); c.innerHTML = `<i class="material-icons">check</i>Copied`; }
+    catch { problem("Couldn't copy: select the command and copy it yourself."); }
+    setTimeout(() => (c.innerHTML = `<i class="material-icons">content_copy</i>Copy`), 2000);
+  }
+  if (e.target.closest("#keycheck")) {
+    const k = await keys();
+    keyStore(k);
+    $("mhave").textContent = k.mouser?.set ? "Saved. Fill in to replace it." : "Not set.";
+    if (!k.store?.keyring) problem(`Still no keyring: ${k.store?.why || "unknown"}`, "keys");
+    else if (["mouser", "digikey"].some((s) => k[s]?.where === "file")) problem(`${k.store.name} still didn't take the key`, "keys");
+  }
+});
+async function keys() {
+  let k = {};
+  try { k = await (await fetch(`/bom/${KEY}/keys`)).json(); } catch { return {}; }
+  keysAttn(k);
+  return k;
+}
+// Keys kept without encryption need your attention: "!" on Keys.
+function keysAttn(k) {
+  const plain = ["mouser", "digikey"].filter((s) => k[s]?.where === "file").map((s) => k[s].name || s);
+  attn("keybtn", plain.length ? "!" : 0, plain.length ? `${plain.join(" and ")} key${plain.length > 1 ? "s are" : " is"} saved without encryption ` +
+    `(no keyring: ${k.store?.why || "unknown"}). Click for details.` : "", "warn");
+}
 // The keys dialog: Mouser's key, Digi-Key's client ID and secret (and its
 // site and currency). Keys go to kigit and are never shown again.
 function askKey() {
   return new Promise(async (done) => {
     const k = await keys(), d = $("keydlg");
     const say = (site, env) => k[site]?.env ? `${env} is set: kigit uses that instead of a saved key.`
-      : k[site]?.set ? "Saved. Fill in to replace it." : "Not set.";
+      : k[site]?.set ? `Saved${k[site].where === "file" ? " in the file" : k[site].where === "keyring" ? " in the keyring" : ""}. Fill in to replace it.`
+      : "Not set.";
+    // Where keys are kept: the OS keyring (encrypted with your login), else a file only you can read.
+    keyStore(k);
     $("mhave").textContent = say("mouser", "KIGIT_MOUSER_API_KEY");
     $("dhave").textContent = say("digikey", "KIGIT_DIGIKEY_CLIENT_ID");
     $("mrm").hidden = !k.mouser?.set || k.mouser?.env;
@@ -1044,7 +1175,7 @@ function askKey() {
     let saved = false;
     const close = () => { d.close(); done(saved); };
     const send = async (body) => {
-      try { await post("keys", body); saved = true; return true; }
+      try { keysAttn(await post("keys", body)); saved = true; return true; }
       catch (e) { $("keyerr").textContent = "Not saved: " + e.message; return false; }
     };
     $("keyok").onclick = async () => {
@@ -1144,13 +1275,13 @@ $("write").addEventListener("click", async () => {
     const w = r.result;
     lastWrite = `Wrote ${w.fields} field${w.fields === 1 ? "" : "s"} into ${w.written.join(", ")}. If KiCad has the schematic open, it'll offer to reload it.`;
     render();
-  } catch (e) { alert("Nothing was written: " + e.message); }
+  } catch (e) { problem("Nothing was written: " + e.message); }
   finally { $("write").disabled = false; }
 });
 $("undo").addEventListener("click", async () => {
   if (!confirm("Put the schematic files back as they were before the last write?")) return;
   try { const r = await post("undo"); DATA = r.data; index(); lastWrite = null; render(); }
-  catch (e) { alert("Couldn't undo: " + e.message); }
+  catch (e) { problem("Couldn't undo: " + e.message); }
 });
 $("discard").addEventListener("click", async () => {
   const p = pending();
@@ -1163,23 +1294,23 @@ $("addfield").addEventListener("click", async () => {
   if (!name) return;
   const low = name.toLowerCase();
   if (KICAD_OWN.includes(low) || low.startsWith("ki_") || low.startsWith("sim.")) {
-    alert(`"${name}" is one of KiCad's own fields: kigit only writes part information.`); return;
+    problem(`"${name}" is one of KiCad's own fields: kigit only writes part information.`); return;
   }
-  try { drafts = await post("drafts", { column: name }); render(); } catch (e) { alert(e.message); }
+  try { drafts = await post("drafts", { column: name }); render(); } catch (e) { problem(e.message); }
 });
 // A column's new title. A tracker, or a field with no values in the
 // schematic yet, is renamed in kigit-bom.json; a field with values in the
 // schematic is renamed there too (written now, Undo puts it back).
 async function renameColumn(id) {
   const tracker = id.startsWith("t:"), old = id.slice(2);
-  if (!tracker && !EDITABLE) { alert("This is a commit's BOM: fields can be renamed on the working tree."); return; }
+  if (!tracker && !EDITABLE) { problem("This is a commit's BOM: fields can be renamed on the working tree."); return; }
   const name = (prompt(`Rename the column "${old}" to:`, old) || "").trim();
   if (!name || name === old) return;
   const taken = [...columns().map((c) => c.name), ...trackers()].some((n) => n.toLowerCase() === name.toLowerCase() && n !== old);
-  if (taken) { alert(`There's already a "${name}" column.`); return; }
+  if (taken) { problem(`There's already a "${name}" column.`); return; }
   const low = name.toLowerCase();
   if (!tracker && (KICAD_OWN.includes(low) || low.startsWith("ki_") || low.startsWith("sim."))) {
-    alert(`"${name}" is one of KiCad's own fields: kigit only writes part information.`); return;
+    problem(`"${name}" is one of KiCad's own fields: kigit only writes part information.`); return;
   }
   const move = (from, to) => {  // its hidden state and width go with it
     if (hiddenCols.delete(from)) hiddenCols.add(to);
@@ -1210,7 +1341,7 @@ async function renameColumn(id) {
     }
     move((tracker ? "t:" : "f:") + old, (tracker ? "t:" : "f:") + name);
     saveCols();
-  } catch (e) { alert("Not renamed: " + e.message); }
+  } catch (e) { problem("Not renamed: " + e.message); }
 }
 if (!EDITABLE) { $("addfield").hidden = true;
   $("foot").insertAdjacentHTML("afterbegin", "<b>This is a commit's BOM: editing works on the working tree.</b> "); }
@@ -1220,16 +1351,16 @@ $("rows").addEventListener("change", async (e) => {
   const l = DATA.lines[+box.dataset.i], name = box.dataset.track;
   box.disabled = true;
   try { drafts = await post("drafts", { track: name, refs: actOn(+box.dataset.i, l.refs), done: box.checked }); render(); }
-  catch (err) { box.checked = !box.checked; box.disabled = false; alert("Not saved: " + err.message); }
+  catch (err) { box.checked = !box.checked; box.disabled = false; problem("Not saved: " + err.message); }
 });
 $("addtracker").addEventListener("click", async () => {
   if (!BUILD && !(confirm("Trackers belong to a build (a batch of boards you're making), so each batch starts fresh. " +
     "Pick one next to the title, or make one now?") && await newBuild())) return;
   const name = (prompt("A tracker column to tick off as you go (e.g. Carted, Ordered, Received, Placed, Tested):") || "").trim().slice(0, 60);
   if (!name) return;
-  if (trackers().includes(name)) { alert(`There's already a "${name}" tracker.`); return; }
+  if (trackers().includes(name)) { problem(`There's already a "${name}" tracker.`); return; }
   try { drafts = await post("drafts", { tracker: name }); hiddenCols.delete("t:" + name); saveCols(); }
-  catch (e) { alert(e.message); }
+  catch (e) { problem(e.message); }
 });
 $("filter").addEventListener("input", render);
 $("show").addEventListener("change", render);
@@ -1305,7 +1436,7 @@ async function newBuild() {
   const boards = parseInt(prompt("How many boards?", String(buildQty())) || "", 10);
   if (!(boards >= 1)) return false;
   try { const b = await buildAction({ action: "new", name, boards }); pickBuild(b.id); await loadState(); return true; }
-  catch (e) { alert("No build made: " + e.message); return false; }
+  catch (e) { problem("No build made: " + e.message); return false; }
 }
 let boardsTimer = 0;
 $("boards").addEventListener("input", () => {
@@ -1315,7 +1446,7 @@ $("boards").addEventListener("input", () => {
     const n = parseInt($("boards").value, 10);
     if (!(n >= 1) || n === BUILD.boards) return;
     try { const b = await buildAction({ action: "update", id: BUILD.id, boards: n }); BUILD = b; buildPicker(); }
-    catch (e) { alert("Not saved: " + e.message); }
+    catch (e) { problem("Not saved: " + e.message); }
   }, 600);
 });
 $("buildmore").addEventListener("click", (e) => {
@@ -1337,7 +1468,7 @@ $("bmenu").addEventListener("click", async (e) => {
       await buildAction({ action: "delete", id: BUILD.id });
       pickBuild("");
     }
-  } catch (err) { alert(err.message); }
+  } catch (err) { problem(err.message); }
 });
 
 // -------------------------------------------------------------- inventory
@@ -1349,7 +1480,12 @@ const hasStock = () => !!STOCK.inventory;
 async function refreshStock() {
   try { STOCK = await (await fetch(`/bom/${KEY}/stock`)).json(); } catch { return; }
   $("invbtn").classList.toggle("on", hasStock());
-  $("invbtn").title = STOCK.path ? `Your inventory: ${STOCK.path}` + (STOCK.error ? ` (${STOCK.error})` : "") : $("invbtn").title;
+  $("invbtn").title = STOCK.path ? `Your inventory: ${STOCK.path}` : $("invbtn").title;
+  delete $("invbtn").dataset.attnTitle;
+  // Can't read it, or rows kigit had to skip: "!" on Inventory.
+  const skipped = STOCK.inventory?.problems?.length || 0;
+  attn("invbtn", STOCK.error ? "!" : skipped || 0, STOCK.error ? `Your inventory can't be read: ${STOCK.error}`
+    : `${skipped} row${skipped === 1 ? "" : "s"} of your inventory skipped (click to see why)`, STOCK.error ? "" : "warn");
   render();
   if ($("invdlg").open && !fsMode) invDialog();
 }
@@ -1370,7 +1506,7 @@ $("rows").addEventListener("click", async (e) => {
   const n = prompt(`How many ${l.value} (${l.refs.join(", ")}) do you have? It's written into your inventory.`, b.dataset.now);
   if (n === null || n.trim() === "" || !(+n >= 0)) return;
   try { STOCK = await post("inventory", { action: "set", key: b.dataset.stock, qty: Math.round(+n) }); render(); }
-  catch (err) { alert("Not written: " + err.message); }
+  catch (err) { problem("Not written: " + err.message); }
 });
 // The dialog: which file, and what's in it.
 let fsMode = "";  // "choose" | "new" while browsing for the file
@@ -1420,7 +1556,7 @@ async function browse(dir) {
   let d;
   try { d = await (await fetch(`/bom/${KEY}/browse?dir=${encodeURIComponent(dir || "")}`)).json(); } catch { return; }
   const b = $("invbody");
-  if (d.error) { alert(d.error); return; }
+  if (d.error) { problem(d.error); return; }
   b.innerHTML = `<b>${fsMode === "new" ? "Where to make your inventory file" : "Choose your inventory file"}</b>` +
     `<p class="sub"><input id="fspath" value="${esc(d.dir)}" style="width:80%"> <button data-fs="go">Go</button></p>` +
     `<div class="fslist">${d.parent ? `<div class="d" data-dir="${esc(d.parent)}">..</div>` : ""}` +
@@ -1433,7 +1569,7 @@ async function browse(dir) {
 }
 async function useFile(action, path) {
   try { STOCK = await post("inventory", { action, path }); fsMode = ""; invDialog(); render(); $("invbtn").classList.toggle("on", hasStock()); }
-  catch (err) { alert(err.message); }
+  catch (err) { problem(err.message); }
 }
 $("invbtn").addEventListener("click", async () => { await refreshStock(); invDialog(); });
 $("invclose").addEventListener("click", () => { fsMode = ""; $("invdlg").close(); });
@@ -1464,7 +1600,7 @@ $("invbody").addEventListener("change", async (e) => {
   const row = STOCK.inventory.rows.find((r) => r.line === +box.dataset.row), n = Math.round(+box.value);
   if (!row || !(n >= 0)) return;
   try { STOCK = await post("inventory", { action: "set", ids: row.ids, qty: n }); render(); }
-  catch (err) { alert("Not written: " + err.message); box.value = row.qty; }
+  catch (err) { problem("Not written: " + err.message); box.value = row.qty; }
 });
 
 // -------------------------------------------------------------------- buy
@@ -1552,24 +1688,24 @@ $("boardsel").addEventListener("change", async () => {
   try {
     if (v === "+") await boardAction({ action: "start" });
     else BOARD = BOARDS.find((b) => String(b.board) === v) || null;
-  } catch (e) { alert(e.message); }
+  } catch (e) { problem(e.message); }
   lsPut(boardKey(), BOARD ? String(BOARD.board) : "");
   if (BOARD && !marking) marking = true;  // the board's parts on the PCB and 3D views
   assembleBar(); render(); markBoards();
 });
 $("boardstatus").addEventListener("change", async () => {
-  try { await boardAction({ action: "status", n: BOARD.board, status: $("boardstatus").value }); } catch (e) { alert(e.message); }
+  try { await boardAction({ action: "status", n: BOARD.board, status: $("boardstatus").value }); } catch (e) { problem(e.message); }
   assembleBar();
 });
 $("boardnotes").addEventListener("click", async () => {
   const t = prompt(`Notes about board #${BOARD.board} (a fix, a bodge, who has it):`, BOARD.notes || "");
   if (t === null) return;
-  try { await boardAction({ action: "notes", n: BOARD.board, notes: t }); } catch (e) { alert(e.message); }
+  try { await boardAction({ action: "notes", n: BOARD.board, notes: t }); } catch (e) { problem(e.message); }
   assembleBar();
 });
 $("boarddel").addEventListener("click", async () => {
   if (!confirm(`Forget board #${BOARD.board}? Its placed parts aren't put back in your inventory (they're on the board).`)) return;
-  try { await boardAction({ action: "delete", n: BOARD.board }); BOARD = null; lsPut(boardKey(), ""); } catch (e) { alert(e.message); }
+  try { await boardAction({ action: "delete", n: BOARD.board }); BOARD = null; lsPut(boardKey(), ""); } catch (e) { problem(e.message); }
   assembleBar(); render(); markBoards();
 });
 function placedCell(l) {
@@ -1581,7 +1717,7 @@ function placedCell(l) {
 }
 async function place(refs, on) {
   try { await boardAction({ action: "place", n: BOARD.board, refs, placed: on }); }
-  catch (e) { alert("Not saved: " + e.message); return; }
+  catch (e) { problem("Not saved: " + e.message); return; }
   assembleBar(); render(); markBoards();
   if (STOCK.configured) refreshStock();  // placing took parts out of it
 }
@@ -1660,8 +1796,7 @@ function cartChips() {
   }).join("");
   // Rows of the build's carts that match no line yet: give them one (Import cart ▾ → Carts).
   const left = BUILD ? (CART.match.unmatched || []).length : 0;
-  $("cartbadge").hidden = !left;
-  $("cartbadge").title = `${left} cart row(s) match no line: Import cart ▾ → Carts and unmatched rows to give them one`;
+  attn("cartbtn", left ? "!" : 0, `${left} cart row(s) match no line: Match them (the bar under the header)`);
 }
 $("unmatchgo").addEventListener("click", () => cartDialog(true));
 $("cartchips").addEventListener("click", async (e) => {
@@ -1671,7 +1806,7 @@ $("cartchips").addEventListener("click", async (e) => {
     if (!confirm(`Remove the ${SITE_NAME[site]} cart (${c.file}, ${c.rows} rows) from the build "${BUILD.name}"?` +
       (c.received ? "\n\nIt was received: its parts stay in your inventory (Undo received first to take them out)." : ""))) return;
     try { CART = await post(`cart/${site}/edit`, { remove: true }); drafts = CART.drafts; render(); markBoards(); }
-    catch (err) { alert(err.message); }
+    catch (err) { problem(err.message); }
   } else if (chip) cartDialog();
 });
 async function refreshCart() {
@@ -1715,7 +1850,7 @@ $("cmenu").addEventListener("click", async (e) => {
   $("cmenu").classList.remove("on");
   if (b.dataset.cart === "show") { cartDialog(); return; }
 
-  if (!BUILD) { alert("Pick or make a build first (next to the title): a cart belongs to a build."); return; }
+  if (!BUILD) { problem("Pick or make a build first (next to the title): a cart belongs to a build."); return; }
   cartSite = b.dataset.cart; $("cartfile").value = ""; $("cartfile").click();
 });
 document.addEventListener("click", () => $("cmenu").classList.remove("on"));
@@ -1797,14 +1932,14 @@ $("cartbody").addEventListener("click", async (e) => {
       if (u && u.suggest) await assign(site, i, u.suggest.refs);
     }
     render(); markBoards(); cartDialog();
-  } catch (err) { alert(err.message); }
+  } catch (err) { problem(err.message); }
 });
 $("cartclose").addEventListener("click", () => $("cartdlg").close());
 $("cartbody").addEventListener("change", async (e) => {
   const sel = e.target.closest("select[data-assign]"); if (!sel || !sel.value) return;
   const [site, i] = sel.dataset.assign.split("|");
   try { await assign(site, i, sel.value.split(" ")); render(); markBoards(); cartDialog(); }
-  catch (err) { alert(err.message); }
+  catch (err) { problem(err.message); }
 });
 $("cartbody").addEventListener("click", async (e) => {
   const un = e.target.closest("[data-unassign]"), rm = e.target.closest("[data-rmcart]");
@@ -1812,7 +1947,7 @@ $("cartbody").addEventListener("click", async (e) => {
   try {
     if (rc || urc) {
       const site = (rc || urc).dataset.receive || (rc || urc).dataset.unreceive;
-      if (!STOCK.configured) { alert("Choose your inventory file first (Inventory, in the header): received parts go into it."); return; }
+      if (!STOCK.configured) { problem("Choose your inventory file first (Inventory, in the header): received parts go into it.", "inventory"); return; }
       if (urc && !confirm(`Take the ${SITE_NAME[site]} cart's parts back out of your inventory?`)) return;
       CART = await post(`cart/${site}/edit`, rc ? { receive: true } : { unreceive: true });
       drafts = CART.drafts; await refreshStock(); render(); markBoards(); cartDialog(); return;
@@ -1824,7 +1959,7 @@ $("cartbody").addEventListener("click", async (e) => {
     } else return;
     drafts = CART.drafts; render(); markBoards();
     if (hasCarts()) cartDialog(); else $("cartdlg").close();
-  } catch (err) { alert(err.message); }
+  } catch (err) { problem(err.message); }
 });
 
 // ------------------------------------------------------------- exporting
@@ -2260,11 +2395,18 @@ async function pollNotices() {
   if (!document.hidden) {
     try {
       const r = await (await fetch("/notices.json", { cache: "no-store" })).json();
-      if (r.version !== NOTICES.version) { NOTICES = r; bellBadge(); if ($("nmenu").classList.contains("on")) noticeList(); }
+      if (r.version !== NOTICES.version) {
+        // New problems pop up (not the ones there when the page opened).
+        if (seenNotice !== null) for (const n of r.items.filter((x) => x.id > seenNotice && !x.read && (x.level === "error" || x.level === "warning")).reverse())
+          toast(n.level, n.title, n.detail, n.go);
+        seenNotice = Math.max(seenNotice || 0, ...r.items.map((x) => x.id), 0);
+        NOTICES = r; bellBadge(); if ($("nmenu").classList.contains("on")) noticeList();
+      }
     } catch {}
   }
   setTimeout(pollNotices, 3000);
 }
+let seenNotice = null;
 function bellBadge() {
   const unread = NOTICES.items.filter((n) => !n.read);
   const problems = unread.filter((n) => n.level === "error" || n.level === "warning").length;
@@ -2277,8 +2419,11 @@ function bellBadge() {
 }
 function noticeList() {
   const items = NOTICES.items.slice(0, 40);
-  $("nlist").innerHTML = items.map((n) => `<div class="n ${esc(n.level)}${n.read ? "" : " unread"}"><b>${esc(n.title)}</b><small>${esc(n.when)}</small>` +
+  $("nlist").innerHTML = items.map((n) => `<div class="n ${esc(n.level)}${n.read ? "" : " unread"}">` +
+    (n.level === "error" || n.level === "warning" ? `<i class="material-icons" style="font-size:15px;vertical-align:-3px;color:var(--${n.level === "error" ? "bad" : "warn"})">${n.level === "error" ? "error" : "warning"}</i> ` : "") +
+    `<b>${esc(n.title)}</b><small>${esc(n.when)}</small>` +
     (n.detail ? `<div>${esc(n.detail)}</div>` : "") +
+    (GO[String(n.go || "").replace(/^bom:/, "")] ? `<button class="go" data-tgo="${esc(n.go)}"><i class="material-icons">arrow_forward</i>Show</button>` : "") +
     (n.rows && n.rows.length ? `<table><tr>${n.headers.map((h) => `<th>${esc(h)}</th>`).join("")}</tr>` +
       n.rows.slice(0, 20).map((r) => `<tr>${r.map((c) => `<td>${esc(c)}</td>`).join("")}</tr>`).join("") + `</table>` : "") + `</div>`).join("") ||
     `<div class="n"><div>Nothing yet this session.</div></div>`;
@@ -2294,7 +2439,7 @@ $("bell").addEventListener("click", async (e) => {
     NOTICES.items.forEach((n) => (n.read = true)); bellBadge();  // the list keeps showing what was new until it's closed
   }
 });
-$("nmenu").addEventListener("click", (e) => e.stopPropagation());
+$("nmenu").addEventListener("click", (e) => { e.stopPropagation(); const g = e.target.closest("[data-tgo]"); if (g) goTo(g.dataset.tgo); });
 document.addEventListener("click", () => $("nmenu").classList.remove("on"));
 addEventListener("keydown", (e) => { if (e.key === "Escape") $("nmenu").classList.remove("on"); });
 $("logbtn").addEventListener("click", () => window.open("/log", "_blank", "noopener"));
@@ -2311,6 +2456,7 @@ loadBuilds();  // the build picked last time on this board
 refreshCart();  // carts imported before (kept in kigit-bom.json)
 refreshStock();  // your inventory, if you've chosen it
 pollLookup();  // a Look up from before (this page reloaded), or one still running
+keys();  // keys kept without encryption: "!" on Keys
 render();  // the drafts come with the build picked last time (loadBuilds)
 </script>
 <script type="module">

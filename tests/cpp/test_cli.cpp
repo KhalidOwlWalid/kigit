@@ -147,6 +147,7 @@ TEST_CASE("kigit bom --lookup: Mouser through curl, the key on stdin only, answe
     kigit::platform::set_env("KIGIT_LOOKUP_PACE_MS", "0");
     kigit::platform::set_env("KIGIT_MOUSER_API_KEY", "");
     kigit::platform::set_env("KIGIT_LOG_DIR", ""); // else the keys go in the folder above it
+    kigit::platform::set_env("KIGIT_KEYRING", "off");  // the file (the keyring's test is below)
 
     // No key yet: every line skipped, and why.
     RunResult none = run_kigit("bom --no-log --lookup --json -C " + board);
@@ -204,7 +205,85 @@ TEST_CASE("kigit bom --lookup: Mouser through curl, the key on stdin only, answe
     REQUIRE(run("printf '\\n' | " + quote(KIGIT_BIN) + " bom --no-log --set-key digikey").code == 0);    // removed
     CHECK(parse(run_kigit("bom --no-log --keys"))["digikey"]["set"] == false);
     CHECK(json::parse(read_text(keys))["mouser"] == "MY-KEY"); // the other key stays
-    for (const char* v : {"KIGIT_CURL", "XDG_STATE_HOME", "KIGIT_LOOKUP_PACE_MS"}) kigit::platform::set_env(v, "");
+    for (const char* v : {"KIGIT_CURL", "XDG_STATE_HOME", "KIGIT_LOOKUP_PACE_MS", "KIGIT_KEYRING"}) kigit::platform::set_env(v, "");
+}
+
+TEST_CASE("kigit bom --set-key: keys go into the keyring (secret on stdin), and move there from the file") {
+    TempDir tmp;
+    fs::path ring = tmp / "ring", state = tmp / "state";
+    fs::create_directories(ring);
+    // A stand-in secret-tool: keeps each secret as a file named by its name
+    // attribute, and notes its arguments.
+    fs::path tool = tmp / "secret-tool";
+    std::ofstream(tool) << "#!/bin/sh\n"
+                           "D=\"" << ring.string() << "\"\n"
+                           "echo \"$*\" >> \"$D/args.log\"\n"
+                           "cmd=$1; shift; name=; prev=\n"
+                           "for a in \"$@\"; do [ \"$prev\" = name ] && name=$a; prev=$a; done\n"
+                           "case $cmd in\n"
+                           "  store) cat > \"$D/s_$name\" ;;\n"
+                           "  lookup) [ -f \"$D/s_$name\" ] && cat \"$D/s_$name\" || exit 1 ;;\n"
+                           "  clear) rm -f \"$D/s_$name\" ;;\n"
+                           "esac\n";
+    fs::permissions(tool, fs::perms::owner_all);
+    kigit::platform::set_env("KIGIT_SECRET_TOOL", tool.string());
+    kigit::platform::set_env("XDG_STATE_HOME", state.string());
+    kigit::platform::set_env("KIGIT_LOG_DIR", "");
+    kigit::platform::set_env("KIGIT_MOUSER_API_KEY", "");
+    kigit::platform::set_env("KIGIT_KEYRING", "");
+    fs::path keys = state / "kigit/parts-keys.json";
+    std::string bin = quote(KIGIT_BIN);
+
+    // Saved: into the keyring, through stdin; the file has none of it.
+    RunResult set = run("printf 'RING-KEY\\n' | " + bin + " bom --no-log --set-key mouser");
+    REQUIRE(set.code == 0);
+    CHECK(set.err.find("keyring") != std::string::npos);
+    CHECK(read_text(ring / "s_mouser") == "RING-KEY");
+    CHECK(read_text(ring / "args.log").find("RING-KEY") == std::string::npos); // never an argument
+    CHECK((!fs::exists(keys) || read_text(keys).find("RING-KEY") == std::string::npos));
+    json status = parse(run_kigit("bom --no-log --keys"));
+    CHECK(status["mouser"]["set"] == true);
+    CHECK(status["mouser"]["where"] == "keyring");
+    CHECK(status["store"]["keyring"] == true);
+    CHECK(status.dump().find("RING-KEY") == std::string::npos);
+
+    // Digi-Key: the ID and secret in the keyring, the site and currency in the file.
+    REQUIRE(run("printf 'DK-ID\\nDK-SECRET\\nUK GBP\\n' | " + bin + " bom --no-log --set-key digikey").code == 0);
+    CHECK(read_text(ring / "s_digikey").find("DK-SECRET") != std::string::npos);
+    json file = json::parse(read_text(keys));
+    CHECK(file["digikey"]["currency"] == "GBP");
+    CHECK(!file["digikey"].contains("client_secret"));
+    status = parse(run_kigit("bom --no-log --keys"));
+    CHECK(status["digikey"]["where"] == "keyring");
+    CHECK(status["digikey"]["site"] == "UK");
+
+    // Removed: from the keyring too.
+    REQUIRE(run("printf '\\n' | " + bin + " bom --no-log --set-key mouser").code == 0);
+    CHECK(!fs::exists(ring / "s_mouser"));
+
+    // A key left in the file (from an older kigit) moves into the keyring when it's next read.
+    file = json::parse(read_text(keys));
+    file["mouser"] = "OLD-FILE-KEY";
+    write_text(keys, file.dump());
+    status = parse(run_kigit("bom --no-log --keys"));
+    CHECK(status["mouser"]["where"] == "keyring");
+    CHECK(read_text(ring / "s_mouser") == "OLD-FILE-KEY");
+    CHECK(read_text(keys).find("OLD-FILE-KEY") == std::string::npos);
+
+    // No keyring answering: the file, and said so.
+    fs::path broken = tmp / "broken-tool";
+    std::ofstream(broken) << "#!/bin/sh\necho 'Cannot autolaunch D-Bus without X11 $DISPLAY' >&2\nexit 1\n";
+    fs::permissions(broken, fs::perms::owner_all);
+    kigit::platform::set_env("KIGIT_SECRET_TOOL", broken.string());
+    RunResult fallback = run("printf 'FILE-KEY\\n' | " + bin + " bom --no-log --set-key mouser");
+    REQUIRE(fallback.code == 0);
+    CHECK(fallback.err.find("not encrypted") != std::string::npos);
+    CHECK(fallback.err.find("D-Bus") != std::string::npos);
+    CHECK(json::parse(read_text(keys))["mouser"] == "FILE-KEY");
+    status = parse(run_kigit("bom --no-log --keys"));
+    CHECK(status["mouser"]["where"] == "file");
+    CHECK(status["store"]["keyring"] == false);
+    for (const char* v : {"KIGIT_SECRET_TOOL", "XDG_STATE_HOME"}) kigit::platform::set_env(v, "");
 }
 #endif
 

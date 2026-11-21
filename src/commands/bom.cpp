@@ -13,6 +13,7 @@
 #include "parts/store.hpp"
 #include "sch/bom.hpp"
 #include "sch/fields.hpp"
+#include "utils/platform.hpp"
 
 #include <spdlog/spdlog.h>
 
@@ -261,7 +262,7 @@ int set_key(const std::string& site) {
         while (!s.empty() && (s.front() == ' ' || s.front() == '\t')) s.erase(0, 1);
         return s;
     };
-    std::string key = line();
+    std::string key = line(), where;
     if (site == "digikey") {
         parts::DigiKeyLogin l;
         l.client_id = key;
@@ -272,13 +273,17 @@ int set_key(const std::string& site) {
         locale >> site_code >> currency;
         if (!site_code.empty()) l.site = site_code;
         if (!currency.empty()) l.currency = currency;
-        parts::set_digikey_login(l);
+        where = parts::set_digikey_login(l);
     } else {
-        parts::set_api_key(site, key);
+        where = parts::set_api_key(site, key);
     }
-    spdlog::info("bom: {} key {}", site, key.empty() ? "removed" : "saved"); // never the key
-    std::cerr << "kigit: " << site << " key " << (key.empty() ? "removed" : "saved") << " in "
-              << (parts::app_dir() / "parts-keys.json").string() << "\n";
+    std::string place = where == "keyring" ? kigit::platform::keyring().name : parts::keys_path().string();
+    spdlog::info("bom: {} key {}{}", site, key.empty() ? "removed" : "saved in ", key.empty() ? "" : place); // never the key
+    if (key.empty()) std::cerr << "kigit: " << site << " key removed\n";
+    else std::cerr << "kigit: " << site << " key saved in " << place << "\n";
+    if (where == "file")
+        std::cerr << "kigit: (a file only you can read, not encrypted: "
+                  << (kigit::platform::keyring().why.empty() ? "the keyring refused it" : kigit::platform::keyring().why) << ")\n";
     return 0;
 }
 
@@ -400,13 +405,16 @@ int run_bom(int argc, char** argv) {
     if (keys) {
         nlohmann::json j = nlohmann::json::object();
         for (const auto& site : parts::known_sites()) {
-            j[site] = {{"set", parts::has_key(site)}, {"env", parts::key_from_env(site)}, {"name", parts::site_name(site)}};
+            j[site] = {{"set", parts::has_key(site)}, {"env", parts::key_from_env(site)}, {"name", parts::site_name(site)},
+                       {"where", parts::key_place(site)}};
             if (site == "digikey") {
                 parts::DigiKeyLogin l = parts::digikey_login();
                 j[site]["site"] = l.site;
                 j[site]["currency"] = l.currency;
             }
         }
+        kigit::platform::Keyring ring = kigit::platform::keyring();
+        j["store"] = {{"keyring", ring.available}, {"name", ring.name}, {"why", ring.why}, {"file", parts::keys_path().string()}};
         std::cout << j.dump() << "\n";
         return 0;
     }

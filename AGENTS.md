@@ -44,6 +44,22 @@ Pieces:
 - **Schematic nets must match KiCad's netlist exactly**: names and members.
   Check against `kicad-cli sch export netlist` (`--check-netlist`, or the
   regression test) when touching `src/sch/schematic.cpp`.
+- **Nothing that needs the user's attention may stay hidden.** Every
+  problem, or anything the user should act on (an error, a failed write,
+  keys saved without encryption, cart rows that match nothing, a lookup
+  that stopped, an unreadable file), gets all three:
+  1. **A popup when it happens** (the BOM page's `toast`, NiceGUI's
+     `ui.notify` / `notices.warn` in kigit's window), never only a line
+     of text somewhere or only the log. No bare `alert()`.
+  2. **The bell**: a notice (`notices.add`, level warning or error), so the
+     bell shows its red count, with `go` saying where to fix it when a
+     page can open that place ("Show").
+  3. **A red "!" on the button that leads to it** (`attn()` on the BOM
+     page; amber `.warn` for "should look at", red for "broken"), for as
+     long as it's true, with the reason in its tooltip; and a mark on the
+     thing itself (the row, the chip, the cell).
+  When you add a feature, ask what can go wrong in it, and make sure each
+  of those gets the three.
 - **Write plain, short comments and messages.** Say what something is or why
   it's there, not a story.
 
@@ -261,8 +277,19 @@ at once. localStorage settings are per origin, so per port.
   `curl` program (`$KIGIT_CURL`, else PATH; on Windows 10+ too) via
   `platform::run_input`: the request goes as a curl config on stdin, so keys
   never reach argv; error text is `redact`ed and keys aren't logged. Keys:
-  `$KIGIT_<SITE>_API_KEY`, else `<app data>/kigit/parts-keys.json` (owner
-  only), set by `--set-key SITE` from stdin. Cache: `parts-cache.json`,
+  `$KIGIT_<SITE>_API_KEY`, else the OS keyring (`platform::keyring`,
+  `secret_get/set/delete`: Linux Secret Service via `secret-tool`
+  (`$KIGIT_SECRET_TOOL`; attributes service=kigit name=<site>, the secret
+  on stdin), Windows Credential Manager `kigit:<site>` (DPAPI), macOS not
+  yet; probed once per process; `KIGIT_KEYRING=off` turns it off; tests
+  and the GUI tests set it off or use a stand-in), else
+  `<app data>/kigit/parts-keys.json` (owner only), set by `--set-key SITE`
+  from stdin. `store.cpp` `read_secret` moves a key found in the file into
+  the keyring (read back, then dropped from the file); `write_secret`
+  falls back to the file and says why. Secrets: mouser = the key, digikey
+  = {client_id, client_secret} as JSON; Digi-Key's site/currency always in
+  the file. `--keys` adds `where` per site (env/keyring/file) and `store`
+  {keyring, name, why, file}; the Keys dialog shows it (`#keystore`). Cache: `parts-cache.json`,
   keyed `site|pn|NORMPN` or `site|kw|words`, used 24 h, dropped after 7 days
   (both in the folder above `$KIGIT_LOG_DIR` when that's set); `--keys`
   prints which sites have a key;
@@ -288,8 +315,8 @@ at once. localStorage settings are per origin, so per port.
   plus a fee; Tape & Reel's `mult` = its minimum, a whole reel). A pick
   that's short or `winding_down` gets `GET .../{DigiKey number}/
   substitutions` (cached `digikey|sub|...`, 404 = none) as the match's
-  `alternatives` (`note` = SubstituteType). Login in `parts-keys.json`
-  as {"digikey": {client_id, client_secret, site, currency}};
+  `alternatives` (`note` = SubstituteType). Login in the keyring (see
+  above), site and currency in `parts-keys.json` {"digikey": {site, currency}};
   `--set-key digikey` reads ID, secret, optional "SITE CURRENCY" lines.
   Pace 600 ms (about 120 a minute). Checked against the real token
   endpoint (a fake ID gets "client_id form parameter has incorrect

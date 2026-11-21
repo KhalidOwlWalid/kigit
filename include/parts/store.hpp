@@ -15,18 +15,26 @@ namespace kigit::parts {
 // <app data>/kigit, or the folder above $KIGIT_LOG_DIR when that is set.
 std::filesystem::path app_dir();
 
-// Mouser's key: $KIGIT_MOUSER_API_KEY, else parts-keys.json's
-// {"mouser": "..."}; "" if none.
+// Mouser's key: $KIGIT_MOUSER_API_KEY, else the keyring, else
+// parts-keys.json's {"mouser": "..."}; "" if none.
 std::string api_key(const std::string& site);
 
-// Sets (or with "" removes) a site's key in parts-keys.json.
-void set_api_key(const std::string& site, const std::string& key);
+// Sets (or with "" removes) a site's key: in the OS keyring when there is
+// one (platform::keyring), else in parts-keys.json (owner only). Returns
+// where it went: "keyring", "file", or "" when removed. A key found in the
+// file while a keyring is available is moved into it when next read.
+std::string set_api_key(const std::string& site, const std::string& key);
 
 // Digi-Key's login: $KIGIT_DIGIKEY_CLIENT_ID and _CLIENT_SECRET (and
-// _SITE, _CURRENCY), else parts-keys.json's {"digikey": {client_id,
-// client_secret, site, currency}}. Empty client_id if none.
+// _SITE, _CURRENCY), else the keyring's {client_id, client_secret} (or
+// parts-keys.json's, without one); site and currency are always in
+// parts-keys.json (not secret). Empty client_id if none.
 DigiKeyLogin digikey_login();
-void set_digikey_login(const DigiKeyLogin& login); // empty client_id removes it
+std::string set_digikey_login(const DigiKeyLogin& login); // empty client_id removes it; as set_api_key
+
+// Where a site's key is: "env", "keyring", "file", or "" (none).
+std::string key_place(const std::string& site);
+std::filesystem::path keys_path(); // parts-keys.json
 
 // Whether a site has a key, and whether it comes from the environment.
 bool has_key(const std::string& site);

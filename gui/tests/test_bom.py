@@ -176,7 +176,7 @@ def test_look_up_through_kigit_with_a_stand_in_curl(tmp_path: Path, monkeypatch)
 
     from kigit_gui import kigit
 
-    assert asyncio.run(kigit.bom_keys())["mouser"] == {"set": False, "env": False, "name": "Mouser"}
+    assert asyncio.run(kigit.bom_keys())["mouser"] == {"set": False, "env": False, "name": "Mouser", "where": ""}
     asyncio.run(kigit.bom_set_key("mouser", " SECRET-1 "))
     keys = asyncio.run(kigit.bom_keys())
     assert keys["mouser"]["set"] and "SECRET-1" not in json.dumps(keys)
@@ -409,9 +409,8 @@ def test_import_cart_warns_of_unmatched_rows() -> None:
     """Import cart gets a red "!" while the build's carts have rows that
     match no line, so they get matched."""
     page = _page()
-    assert '<span id="cartbadge" hidden>!</span></button>' in page
-    assert "#cartbadge {" in page and "background: var(--bad)" in page
-    assert '$("cartbadge").hidden = !left;' in page
+    assert ".attn {" in page and "background: var(--bad)" in page
+    assert 'attn("cartbtn", left ? "!" : 0,' in page
     assert "const left = BUILD ? (CART.match.unmatched || []).length : 0;" in page
 
 
@@ -444,3 +443,45 @@ def test_a_selection_is_ticked_and_placed_together() -> None:
     assert "refs: actOn(+box.dataset.i, l.refs)" in page
     assert "place(actOn(i, [chip.dataset.place])" in page and "place(actOn(i, all.dataset.placeall" in page
     assert '<span class="mk short">${left} ${asm ? "left" : "short"}</span>' in page
+
+
+def test_problems_are_never_hidden() -> None:
+    """Anything that needs the user: a popup (no bare alert), the bell with a
+    way back to it, and a "!" on the button that leads to it."""
+    page = _page()
+    assert "alert(" not in page
+    assert "function toast(level, title, detail, go)" in page and "function attn(id, mark, title, kind)" in page
+    for place in ("keys:", "carts:", "inventory:", "lookup:"):
+        assert place in page.split("const GO = {")[1].split("};")[0]
+    for button in ('attn("keybtn"', 'attn("cartbtn"', 'attn("invbtn"', 'attn("lookup"'):
+        assert button in page
+    assert 'class="go" data-tgo=' in page  # Show in the bell's list
+    assert "x.id > seenNotice" in page      # new problems pop up
+
+
+def test_notices_say_where_to_fix_them() -> None:
+    from kigit_gui import notices
+    n = notices.add("warning", "BOM: something", "detail", go="bom:keys")
+    assert n.to_dict()["go"] == "bom:keys"
+    assert notices.add("info", "x").to_dict()["go"] == ""
+
+
+def test_keyring_fix_steps() -> None:
+    """No keyring: steps to fix it, with a command for this Linux to copy."""
+    from kigit_gui.bom import keyring_fix
+    no_tool = {"keyring": False, "why": "no secret-tool program (install libsecret-tools, ...)"}
+    assert keyring_fix(no_tool, ["ubuntu", "debian"])["command"] == "sudo apt install libsecret-tools"
+    assert keyring_fix(no_tool, ["linuxmint", "ubuntu"])["command"] == "sudo apt install libsecret-tools"
+    assert keyring_fix(no_tool, ["fedora"])["command"] == "sudo dnf install libsecret"
+    assert keyring_fix(no_tool, ["arch"])["command"] == "sudo pacman -S libsecret"
+    assert keyring_fix(no_tool, ["gentoo"])["command"] == ""  # unknown: said in words, no guess
+    off = {"keyring": False, "why": "turned off (KIGIT_KEYRING=off)"}
+    assert keyring_fix(off, system="linux")["command"] == "unset KIGIT_KEYRING"
+    assert "SetEnvironmentVariable" in keyring_fix(off, system="win32")["command"]  # PowerShell, not a Unix shell
+    page_text = (Path(__file__).parents[1] / "kigit_gui" / "bom_page.html").read_text(encoding="utf-8")
+    assert "didn't take" in page_text  # a keyring that refused the key isn't shown as "kept in" it
+    ssh = keyring_fix({"keyring": False, "why": "no keyring answered: Cannot autolaunch D-Bus"})
+    assert ssh["command"] == "" and "SSH" in ssh["steps"][0]
+    assert keyring_fix({"keyring": True, "name": "x"}) == {}
+    page = (Path(__file__).parents[1] / "kigit_gui" / "bom_page.html").read_text(encoding="utf-8")
+    assert '<div id="keystore"></div>' in page and "data-copy=" in page and 'id="keycheck"' in page

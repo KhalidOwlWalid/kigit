@@ -1,5 +1,6 @@
 #include "parts/store.hpp"
 
+#include "parts/lookup.hpp"
 #include "utils/platform.hpp"
 
 #include <spdlog/spdlog.h>
@@ -51,23 +52,6 @@ fs::path app_dir() {
     return platform::state_dir() / "kigit";
 }
 
-std::string api_key(const std::string& site) {
-    std::string var = "KIGIT_";
-    for (char c : site) var += static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
-    var += "_API_KEY";
-    if (const char* e = std::getenv(var.c_str()); e && *e) return e;
-    nlohmann::json keys = read_json(keys_file());
-    auto k = keys.find(site);
-    return k != keys.end() && k->is_string() ? k->get<std::string>() : "";
-}
-
-void set_api_key(const std::string& site, const std::string& key) {
-    nlohmann::json keys = read_json(keys_file());
-    if (key.empty()) keys.erase(site);
-    else keys[site] = key;
-    write_json(keys_file(), keys, true);
-}
-
 namespace {
 
 std::string env(const char* name) {
@@ -75,34 +59,141 @@ std::string env(const char* name) {
     return e ? e : "";
 }
 
+std::string label_of(const std::string& site) {
+    return site == "digikey" ? "kigit: Digi-Key login (client ID and secret)" : "kigit: " + site_name(site) + " API key";
+}
+
+// The secret as it's kept in the file (the fallback): Mouser's key, or
+// Digi-Key's {"client_id", "client_secret"} as JSON text; "" if none.
+std::string file_secret(const nlohmann::json& keys, const std::string& site) {
+    auto k = keys.find(site);
+    if (k == keys.end()) return "";
+    if (site != "digikey") return k->is_string() ? k->get<std::string>() : "";
+    if (!k->is_object() || k->value("client_id", "").empty()) return "";
+    return nlohmann::json{{"client_id", k->value("client_id", "")}, {"client_secret", k->value("client_secret", "")}}.dump();
+}
+
+void drop_file_secret(nlohmann::json& keys, const std::string& site) {
+    if (site != "digikey") { keys.erase(site); return; }
+    if (auto k = keys.find(site); k != keys.end() && k->is_object()) {
+        k->erase("client_id");
+        k->erase("client_secret");
+    }
+}
+
+// A site's secret: from the keyring, else the file. One still in the file
+// is moved into the keyring when there is one (checked, then taken out of
+// the file).
+std::string read_secret(const std::string& site) {
+    nlohmann::json keys = read_json(keys_file());
+    std::string in_file = file_secret(keys, site);
+    if (!platform::keyring().available) return in_file;
+    if (auto v = platform::secret_get(site); v && !v->empty()) {
+        if (!in_file.empty()) { // an old copy: the keyring's is the one
+            drop_file_secret(keys, site);
+            write_json(keys_file(), keys, true);
+        }
+        return *v;
+    }
+    if (in_file.empty()) return "";
+    if (platform::secret_set(site, label_of(site), in_file) && platform::secret_get(site) == in_file) {
+        drop_file_secret(keys, site);
+        write_json(keys_file(), keys, true);
+        spdlog::info("parts: moved the {} key from {} into {}", site, keys_file().filename().string(),
+                     platform::keyring().name);
+    } else {
+        spdlog::warn("parts: couldn't move the {} key into {}; it stays in {}", site, platform::keyring().name,
+                     keys_file().string());
+    }
+    return in_file;
+}
+
+// Saves (or with "" removes) a site's secret: in the keyring when there is
+// one, else in the file (owner only). Returns where it went.
+std::string write_secret(const std::string& site, const std::string& value) {
+    nlohmann::json keys = read_json(keys_file());
+    drop_file_secret(keys, site);
+    bool ring = platform::keyring().available;
+    if (value.empty()) {
+        if (ring) platform::secret_delete(site);
+        write_json(keys_file(), keys, true);
+        return "";
+    }
+    if (ring && platform::secret_set(site, label_of(site), value) && platform::secret_get(site) == value) {
+        write_json(keys_file(), keys, true);
+        return "keyring";
+    }
+    if (ring) spdlog::warn("parts: couldn't save the {} key in {}; it's in {} instead", site, platform::keyring().name,
+                           keys_file().string());
+    if (site == "digikey") {
+        nlohmann::json d = nlohmann::json::parse(value);
+        if (!keys["digikey"].is_object()) keys["digikey"] = nlohmann::json::object();
+        keys["digikey"]["client_id"] = d.value("client_id", "");
+        keys["digikey"]["client_secret"] = d.value("client_secret", "");
+    } else {
+        keys[site] = value;
+    }
+    write_json(keys_file(), keys, true);
+    return "file";
+}
+
 } // namespace
+
+std::string api_key(const std::string& site) {
+    std::string var = "KIGIT_";
+    for (char c : site) var += static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+    var += "_API_KEY";
+    if (const char* e = std::getenv(var.c_str()); e && *e) return e;
+    return read_secret(site);
+}
+
+std::string set_api_key(const std::string& site, const std::string& key) { return write_secret(site, key); }
 
 DigiKeyLogin digikey_login() {
     DigiKeyLogin l;
     if (!env("KIGIT_DIGIKEY_CLIENT_ID").empty()) {
         l.client_id = env("KIGIT_DIGIKEY_CLIENT_ID");
         l.client_secret = env("KIGIT_DIGIKEY_CLIENT_SECRET");
-    } else {
-        nlohmann::json keys = read_json(keys_file());
-        auto d = keys.find("digikey");
-        if (d != keys.end() && d->is_object()) {
-            l.client_id = d->value("client_id", "");
-            l.client_secret = d->value("client_secret", "");
-            l.site = d->value("site", l.site);
-            l.currency = d->value("currency", l.currency);
+    } else if (std::string secret = read_secret("digikey"); !secret.empty()) {
+        nlohmann::json j = nlohmann::json::parse(secret, nullptr, false);
+        if (j.is_object()) {
+            l.client_id = j.value("client_id", "");
+            l.client_secret = j.value("client_secret", "");
         }
+    }
+    nlohmann::json keys = read_json(keys_file());
+    if (auto d = keys.find("digikey"); d != keys.end() && d->is_object()) {
+        l.site = d->value("site", l.site);
+        l.currency = d->value("currency", l.currency);
     }
     if (!env("KIGIT_DIGIKEY_SITE").empty()) l.site = env("KIGIT_DIGIKEY_SITE");
     if (!env("KIGIT_DIGIKEY_CURRENCY").empty()) l.currency = env("KIGIT_DIGIKEY_CURRENCY");
     return l;
 }
 
-void set_digikey_login(const DigiKeyLogin& l) {
+std::string set_digikey_login(const DigiKeyLogin& l) {
+    std::string where = write_secret("digikey", l.client_id.empty() ? "" : nlohmann::json{
+        {"client_id", l.client_id}, {"client_secret", l.client_secret}}.dump());
+    // Which Digi-Key site and currency aren't secret: the file.
     nlohmann::json keys = read_json(keys_file());
-    if (l.client_id.empty()) keys.erase("digikey");
-    else keys["digikey"] = {{"client_id", l.client_id}, {"client_secret", l.client_secret}, {"site", l.site}, {"currency", l.currency}};
+    if (l.client_id.empty()) {
+        keys.erase("digikey");
+    } else {
+        if (!keys["digikey"].is_object()) keys["digikey"] = nlohmann::json::object();
+        keys["digikey"]["site"] = l.site;
+        keys["digikey"]["currency"] = l.currency;
+    }
     write_json(keys_file(), keys, true);
+    return where;
 }
+
+std::string key_place(const std::string& site) {
+    if (key_from_env(site)) return "env";
+    if (!has_key(site)) return "";
+    return platform::keyring().available && platform::secret_get(site) ? "keyring" : "file";
+}
+
+fs::path keys_path() { return keys_file(); }
 
 bool has_key(const std::string& site) {
     if (site == "digikey") {

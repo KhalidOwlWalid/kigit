@@ -609,7 +609,7 @@ def place_parts(board: str | Path, build: str, data: dict, n: int, refs: list[st
 
 
 # ------------------------------------------------------- log and the bell
-def _err(message: str, status: int, what: str = "", **extra) -> JSONResponse:
+def _err(message: str, status: int, what: str = "", go: str = "", **extra) -> JSONResponse:
     """An error answer for the page, also in the session log and, unless it's
     just a page left open after kigit restarted (404), in the notification
     bell (the GUI's and the BOM page's), so it isn't only a passing alert."""
@@ -619,7 +619,7 @@ def _err(message: str, status: int, what: str = "", **extra) -> JSONResponse:
     else:
         logs.log.warning("bom: %s%s", f"{what}: " if what else "", message)
         from . import notices
-        notices.add("error" if status >= 500 else "warning", f"BOM: {message}", what)
+        notices.add("error" if status >= 500 else "warning", f"BOM: {message}", what, go=go)
     return JSONResponse({"error": message, **extra}, status_code=status)
 
 
@@ -822,15 +822,15 @@ async def _import_cart(key: str, site: str, request: Request, name: str = "cart.
         return _err("gone", 404)
     data = await request.body()
     if len(data) > MAX_BYTES:
-        return _err("the file is too big for a cart (over 5 MB)", 400)
+        return _err("the file is too big for a cart (over 5 MB)", 400, go="bom:carts")
     try:
         if not build:
             raise NoBuild("pick or make a build first: a cart belongs to a build")
         st = await asyncio.to_thread(import_cart, job.board, build, site, name, data)
     except (CartError, NoBuild, BuildError) as e:
-        return _err(str(e), 400)
+        return _err(str(e), 400, go="bom:carts")
     except OSError as e:
-        return _err(str(e), 500)
+        return _err(str(e), 500, go="bom:carts")
     answer = _cart_answer(job, st)
     m = match_carts(job.data, st)
     left = sum(1 for u in m["unmatched"] if u["site"] == site)
@@ -840,8 +840,9 @@ async def _import_cart(key: str, site: str, request: Request, name: str = "cart.
     if left:
         from . import notices
         notices.add("warning", f"BOM: {left} {SITE_NAMES.get(site, site)} cart row(s) match no line",
-                    "Give them a line in Import cart, Carts and unmatched rows",
-                    ("Site's number", "MPN", "Qty"), [(u["sku"], u["mpn"], str(u["qty"])) for u in m["unmatched"] if u["site"] == site])
+                    "They don't count as ordered until each has its line: Match them",
+                    ("Site's number", "MPN", "Qty"), [(u["sku"], u["mpn"], str(u["qty"])) for u in m["unmatched"] if u["site"] == site],
+                    go="bom:carts")
     return answer
 
 
@@ -871,7 +872,7 @@ async def _edit_cart(key: str, site: str, request: Request) -> Response:
             refs = [str(r) for r in refs if isinstance(r, str)] if isinstance(refs, list) else None
             st = assign_row(job.board, build, job.data, site, int(body.get("row", -1)), refs, bool(body.get("keep")))
     except (ValueError, TypeError, InventoryError, BuildError) as e:
-        return _err(str(e), 400)
+        return _err(str(e), 400, go="bom:carts")
     return _cart_answer(job, st)
 
 
@@ -905,11 +906,11 @@ async def _edit_builds(key: str, request: Request) -> Response:
             _done(f"deleted build {body.get('id')}")
             b = None
         else:
-            return _err(f"unknown action {action}", 400)
+            return _err(f"unknown action {action}", 400, go="bom:build")
     except builds.BuildError as e:
-        return _err(str(e), 400)
+        return _err(str(e), 400, go="bom:build")
     except OSError as e:
-        return _err(str(e), 500)
+        return _err(str(e), 500, go="bom:build")
     return JSONResponse({"build": b.to_dict() if b else None,
                          "builds": [x.to_dict() for x in builds.all_builds(job.board)]})
 
@@ -967,9 +968,9 @@ async def _edit_inventory(key: str, request: Request) -> Response:
     try:
         await asyncio.to_thread(run)
     except inventory.InventoryError as e:
-        return _err(str(e), 400)
+        return _err(str(e), 400, go="bom:inventory")
     except (TypeError, ValueError) as e:
-        return _err(f"not a number: {e}", 400)
+        return _err(f"not a number: {e}", 400, go="bom:inventory")
     return await asyncio.to_thread(_stock_answer, job)
 
 
@@ -986,7 +987,7 @@ async def _browse(key: str, dir: str = "") -> Response:
         d = d.resolve()
         entries = sorted(d.iterdir(), key=lambda p: p.name.lower())
     except OSError as e:
-        return _err(f"can't open {d}: {e}", 400)
+        return _err(f"can't open {d}: {e}", 400, go="bom:inventory")
     folders = [p.name for p in entries if p.is_dir() and not p.name.startswith(".")]
     files = [p.name for p in entries if p.is_file() and p.suffix.lower() == ".csv"]
     return JSONResponse({"dir": str(d), "parent": str(d.parent) if d.parent != d else "", "folders": folders,
@@ -1044,9 +1045,9 @@ async def _edit_boards(key: str, request: Request) -> Response:
     try:
         b = await asyncio.to_thread(run)
     except (NoBuild, builds.BuildError, inventory.InventoryError) as e:
-        return _err(str(e), 400)
+        return _err(str(e), 400, go="bom:assemble")
     except (TypeError, ValueError) as e:
-        return _err(f"not a board number: {e}", 400)
+        return _err(f"not a board number: {e}", 400, go="bom:assemble")
     return JSONResponse({"board": b, "boards": builds.boards(job.board, build)})
 
 
@@ -1062,14 +1063,73 @@ async def _clientlog(key: str, request: Request) -> Response:
     return JSONResponse({})
 
 
+# How to get a keyring, by Linux distribution (/etc/os-release ID and ID_LIKE).
+_SECRET_TOOL_INSTALL = (
+    (("ubuntu", "debian", "linuxmint", "pop", "elementary", "raspbian"), "sudo apt install libsecret-tools"),
+    (("fedora", "rhel", "centos", "rocky", "almalinux"), "sudo dnf install libsecret"),
+    (("arch", "manjaro", "endeavouros"), "sudo pacman -S libsecret"),
+    (("opensuse", "suse", "opensuse-leap", "opensuse-tumbleweed"), "sudo zypper install libsecret-tools"),
+)
+
+
+def _os_release(path: str = "/etc/os-release") -> list[str]:
+    """This Linux's ID and the ones it's like ("ubuntu", "debian")."""
+    try:
+        text = Path(path).read_text(encoding="utf-8")
+    except OSError:
+        return []
+    ids: list[str] = []
+    for line in text.splitlines():
+        k, _, v = line.partition("=")
+        if k in ("ID", "ID_LIKE"):
+            ids += v.strip().strip('"').lower().split()
+    return ids
+
+
+def keyring_fix(store: dict, distro: list[str] | None = None, system: str | None = None) -> dict:
+    """What to do when keys can't go in a keyring: {"steps": [text], "command":
+    a command to copy (or "")}. Empty when there's a keyring."""
+    import sys
+    system = system or sys.platform
+    if store.get("keyring"):
+        return {}
+    why = store.get("why", "")
+    if "KIGIT_KEYRING=off" in why:
+        if system == "win32":
+            return {"steps": ["kigit was told not to use Credential Manager (the KIGIT_KEYRING setting). "
+                              "Remove it in PowerShell, then restart kigit (if it's also in Windows' environment "
+                              "variables, remove it there too):"],
+                    "command": '[Environment]::SetEnvironmentVariable("KIGIT_KEYRING", $null, "User")'}
+        return {"steps": ["kigit was told not to use the keyring. Remove that setting from where you start kigit "
+                          "(your shell's profile), then restart kigit:"], "command": "unset KIGIT_KEYRING"}
+    if "secret-tool" in why:
+        ids = _os_release() if distro is None else distro
+        command = next((c for names, c in _SECRET_TOOL_INSTALL if any(i in names for i in ids)), "")
+        return {"steps": ["Install secret-tool, the program kigit uses to reach your keyring" +
+                          (":" if command else " (your distribution's libsecret tools package)."),
+                          ], "command": command}
+    if "answered" in why:
+        return {"steps": ["No keyring is running in this session. That's usual over SSH or without a desktop: "
+                          "log in to your desktop and start kigit there, or keep the file (only you can read it)."],
+                "command": ""}
+    return {"steps": [why], "command": ""}
+
+
+async def _keys_answer() -> dict:
+    answer = await kigit.bom_keys()
+    if isinstance(answer.get("store"), dict):
+        answer["store"]["fix"] = keyring_fix(answer["store"])
+    return answer
+
+
 @app.get("/bom/{key}/keys")
 async def _keys(key: str) -> Response:
     if _job(key) is None:
         return _err("gone", 404)
     try:
-        return JSONResponse(await kigit.bom_keys())
+        return JSONResponse(await _keys_answer())
     except kigit.KigitError as e:
-        return _err(str(e), 500)
+        return _err(str(e), 500, go="bom:keys")
 
 
 @app.post("/bom/{key}/keys")
@@ -1086,15 +1146,24 @@ async def _set_key(key: str, request: Request) -> Response:
         lines = [cid] if not cid.strip() else [cid, str(body.get("client_secret", "")),
                                                f"{body.get('locale_site', 'US')} {body.get('currency', 'USD')}"]
     else:
-        return _err(f"kigit has no lookups for {site}", 400)
+        return _err(f"kigit has no lookups for {site}", 400, go="bom:keys")
     if any(len(x) > 300 or "\n" in x or "\r" in x for x in lines):
-        return _err("not a key kigit can keep", 400)
+        return _err("not a key kigit can keep", 400, go="bom:keys")
     try:
         await kigit.bom_set_key(site, *lines)
         logs.log.info("bom: %s key %s", site, "saved" if lines[0].strip() else "removed")  # never the key
-        return JSONResponse(await kigit.bom_keys())
+        answer = await _keys_answer()
+        if lines[0].strip() and answer.get(site, {}).get("where") == "file":
+            # Needs your attention: saved, but not encrypted.
+            from . import notices
+            why = answer.get("store", {}).get("why", "")
+            logs.log.warning("bom: %s key saved in a plain file (no keyring: %s)", site, why)
+            notices.add("warning", f"BOM: {answer[site].get('name', site)} key saved without encryption",
+                        "It's in a file only you can read. Show (Keys) has the steps to keep it in your "
+                        "keyring instead; kigit then moves it there by itself.", go="bom:keys")
+        return JSONResponse(answer)
     except kigit.KigitError as e:
-        return _err(str(e), 500)
+        return _err(str(e), 500, go="bom:keys")
 
 
 async def run_lookup(job: Job, boards: int, refresh: bool) -> None:
@@ -1116,7 +1185,7 @@ async def run_lookup(job: Job, boards: int, refresh: bool) -> None:
         for site, info in look.result.get("sites", {}).items():
             if info.get("error"):
                 logs.log.warning("bom lookup: %s: %s", site, info["error"])
-                notices.add("warning", f"BOM: Look up at {info.get('name', site)} stopped", info["error"])
+                notices.add("warning", f"BOM: Look up at {info.get('name', site)} stopped", info["error"], go="bom:lookup")
         names = [i.get("name", s) for s, i in look.result.get("sites", {}).items() if not i.get("error")]
         if names:
             _done(f"Look up done at {' and '.join(names)}", f"{look.total} lines, {boards} board(s)")
@@ -1124,12 +1193,12 @@ async def run_lookup(job: Job, boards: int, refresh: bool) -> None:
         look.error = str(e)
         logs.log.warning("bom lookup failed: %s", e)
         from . import notices
-        notices.add("warning", "BOM: Look up failed", str(e))
+        notices.add("warning", "BOM: Look up failed", str(e), go="bom:lookup")
     except (OSError, ValueError) as e:
         look.error = f"Couldn't look up: {e}"
         logs.log.warning("bom lookup failed: %s", e)
         from . import notices
-        notices.add("warning", "BOM: Look up failed", str(e))
+        notices.add("warning", "BOM: Look up failed", str(e), go="bom:lookup")
     finally:
         look.running = False
 

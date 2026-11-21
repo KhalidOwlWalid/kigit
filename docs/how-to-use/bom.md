@@ -57,7 +57,11 @@ kigit bom --set-key digikey      # the client ID, Enter, the secret, Enter, then
 kigit bom --keys                 # which sites have a key (never the keys)
 ```
 
-They're kept in `parts-keys.json` in the [app folder](../app-folder.md), readable only by you. Environment variables win when set: `KIGIT_MOUSER_API_KEY`, `KIGIT_DIGIKEY_CLIENT_ID` and `KIGIT_DIGIKEY_CLIENT_SECRET` (and `KIGIT_DIGIKEY_SITE`, `KIGIT_DIGIKEY_CURRENCY`). Keys go to `curl` (which kigit uses to talk to the sites) on its standard input, never on a command line, and they aren't written to the logs.
+**Where they're kept:** in your system's **keyring**, encrypted with your login: Credential Manager on Windows, and on Linux GNOME Keyring or KWallet (through the `secret-tool` program: `sudo apt install libsecret-tools` on Ubuntu and Debian). You'll find them there as *kigit: Mouser API key* and *kigit: Digi-Key login* (Linux: the **Passwords and Keys** app). Digi-Key's site and currency aren't secret, so they stay in `parts-keys.json` in the [app folder](../app-folder.md).
+
+Without a keyring (no `secret-tool`, a session over SSH, macOS for now), keys go in `parts-keys.json`, readable only by you but not encrypted. The **Keys** dialog and `kigit bom --set-key` say which it is, and why. Keys saved in the file by an older kigit move into the keyring the next time they're used, once there is one. `KIGIT_KEYRING=off` keeps them in the file.
+
+Environment variables win when set: `KIGIT_MOUSER_API_KEY`, `KIGIT_DIGIKEY_CLIENT_ID` and `KIGIT_DIGIKEY_CLIENT_SECRET` (and `KIGIT_DIGIKEY_SITE`, `KIGIT_DIGIKEY_CURRENCY`). Keys go to `curl` (which kigit uses to talk to the sites) on its standard input, never on a command line, and they aren't written to the logs.
 
 ### Looking up
 

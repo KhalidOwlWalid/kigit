@@ -34,11 +34,12 @@ class Notice:
     when: str = field(default_factory=lambda: datetime.now().strftime("%H:%M:%S"))
     id: int = 0
     read: bool = False
+    go: str = ""                    # where to fix it, for a page that can open it ("bom:keys", "bom:carts"...)
 
     def to_dict(self) -> dict:
         return {"id": self.id, "level": self.level, "title": self.title, "detail": self.detail,
                 "headers": list(self.headers), "rows": [list(r) for r in self.rows], "when": self.when,
-                "read": self.read}
+                "read": self.read, "go": self.go}
 
 
 _ids = itertools.count(1)
@@ -56,9 +57,10 @@ def warn(message: str, detail: str = "") -> Notice:
 
 
 def add(level: str, title: str, detail: str = "", headers: tuple[str, ...] = (),
-        rows: list[tuple[str, ...]] | None = None) -> Notice:
+        rows: list[tuple[str, ...]] | None = None, go: str = "") -> Notice:
     global version
-    n = Notice(level if level in LEVELS else "info", title, detail, tuple(headers), list(rows or []), id=next(_ids))
+    n = Notice(level if level in LEVELS else "info", title, detail, tuple(headers), list(rows or []), id=next(_ids),
+               go=go)
     items.insert(0, n)
     del items[KEEP:]
     version += 1

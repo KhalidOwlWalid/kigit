@@ -53,6 +53,23 @@ std::filesystem::path executable_path(const char* argv0);
 // Full path of a program on PATH (on Windows, trying PATHEXT: .exe, .cmd, ...).
 std::optional<std::filesystem::path> find_program(const std::string& name);
 
+// The OS keyring, for secrets like API keys: encrypted by the OS with your
+// login (Linux: the Secret Service, GNOME Keyring or KWallet, through the
+// secret-tool program, secrets always on its stdin; Windows: Credential
+// Manager, encrypted with DPAPI). macOS isn't supported yet. Off with
+// KIGIT_KEYRING=off; KIGIT_SECRET_TOOL replaces secret-tool (tests).
+struct Keyring {
+    bool available = false;
+    std::string name; // "your login keyring (Secret Service)", ...
+    std::string why;  // when not available: why not, and what would fix it
+};
+Keyring keyring(); // checked once per process
+// A secret by name; nullopt if there's none (or no keyring).
+std::optional<std::string> secret_get(const std::string& name);
+// Saves a secret (label: what the keyring app shows); false if it couldn't.
+bool secret_set(const std::string& name, const std::string& label, const std::string& value);
+bool secret_delete(const std::string& name);
+
 // KiCad's command line tool: $KIGIT_KICAD_CLI, else kicad-cli on PATH, else
 // where the KiCad installer puts it (C:\Program Files\KiCad\<version>\bin,
 // /Applications/KiCad, /usr/bin).
