@@ -1059,7 +1059,12 @@ function offerRows(list, i, site, which) {
 function choicesRow(l, i, span, site) {
   const m = lookOf(l, site); if (!m) return "";
   const name = esc(siteName(site));
-  const what = m.status === "choose" ? `${name}'s best matches for <b>${esc(m.searched)}</b> (kigit doesn't pick one for you):`
+  // Where the search words came from, so an odd search explains itself.
+  const FROM = { footprint: "the maker's part number in its footprint's name", "footprint words": "its footprint's name",
+    value: "its value", passive: "its value and package" };
+  const from = FROM[l.query_from] && m.searched === l.query ? ` <span class="faint">(${FROM[l.query_from]})</span>` : "";
+  const what = m.status === "choose" ? `${name}'s best matches for <b>${esc(m.searched)}</b>${from} (kigit doesn't pick one for you; ` +
+      `typing the part number into MPN gets that exact part):`
     : m.status === "ok" ? "The same part in other packagings:" : `Similar parts at ${name} (no exact <b>${esc(m.searched)}</b>):`;
   return `<tr class="choices"><td colspan="${span}">` +
     (m.alternatives.length ? `<div class="faint">${name} suggests instead (the pick is ${m.pick?.short ? "short" : "ending"}):</div>` +

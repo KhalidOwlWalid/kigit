@@ -123,3 +123,48 @@ TEST_CASE("CSV quotes what needs it") {
 }
 
 } // TEST_SUITE
+
+TEST_CASE("search queries: a connector's part number comes from its footprint, not its label") {
+    using kigit::footprint_part_number;
+    using kigit::value_is_part_number;
+    CHECK(footprint_part_number("Connector_JST:JST_SH_BM04B-SRSS-TB_1x04-1MP_P1.00mm_Vertical") == "BM04B-SRSS-TB");
+    CHECK(footprint_part_number("Connector_JST:JST_PH_B2B-PH-K_1x02_P2.00mm_Vertical") == "B2B-PH-K");
+    CHECK(footprint_part_number("Connector_Molex:Molex_PicoBlade_53047-0410_1x04_P1.25mm_Vertical") == "53047-0410");
+    CHECK(footprint_part_number("Connector_USB:USB_C_Receptacle_GCT_USB4085") == "USB4085");
+    CHECK(footprint_part_number("Connector_PinHeader_2.54mm:PinHeader_1x04_P2.54mm_Vertical") == "");
+    CHECK(footprint_part_number("Package_SO:SOIC-8_3.9x4.9mm_P1.27mm") == "");
+    CHECK(footprint_part_number("Package_QFP:LQFP-48_7x7mm_P0.5mm") == "");
+    CHECK(footprint_part_number("Resistor_SMD:R_0603_1608Metric") == "");
+    // owl_v1's own connectors.
+    CHECK(footprint_part_number("Connector_USB:USB_C_Receptacle_GCT_USB4105-xx-A_16P_TopMnt_Horizontal") == "USB4105");
+    CHECK(footprint_part_number("TerminalBlock_Phoenix:TerminalBlock_Phoenix_PT-1,5-3-3.5-H_1x03_P3.50mm_Horizontal") == "PT-1,5-3-3.5-H");
+    CHECK(footprint_part_number("Connector_Card:microSD_HC_Hirose_DM3AT-SF-PEJM5") == "DM3AT-SF-PEJM5");
+    CHECK(footprint_part_number("Connector_JST:JST_PH_S2B-PH-K_1x02_P2.00mm_Horizontal") == "S2B-PH-K");
+    CHECK(value_is_part_number("STM32F103C8T6"));
+    CHECK(value_is_part_number("LM358DR"));
+    CHECK_FALSE(value_is_part_number("I2C"));
+    CHECK_FALSE(value_is_part_number("USB"));
+    CHECK_FALSE(value_is_part_number("Conn_01x04"));
+    CHECK_FALSE(value_is_part_number("Debug header"));
+
+    kigit::BomLine j;
+    j.kind = "connector";
+    j.value = "I2C";
+    j.footprint = "Connector_JST:JST_SH_BM04B-SRSS-TB_1x04-1MP_P1.00mm_Vertical";
+    CHECK(kigit::query_of(j) == std::pair<std::string, std::string>{"BM04B-SRSS-TB", "footprint"});
+    j.footprint = "Connector_PinHeader_2.54mm:PinHeader_1x04_P2.54mm_Vertical";  // no part number in it
+    CHECK(kigit::query_of(j) == std::pair<std::string, std::string>{"PinHeader 1x04 P2.54mm Vertical connector", "footprint words"});
+    j.mpn = "SM04B-SRSS-TB";  // a part number given: that, always
+    CHECK(kigit::query_of(j).first == "SM04B-SRSS-TB");
+
+    kigit::BomLine tp;  // a test point is copper: nothing to buy
+    tp.kind = "connector";
+    tp.footprint = "TestPoint:TestPoint_Pad_D1.5mm";
+    CHECK(kigit::query_of(tp).first.empty());
+
+    kigit::BomLine u;  // an IC: its value is its part name, even with a package footprint
+    u.kind = "other";
+    u.value = "STM32F103C8T6";
+    u.footprint = "Package_QFP:LQFP-48_7x7mm_P0.5mm";
+    CHECK(kigit::query_of(u) == std::pair<std::string, std::string>{"STM32F103C8T6", "value"});
+}

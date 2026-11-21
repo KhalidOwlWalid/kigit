@@ -6,6 +6,7 @@ All notable changes to kigit, newest first. The format follows [Keep a Changelog
 
 ### Changed
 
+- **Better searches for connectors**: a part without a part number whose value is a label (`I2C`, `Debug`, `USB`) is searched by the maker's part number in its footprint's name (`JST_SH_BM04B-SRSS-TB_...` → `BM04B-SRSS-TB`), instead of the label; Look up says where the search came from. Test points, mounting holes and fiducials aren't searched (nothing to buy).
 - **API keys are kept in your system's keyring**, encrypted with your login, instead of a plain file: Credential Manager on Windows, GNOME Keyring or KWallet on Linux (needs `secret-tool`, from `libsecret-tools`). Keys already saved move there by themselves. Without a keyring (or on macOS, for now) they stay in the owner-only file, and the Keys dialog says so, with the steps to fix it: the install command for your Linux to copy, then **Check again**, which moves the keys into the keyring.
 - **Problems on the BOM page can't be missed**: each one pops up (with **Show** to go to it, instead of a plain browser alert), counts on the bell (where **Show** goes to it too), and puts a red **!** on the button that leads to it while it lasts: Keys (keys saved without encryption), Import cart (rows that match no line), Inventory (a file that can't be read, rows skipped), Look up (a site that stopped).
 

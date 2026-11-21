@@ -34,7 +34,11 @@ Each line has **Digi-Key**, **Mouser** and **LCSC** links that open the site's s
 
 - the line's own part number at that site, or its MPN;
 - otherwise, for chip resistors, capacitors, inductors, ferrites and LEDs, the value and package: "10k 0603 resistor" (`10kR`, `5k1` and `4R7` are written the way distributors search: `10k`, `5.1k`, `4.7 ohm`);
-- otherwise the value, which for an IC is usually its part name.
+- otherwise, for **connectors** (and any part whose value is a label, like `I2C` or `Debug`), the maker's part number in the **footprint's name**: KiCad's libraries put it there, so `JST_SH_BM04B-SRSS-TB_1x04-1MP_P1.00mm_Vertical` searches for `BM04B-SRSS-TB`;
+- otherwise the value, when it's a part name (as it usually is for an IC: `STM32F103C8T6`);
+- otherwise the footprint's own words, like "PinHeader 1x04 P2.54mm Vertical connector".
+
+Test points, mounting holes and fiducials are copper on the board, so nothing is searched for them. Look up says where its search came from ("the maker's part number in its footprint's name"). The surest search is always a part number of your own in MPN: that gets that exact part.
 
 The links only open the sites in your browser. A part number you've typed in (not written yet) searches for itself.
 

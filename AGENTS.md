@@ -330,9 +330,18 @@ at once. localStorage settings are per origin, so per port.
   and DNP; skips power, `#` refs, `in_bom no` / `exclude_from_bom yes`;
   multi-unit parts once (by ref). Part numbers by normalised field name
   (`key_of`: lower case, letters and digits only; `kMpn`, `kLcsc`, ...).
-  DNP: the flag, a `DNP` field, or value "DNP" (KiCad 6). `query`: the MPN,
-  else for passives the value (`ohms()`: 10kR -> 10k, 5k1 -> 5.1k) +
-  package (0402.., from the footprint name after `_` or `-`) + a word;
+  DNP: the flag, a `DNP` field, or value "DNP" (KiCad 6). `query_of`
+  -> (`query`, `query_from`): the MPN; TestPoint/MountingHole/Fiducial/
+  NetTie footprints nothing ("nothing to buy"); passives the value
+  (`ohms()`: 10kR -> 10k, 5k1 -> 5.1k) + package (0402.., from the
+  footprint name after `_` or `-`) + a word; else `footprint_part_number`
+  (a `_`-separated piece of the footprint's name, >= 6 chars, digits and
+  letters or a dash, not `descriptive` (pins, pitch, mm, orientation,
+  package names); "-xx..." open options cut) for connectors (kind
+  "connector": J, P, CN or a Connector* symbol) or when
+  `value_is_part_number` is false (labels, `Conn_`/`SW_`... symbol
+  names); else the value if it's a part name; else the footprint's words
+  (+ "connector"). The page's choices row says `query_from`.
   `search_url` per site prefers that site's own number.
 - Logging: every run writes a session log
   (`kigit_<date>_<time>_<pid>.log`) in `$KIGIT_LOG_DIR` or the app data

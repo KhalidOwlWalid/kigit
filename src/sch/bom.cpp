@@ -60,6 +60,7 @@ std::string kind_of(const SchSymbol& s) {
     if (p == "FB") return "ferrite";
     if (p == "D") return "diode";
     if (p == "Y" || p == "X") return "crystal";
+    if (p == "J" || p == "P" || p == "CN" || lib.rfind("connector", 0) == 0) return "connector";
     return "other";
 }
 
@@ -90,23 +91,6 @@ std::string ohms(const std::string& value) {
     return value;
 }
 
-std::string query_of(const BomLine& l) {
-    if (!l.mpn.empty()) return l.mpn;
-    static const std::map<std::string, std::string> word = {{"resistor", "resistor"}, {"capacitor", "capacitor"},
-                                                            {"inductor", "inductor"}, {"ferrite", "ferrite bead"},
-                                                            {"led", "LED"}, {"crystal", "crystal"}};
-    auto w = word.find(l.kind);
-    if (w != word.end()) {
-        std::string q = l.kind == "resistor" || l.kind == "ferrite" ? ohms(l.value) : l.value;
-        static const std::regex khz(R"(^(\d+)[kK](\d+)$)"); // 32k768 -> 32.768kHz
-        if (l.kind == "crystal") q = std::regex_replace(q, khz, "$1.$2kHz");
-        if (!l.package.empty() && l.package != l.footprint && l.kind != "crystal") q += " " + l.package;
-        if (lower(q).find(lower(w->second)) == std::string::npos) q += " " + w->second;
-        return q;
-    }
-    return l.value; // an IC's value is usually its part name
-}
-
 std::string url_encode(const std::string& s) {
     std::string out;
     char buf[4];
@@ -135,6 +119,91 @@ std::string join(const std::vector<std::string>& v, const std::string& sep) {
 }
 
 } // namespace
+
+namespace {
+
+// A footprint name's part after the library ("Connector_JST:JST_SH_..." -> "JST_SH_...").
+std::string fp_name(const std::string& footprint) {
+    auto c = footprint.find(':');
+    return c == std::string::npos ? footprint : footprint.substr(c + 1);
+}
+
+// Pieces of a footprint name that describe it rather than name a part.
+bool descriptive(const std::string& t) {
+    static const std::regex re(
+        R"(^(\d+x\d+.*|P\d.*|\d+(\.\d+)?(x\d+(\.\d+)?)?mm.*|\d+MP|\d*Metric|Vertical|Horizontal|Angled|Straight|SMD|THT|)"
+        R"(Pad.*|Drill.*|Pitch.*|Handsoldering|HandSoldering|Clamped|Shielded|Unshielded|Top|Bottom|Side|Plug|Receptacle|)"
+        R"((SOIC|SOP|SSOP|TSSOP|MSOP|QFN|DFN|VQFN|WQFN|LQFP|TQFP|QFP|BGA|SOT|SOD|TO|DIP|PDIP|SIP|PLCC|LGA|WSON|SON|USON|)"
+        R"(UDFN|HVQFN|SC|DPAK|D2PAK|MiniMELF|MELF|SMA|SMB|SMC|PowerPAK|ESOP|HTSSOP|eTSSOP|TSOT|uSOP)-?\d.*)$)",
+        std::regex::icase);
+    return std::regex_match(t, re);
+}
+
+} // namespace
+
+std::string footprint_part_number(const std::string& footprint) {
+    std::string name = fp_name(footprint);
+    std::vector<std::string> parts;
+    std::string cur;
+    for (char c : name) {
+        if (c == '_') { parts.push_back(cur); cur.clear(); } else cur += c;
+    }
+    parts.push_back(cur);
+    for (const auto& t : parts) {
+        if (t.size() < 6 || descriptive(t)) continue;
+        bool digit = false, letter = false, dash = false;
+        for (unsigned char c : t) digit |= std::isdigit(c) != 0, letter |= std::isalpha(c) != 0, dash |= c == '-';
+        // A part number has digits and letters (BM04B-SRSS-TB, USB4085), or is digits with a dash (53047-0410).
+        if (!(digit && (letter || dash))) continue;
+        // "USB4105-xx-A": xx stands for options the library leaves open; search the part before it.
+        static const std::regex open_options(R"([-_.]?[xX]{2,}.*$)");
+        std::string pn = std::regex_replace(t, open_options, "");
+        if (pn.size() >= 4) return pn;
+    }
+    return "";
+}
+
+bool value_is_part_number(const std::string& v) {
+    if (v.size() < 5 || v.find(' ') != std::string::npos) return false;
+    static const std::regex symbol(R"(^(Conn_|Screw_Terminal|SW_|LED|Jumper|TestPoint|Fuse|Battery|MountingHole|Fiducial|)"
+                                   R"(USB_[A-Z]|Barrel_Jack|AudioJack|Micro_SD|SD_Card|SIM_Card|RJ45|Antenna|Buzzer|Speaker|)"
+                                   R"(Crystal|Resonator|Thermistor|Varistor|Polyfuse|Net-Tie|NetTie).*)",
+                                   std::regex::icase);
+    if (std::regex_match(v, symbol)) return false;
+    bool digit = false, letter = false;
+    for (unsigned char c : v) digit |= std::isdigit(c) != 0, letter |= std::isalpha(c) != 0;
+    return digit && letter;
+}
+
+std::pair<std::string, std::string> query_of(const BomLine& l) {
+    if (!l.mpn.empty()) return {l.mpn, "mpn"};
+    // Copper on the board, nothing to buy.
+    static const std::regex bare(R"(^(TestPoint|MountingHole|Fiducial|NetTie):.*)");
+    if (std::regex_match(l.footprint, bare)) return {"", "nothing to buy"};
+    static const std::map<std::string, std::string> word = {{"resistor", "resistor"}, {"capacitor", "capacitor"},
+                                                            {"inductor", "inductor"}, {"ferrite", "ferrite bead"},
+                                                            {"led", "LED"}, {"crystal", "crystal"}};
+    auto w = word.find(l.kind);
+    if (w != word.end()) {
+        std::string q = l.kind == "resistor" || l.kind == "ferrite" ? ohms(l.value) : l.value;
+        static const std::regex khz(R"(^(\d+)[kK](\d+)$)"); // 32k768 -> 32.768kHz
+        if (l.kind == "crystal") q = std::regex_replace(q, khz, "$1.$2kHz");
+        if (!l.package.empty() && l.package != l.footprint && l.kind != "crystal") q += " " + l.package;
+        if (lower(q).find(lower(w->second)) == std::string::npos) q += " " + w->second;
+        return {q, "passive"};
+    }
+    // A connector's value is usually what it's for ("I2C"): its footprint names the part.
+    bool connector = l.kind == "connector";
+    std::string in_fp = footprint_part_number(l.footprint);
+    if (!in_fp.empty() && (connector || !value_is_part_number(l.value))) return {in_fp, "footprint"};
+    if (value_is_part_number(l.value) && !connector) return {l.value, "value"};
+    // Neither: the footprint's own words ("JST SH 1x04 P1.00mm Vertical") and what it is.
+    std::string words = fp_name(l.footprint);
+    std::replace(words.begin(), words.end(), '_', ' ');
+    if (connector && lower(words).find("conn") == std::string::npos) words += " connector";
+    if (!words.empty() && words != " connector") return {words, "footprint words"};
+    return {l.value, "value"};
+}
 
 bool ref_less(const std::string& a, const std::string& b) {
     size_t i = 0, j = 0;
@@ -193,7 +262,7 @@ Bom make_bom(const Schematic& sch) {
         if (fresh) {
             l.kind = kind_of(s);
             l.package = package_of(s.footprint);
-            l.query = query_of(l);
+            std::tie(l.query, l.query_from) = query_of(l);
             bom.lines.push_back(std::move(l));
         }
         bom.lines[it->second].refs.push_back(s.ref);
@@ -248,6 +317,7 @@ nlohmann::json bom_json(const Bom& bom) {
                          {"dnp", l.dnp},
                          {"fields", l.fields},
                          {"query", l.query},
+                         {"query_from", l.query_from},
                          {"links",
                           {{"digikey", search_url(l, "digikey")},
                            {"mouser", search_url(l, "mouser")},
