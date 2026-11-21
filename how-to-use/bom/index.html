@@ -818,6 +818,66 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="What's ordered: importing carts">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#importing-a-cart" class="md-nav__link">
+    <span class="md-ellipsis">
+      Importing a cart
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#how-rows-are-matched-to-lines" class="md-nav__link">
+    <span class="md-ellipsis">
+      How rows are matched to lines
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#rows-that-match-no-line" class="md-nav__link">
+    <span class="md-ellipsis">
+      Rows that match no line
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-ordered-column" class="md-nav__link">
+    <span class="md-ellipsis">
+      The Ordered column
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#on-the-board" class="md-nav__link">
+    <span class="md-ellipsis">
+      On the board
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#when-the-parts-arrive" class="md-nav__link">
+    <span class="md-ellipsis">
+      When the parts arrive
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -1239,6 +1299,66 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="What's ordered: importing carts">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#importing-a-cart" class="md-nav__link">
+    <span class="md-ellipsis">
+      Importing a cart
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#how-rows-are-matched-to-lines" class="md-nav__link">
+    <span class="md-ellipsis">
+      How rows are matched to lines
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#rows-that-match-no-line" class="md-nav__link">
+    <span class="md-ellipsis">
+      Rows that match no line
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-ordered-column" class="md-nav__link">
+    <span class="md-ellipsis">
+      The Ordered column
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#on-the-board" class="md-nav__link">
+    <span class="md-ellipsis">
+      On the board
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#when-the-parts-arrive" class="md-nav__link">
+    <span class="md-ellipsis">
+      When the parts arrive
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -1481,26 +1601,66 @@
 <li><strong>↗ New tab</strong> opens the notes in a tab of their own, laid out wide; the panel closes, and <strong>+ Notes</strong> on the BOM page then goes to that tab. <strong>Hide</strong> (or the <strong>Notes</strong> button) hides the panel.</li>
 </ul>
 <h2 id="whats-ordered-importing-carts">What's ordered: importing carts<a class="headerlink" href="#whats-ordered-importing-carts" title="Permanent link">&para;</a></h2>
-<p>Fill your carts at Mouser and LCSC (the CSVs from <strong>Export CSV</strong> upload straight into their BOM tools), then export each cart and bring it back: <strong>Import cart ▾</strong> → <strong>Mouser cart…</strong> or <strong>LCSC cart…</strong>.</p>
+<p>Fill your carts at Mouser and LCSC (the CSVs from <strong>Export CSV</strong> upload straight into their BOM tools), then bring each cart back into kigit to see what's ordered.</p>
+<h3 id="importing-a-cart">Importing a cart<a class="headerlink" href="#importing-a-cart" title="Permanent link">&para;</a></h3>
+<ol>
+<li>Pick the <a href="#builds">build</a> you're buying for.</li>
+<li>Export your cart from the site: Mouser gives an <strong>.xls</strong>, LCSC a <strong>.csv</strong> (.xlsx works too).</li>
+<li>Click <strong>Import cart ▾</strong> → <strong>Mouser cart…</strong> or <strong>LCSC cart…</strong> and choose the file.</li>
+</ol>
+<p>The cart shows as a chip beside <strong>Import cart</strong>, like <em>LCSC cart · 7 rows</em>:</p>
 <ul>
-<li><strong>Files:</strong> Mouser's cart export (<strong>.xls</strong>), LCSC's (<strong>.csv</strong>), or either saved as .xlsx or .csv. Columns are found by name, and title and totals rows are skipped.</li>
-<li><strong>Matching a cart row to a line:</strong></li>
-<li>By the <strong>references</strong> in its <em>Customer #</em>: kigit's own export puts them there, so this is the surest.</li>
-<li>By the <strong>site's part number</strong> (Mouser or LCSC).</li>
-<li>By the <strong>MPN</strong>.</li>
+<li>Click the chip to see its rows.</li>
+<li><strong>✕</strong> removes the cart from the build.</li>
+<li>Importing a site's cart again replaces it (one cart per site per build).</li>
 </ul>
-<p>Part numbers you typed but haven't written count too.
-- <strong>Ordered</strong> column: what the carts have for each line against what you need (quantity × <strong>Build qty</strong>): <strong>green</strong> when it's enough, <strong>red</strong> when it isn't, with each site's share ("Mouser 10 · LCSC 5"). Its <strong>▾</strong> filters: <em>Enough</em>, <em>Not enough</em>, <em>Not in a cart</em>, <em>In the Mouser cart</em>, <em>In the LCSC cart</em>.
-- <strong>Rows that match no line</strong> (most often, passives without a part number yet): an amber bar under the header says how many, and that they aren't counted as ordered until each has its line. <strong>Match them…</strong> opens the list. kigit <strong>suggests</strong> a line for each row it can (★): from the row's description, by kind, value and package (<em>"MLCC … 0.1uF X7R 0603"</em> is your 100nF 0603 line: values are compared as numbers, so 0.1µF = 100nF, 4k7 = 4.7k, 32.768kHz = 32k768), or by the part name in its part number; only when one line fits clearly better than the rest. <strong>Accept</strong> a suggestion, <strong>Accept all suggestions</strong>, or pick the line yourself. With the box ticked (by default), the row's MPN, manufacturer and site number become that line's drafts, so it matches by itself next time. <strong>Let go</strong> undoes a match.
-- <strong>On the board:</strong> <strong>Ordered</strong> on the PCB and 3D panes colours every part <strong>green</strong> if the carts cover it and <strong>red</strong> if not, so you can see at a glance that everything's ordered before you check out. Parts without a 3D model show as a flat tile over their pads.
-- <strong>Not enough for every position:</strong> each board needs the line's parts once, so a cart of <em>c</em> parts for <em>b</em> boards fills ⌊<em>c</em> / <em>b</em>⌋ of the line's positions on every board: the first ones by reference (C1, C2, C3...) are green, the rest red. For example, 10 capacitors for a line of four (C1 to C4) on 3 boards: C1, C2 and C3 green (3 per board), C4 red.
-- Carts belong to the <a href="#builds">build</a> you've picked (its <code>build.json</code>), one per site; importing a site's cart again replaces it. A loaded cart shows beside <strong>Import cart</strong> as a chip ("LCSC cart · 7 rows"): click it for its rows, <strong>✕</strong> removes it from the build (a received cart's parts stay in your inventory); <strong>Mark received</strong> puts it in your inventory (see <a href="#buying-for-a-build">Buying for a build</a>).</p>
+<h3 id="how-rows-are-matched-to-lines">How rows are matched to lines<a class="headerlink" href="#how-rows-are-matched-to-lines" title="Permanent link">&para;</a></h3>
+<p>kigit tries, in this order:</p>
+<ol>
+<li>The <strong>references</strong> in the row's <em>Customer #</em>. kigit's own export puts them there, so this is the surest.</li>
+<li>The <strong>site's part number</strong> (Mouser or LCSC).</li>
+<li>The <strong>MPN</strong>.</li>
+</ol>
+<p>Part numbers you've typed but not yet written to the schematic count too.</p>
+<h3 id="rows-that-match-no-line">Rows that match no line<a class="headerlink" href="#rows-that-match-no-line" title="Permanent link">&para;</a></h3>
+<p>Usually passives that don't have a part number yet. An amber bar under the header tells you how many there are: they don't count as ordered until each has its line.</p>
+<ol>
+<li>Click <strong>Match them…</strong> in the bar.</li>
+<li>Rows marked <strong>★</strong> have a line suggested by kigit. Click <strong>Accept</strong>, or <strong>Accept all suggestions</strong>.</li>
+<li>For the rest, pick the line from the row's list.</li>
+</ol>
+<p>How suggestions work:</p>
+<ul>
+<li>From the row's description, by kind, value and package: <em>"MLCC … 0.1uF X7R 0603"</em> is your 100nF 0603 line.</li>
+<li>Values are compared as numbers: 0.1µF = 100nF, 4k7 = 4.7k, 32.768kHz = 32k768.</li>
+<li>Or by the part's name inside the row's part number.</li>
+<li>Only when one line fits clearly better than the rest; otherwise there's no suggestion.</li>
+</ul>
+<p>With <strong>Keep each row's part numbers</strong> ticked (the default), the row's MPN, manufacturer and site number become that line's drafts, so it matches by itself next time. <strong>Let go</strong> undoes a match.</p>
+<h3 id="the-ordered-column">The Ordered column<a class="headerlink" href="#the-ordered-column" title="Permanent link">&para;</a></h3>
+<p>What the carts hold for each line against what you need (quantity × the build's boards):</p>
+<ul>
+<li><strong>Green</strong>: enough. <strong>Red</strong>: not enough.</li>
+<li>Each site's share is shown, like <em>Mouser 10 · LCSC 5</em>.</li>
+<li>Its <strong>▾</strong> filters: <em>Enough</em>, <em>Not enough</em>, <em>Not in a cart</em>, <em>In the Mouser cart</em>, <em>In the LCSC cart</em>.</li>
+</ul>
+<h3 id="on-the-board">On the board<a class="headerlink" href="#on-the-board" title="Permanent link">&para;</a></h3>
+<p><strong>Ordered</strong> in the PCB and 3D panels' bars colours every part, with a count on the button:</p>
+<ul>
+<li><strong>Green</strong>: the carts cover it.</li>
+<li><strong>Red</strong>: they don't.</li>
+</ul>
+<p>So you can see at a glance that everything's ordered before you check out. Parts without a 3D model show as a flat tile over their pads.</p>
+<p>When a cart is short, each board still needs every position, so the first positions by reference are filled first. For example, 10 capacitors for a line of four (C1 to C4) on 3 boards is 3 per board: C1, C2 and C3 are green, C4 is red.</p>
+<h3 id="when-the-parts-arrive">When the parts arrive<a class="headerlink" href="#when-the-parts-arrive" title="Permanent link">&para;</a></h3>
+<p><strong>Mark received</strong> (click the cart's chip) adds the cart to your inventory, and it stops counting as ordered. See <a href="#buying-for-a-build">Buying for a build</a>. Removing a received cart leaves its parts in your inventory.</p>
 <h2 id="filtering">Filtering<a class="headerlink" href="#filtering" title="Permanent link">&para;</a></h2>
 <p>Every column you can filter has a <strong>▾</strong> in its header; filters add up, so <em>Placed: not done</em> plus <em>Carted: done</em> plus <em>Mouser: short of stock</em> shows exactly those lines.</p>
 <ul>
 <li><strong>Trackers</strong>: <em>Done</em>, <em>Not done</em>, <em>Partly done</em> (DNP lines aren't part of a build, so they're left out).</li>
 <li><strong>References, Value and the part number columns</strong> (and fields you added): <em>Contains...</em> (type), <em>Not empty</em>, <em>Empty</em>: <em>MPN: Empty</em> is what still needs a part number.</li>
 <li><strong>Each site's column</strong> (after Look up): <em>Found</em>, <em>Short of stock</em>, <em>Ending</em> (obsolete, last time buy...), <em>To choose</em>, <em>Not found</em>, <em>Error or skipped</em>.</li>
+<li><strong>With a build</strong>: <strong>In stock</strong> (<em>Enough</em>, <em>Not enough</em>, <em>Not in the inventory</em>), <strong>Ordered</strong> (see <a href="#the-ordered-column">above</a>), <strong>To buy</strong> (<em>Still to buy</em>, <em>Covered</em>), and in Assemble <strong>Placed</strong> (<em>Placed</em>, <em>Not placed yet</em>, <em>Partly placed</em>).</li>
 </ul>
 <p>A filtered column's <strong>▾</strong> is lit. <strong>Clear filters</strong> (in the header while any is on) shows every line again. The search box and <strong>Show</strong> work on top of them. Filters last until you reload the page.</p>
 <h2 id="tracking-a-build">Tracking a build<a class="headerlink" href="#tracking-a-build" title="Permanent link">&para;</a></h2>
