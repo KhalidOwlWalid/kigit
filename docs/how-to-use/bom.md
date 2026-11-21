@@ -179,20 +179,69 @@ Why did you pick that regulator, that crystal, that 0603 over a 0402? **+ Notes*
 
 ## What's ordered: importing carts
 
-Fill your carts at Mouser and LCSC (the CSVs from **Export CSV** upload straight into their BOM tools), then export each cart and bring it back: **Import cart ▾** → **Mouser cart…** or **LCSC cart…**.
+Fill your carts at Mouser and LCSC (the CSVs from **Export CSV** upload straight into their BOM tools), then bring each cart back into kigit to see what's ordered.
 
-- **Files:** Mouser's cart export (**.xls**), LCSC's (**.csv**), or either saved as .xlsx or .csv. Columns are found by name, and title and totals rows are skipped.
-- **Matching a cart row to a line:**
-  1. By the **references** in its *Customer #*: kigit's own export puts them there, so this is the surest.
-  2. By the **site's part number** (Mouser or LCSC).
-  3. By the **MPN**.
+### Importing a cart
 
-  Part numbers you typed but haven't written count too.
-- **Ordered** column: what the carts have for each line against what you need (quantity × **Build qty**): **green** when it's enough, **red** when it isn't, with each site's share ("Mouser 10 · LCSC 5"). Its **▾** filters: *Enough*, *Not enough*, *Not in a cart*, *In the Mouser cart*, *In the LCSC cart*.
-- **Rows that match no line** (most often, passives without a part number yet): an amber bar under the header says how many, and that they aren't counted as ordered until each has its line. **Match them…** opens the list. kigit **suggests** a line for each row it can (★): from the row's description, by kind, value and package (*"MLCC … 0.1uF X7R 0603"* is your 100nF 0603 line: values are compared as numbers, so 0.1µF = 100nF, 4k7 = 4.7k, 32.768kHz = 32k768), or by the part name in its part number; only when one line fits clearly better than the rest. **Accept** a suggestion, **Accept all suggestions**, or pick the line yourself. With the box ticked (by default), the row's MPN, manufacturer and site number become that line's drafts, so it matches by itself next time. **Let go** undoes a match.
-- **On the board:** **Ordered** on the PCB and 3D panes colours every part **green** if the carts cover it and **red** if not, so you can see at a glance that everything's ordered before you check out. Parts without a 3D model show as a flat tile over their pads.
-- **Not enough for every position:** each board needs the line's parts once, so a cart of *c* parts for *b* boards fills ⌊*c* / *b*⌋ of the line's positions on every board: the first ones by reference (C1, C2, C3...) are green, the rest red. For example, 10 capacitors for a line of four (C1 to C4) on 3 boards: C1, C2 and C3 green (3 per board), C4 red.
-- Carts belong to the [build](#builds) you've picked (its `build.json`), one per site; importing a site's cart again replaces it. A loaded cart shows beside **Import cart** as a chip ("LCSC cart · 7 rows"): click it for its rows, **✕** removes it from the build (a received cart's parts stay in your inventory); **Mark received** puts it in your inventory (see [Buying for a build](#buying-for-a-build)).
+1. Pick the [build](#builds) you're buying for.
+2. Export your cart from the site: Mouser gives an **.xls**, LCSC a **.csv** (.xlsx works too).
+3. Click **Import cart ▾** → **Mouser cart…** or **LCSC cart…** and choose the file.
+
+The cart shows as a chip beside **Import cart**, like *LCSC cart · 7 rows*:
+
+- Click the chip to see its rows.
+- **✕** removes the cart from the build.
+- Importing a site's cart again replaces it (one cart per site per build).
+
+### How rows are matched to lines
+
+kigit tries, in this order:
+
+1. The **references** in the row's *Customer #*. kigit's own export puts them there, so this is the surest.
+2. The **site's part number** (Mouser or LCSC).
+3. The **MPN**.
+
+Part numbers you've typed but not yet written to the schematic count too.
+
+### Rows that match no line
+
+Usually passives that don't have a part number yet. An amber bar under the header tells you how many there are: they don't count as ordered until each has its line.
+
+1. Click **Match them…** in the bar.
+2. Rows marked **★** have a line suggested by kigit. Click **Accept**, or **Accept all suggestions**.
+3. For the rest, pick the line from the row's list.
+
+How suggestions work:
+
+- From the row's description, by kind, value and package: *"MLCC … 0.1uF X7R 0603"* is your 100nF 0603 line.
+- Values are compared as numbers: 0.1µF = 100nF, 4k7 = 4.7k, 32.768kHz = 32k768.
+- Or by the part's name inside the row's part number.
+- Only when one line fits clearly better than the rest; otherwise there's no suggestion.
+
+With **Keep each row's part numbers** ticked (the default), the row's MPN, manufacturer and site number become that line's drafts, so it matches by itself next time. **Let go** undoes a match.
+
+### The Ordered column
+
+What the carts hold for each line against what you need (quantity × the build's boards):
+
+- **Green**: enough. **Red**: not enough.
+- Each site's share is shown, like *Mouser 10 · LCSC 5*.
+- Its **▾** filters: *Enough*, *Not enough*, *Not in a cart*, *In the Mouser cart*, *In the LCSC cart*.
+
+### On the board
+
+**Ordered** in the PCB and 3D panels' bars colours every part, with a count on the button:
+
+- **Green**: the carts cover it.
+- **Red**: they don't.
+
+So you can see at a glance that everything's ordered before you check out. Parts without a 3D model show as a flat tile over their pads.
+
+When a cart is short, each board still needs every position, so the first positions by reference are filled first. For example, 10 capacitors for a line of four (C1 to C4) on 3 boards is 3 per board: C1, C2 and C3 are green, C4 is red.
+
+### When the parts arrive
+
+**Mark received** (click the cart's chip) adds the cart to your inventory, and it stops counting as ordered. See [Buying for a build](#buying-for-a-build). Removing a received cart leaves its parts in your inventory.
 
 ## Filtering
 
@@ -201,6 +250,7 @@ Every column you can filter has a **▾** in its header; filters add up, so *Pla
 - **Trackers**: *Done*, *Not done*, *Partly done* (DNP lines aren't part of a build, so they're left out).
 - **References, Value and the part number columns** (and fields you added): *Contains...* (type), *Not empty*, *Empty*: *MPN: Empty* is what still needs a part number.
 - **Each site's column** (after Look up): *Found*, *Short of stock*, *Ending* (obsolete, last time buy...), *To choose*, *Not found*, *Error or skipped*.
+- **With a build**: **In stock** (*Enough*, *Not enough*, *Not in the inventory*), **Ordered** (see [above](#the-ordered-column)), **To buy** (*Still to buy*, *Covered*), and in Assemble **Placed** (*Placed*, *Not placed yet*, *Partly placed*).
 
 A filtered column's **▾** is lit. **Clear filters** (in the header while any is on) shows every line again. The search box and **Show** work on top of them. Filters last until you reload the page.
 
