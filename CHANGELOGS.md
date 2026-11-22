@@ -4,6 +4,14 @@ All notable changes to kigit, newest first. The format follows [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-11-22
+
+Look up helps you find parts, not just check them: alternatives when a part is short or can't be found, better searches for connectors, and progress you can follow. Your API keys move into your system's keyring, and problems on the BOM page can't go unnoticed.
+
+### Security
+
+- **API keys are kept in your system's keyring**, encrypted with your login, instead of a plain file: Credential Manager on Windows, GNOME Keyring or KWallet on Linux (needs `secret-tool`, from `libsecret-tools`). Keys already saved move there by themselves. Without a keyring (or on macOS, for now) they stay in the owner-only file, and the Keys dialog says so, with the steps to fix it: the install command for your Linux to copy, then **Check again**, which moves the keys into the keyring.
+
 ### Added
 
 - **Stand-ins for short parts, from every site**: when the part is short for your boards (or ending), Look up now also finds similar parts itself, at Mouser too (which has no substitutes of its own): by a passive's value and package, or the part's family (`SN65HVD230` for `SN65HVD230QDG4`), keeping only those with enough stock that aren't ending. They're listed after the site's own substitutes, marked **similar**, with what to check before using one.
@@ -14,7 +22,6 @@ All notable changes to kigit, newest first. The format follows [Keep a Changelog
 ### Changed
 
 - **Better searches for connectors**: a part without a part number whose value is a label (`I2C`, `Debug`, `USB`) is searched by the maker's part number in its footprint's name (`JST_SH_BM04B-SRSS-TB_...` → `BM04B-SRSS-TB`), instead of the label; Look up says where the search came from. Test points, mounting holes and fiducials aren't searched (nothing to buy).
-- **API keys are kept in your system's keyring**, encrypted with your login, instead of a plain file: Credential Manager on Windows, GNOME Keyring or KWallet on Linux (needs `secret-tool`, from `libsecret-tools`). Keys already saved move there by themselves. Without a keyring (or on macOS, for now) they stay in the owner-only file, and the Keys dialog says so, with the steps to fix it: the install command for your Linux to copy, then **Check again**, which moves the keys into the keyring.
 - **Problems on the BOM page can't be missed**: each one pops up (with **Show** to go to it, instead of a plain browser alert), counts on the bell (where **Show** goes to it too), and puts a red **!** on the button that leads to it while it lasts: Keys (keys saved without encryption), Import cart (rows that match no line), Inventory (a file that can't be read, rows skipped), Look up (a site that stopped).
 
 ## [0.3.0] - 2026-11-20
@@ -213,7 +220,8 @@ The first release.
 - The GUI could freeze on Windows when stopped with Ctrl+C.
 - Build fixes for GitHub Actions (CMake policy minimum, doctest warnings on MSVC).
 
-[Unreleased]: https://github.com/KhalidOwlWalid/kigit/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/KhalidOwlWalid/kigit/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/KhalidOwlWalid/kigit/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/KhalidOwlWalid/kigit/compare/v0.2.3...v0.3.0
 [0.2.3]: https://github.com/KhalidOwlWalid/kigit/compare/v0.2.2...v0.2.3
 [0.2.2]: https://github.com/KhalidOwlWalid/kigit/compare/v0.2.1...v0.2.2

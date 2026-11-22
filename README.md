@@ -30,11 +30,9 @@ What it can do:
 - A bill of materials: part numbers, stock and prices from Mouser and Digi-Key, carts, your inventory, and builds you assemble board by board
 - Comes with an example project to try it all on: `kigit example`
 
-Have a look at the demo below to get a feel for it.
+Have a look at the demos below to get a feel for it.
 
 ## Demonstration
-
-https://github.com/user-attachments/assets/f906914c-ffff-49df-a43d-28ec8a625058
 
 Full documentation can be found here: https://khalidowlwalid.github.io/kigit/
 
@@ -78,6 +76,11 @@ A heatmap of your work on the board, day by day: comparisons, reviews, discussio
 The BOM with the board in 2D and 3D beside it: hover a line to light up its parts. Fill in part numbers, look up stock and prices at Mouser and Digi-Key, export carts, track your inventory, and assemble builds board by board.
 
 ![kigit's BOM: the parts list with the board in 2D and 3D](docs/blobs/demo/gifs/bom-system.gif)
+
+#### Looking up parts
+Look up asks Mouser and Digi-Key about every line: stock, price for your boards, lead time and lifecycle, with progress you can follow by the bell. When a part is short or can't be found, kigit searches for others itself (by value and package, description or part family) for you to pick from.
+
+![Looking up parts at Mouser: progress, stock and prices per line](docs/blobs/demo/gifs/lookup-parts.gif)
 
 #### Cart assistant
 Import your Mouser or LCSC cart into a build: each line shows what's ordered, the board turns green where parts are covered and red where they're short, and rows kigit can't place get a suggested line to accept.
