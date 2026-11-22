@@ -295,12 +295,15 @@ _PROGRESS = re.compile(r"^kigit: looking up (\d+)/(\d+)[ \t]*(.*)")
 
 async def bom_lookup(board: str, rev: str = "LOCAL", boards: int = 1, refresh: bool = False,
                      progress: Callable[..., None] | None = None,
-                     started_proc: Callable[[subprocess.Popen], None] | None = None) -> dict:
-    """kigit bom --lookup --json: stock, prices and lifecycle at Mouser for
-    each line. Mouser is asked about 2 s apart, so this can take a minute;
-    progress(done, total, what) follows kigit's progress lines (what: the
-    line's references); started_proc gets the process, so it can be stopped."""
+                     started_proc: Callable[[subprocess.Popen], None] | None = None,
+                     sites: list[str] | None = None) -> dict:
+    """kigit bom --lookup --json: stock, prices and lifecycle for each line,
+    at the given sites (None: kigit's default, every site with a key). Mouser
+    is asked about 2 s apart, so this can take a minute; progress(done,
+    total, what) follows kigit's progress lines (what: the line's
+    references); started_proc gets the process, so it can be stopped."""
     args = ("bom", "--lookup", "--json", "--boards", str(max(1, boards)), *(["--refresh"] if refresh else []),
+            *(["--site", ",".join(sites)] if sites else []),
             *([] if rev == "LOCAL" else [rev]), board)
     started = time.monotonic()
 

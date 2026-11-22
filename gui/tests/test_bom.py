@@ -540,3 +540,50 @@ def test_lcsc_info_through_kigit() -> None:
     assert info["dir"].endswith("parts-lcsc") and info["have"] is False and info["bytes"] == 0
     # In the folder above the logs (kigit's app folder in tests): compared as paths, so on Windows too.
     assert Path(info["dir"]).parent == Path(os.environ["KIGIT_LOG_DIR"]).parent
+
+
+def test_look_up_asks_only_the_ticked_sites(monkeypatch) -> None:
+    """Look up opens a menu with a tick per site (kept in localStorage); the
+    route takes the ticked ones and passes them to kigit as --site."""
+    page = _page()
+    assert 'id="lmenu"' in page and 'id="lsites"' in page and 'id="lgo"' in page and 'id="lagain"' in page
+    assert '"kigit.bomLookupSites"' in page
+    assert 'post("lookup", { boards, refresh: $("lagain").checked || e.shiftKey, sites })' in page
+
+    from starlette.requests import Request
+
+    seen: dict = {}
+
+    async def fake_lookup(board, rev, boards, refresh, progress=None, started_proc=None, sites=None):
+        seen["sites"] = sites
+        return {"lines": [], "sites": {s: {"name": s, "error": ""} for s in sites or []}}
+
+    async def fake_keys():
+        return {"mouser": {"set": True, "name": "Mouser"}, "digikey": {"set": True, "name": "Digi-Key"},
+                "lcsc": {"set": True, "name": "LCSC"}}
+
+    monkeypatch.setattr(bom.kigit, "bom_lookup", fake_lookup)
+    monkeypatch.setattr(bom.kigit, "bom_keys", fake_keys)
+    job = bom.Job("/p/owl.kicad_pcb", "owl", DATA)
+    bom.jobs["look"] = job
+
+    async def post(body: dict):
+        data = json.dumps(body).encode()
+
+        async def receive():
+            return {"type": "http.request", "body": data, "more_body": False}
+        scope = {"type": "http", "method": "POST", "path": "/", "headers": [], "query_string": b""}
+        r = await bom._start_lookup("look", Request(scope, receive))  # noqa: SLF001
+        if job.lookup.task:
+            await job.lookup.task
+        return r
+
+    try:
+        assert asyncio.run(post({"boards": 2, "sites": []})).status_code == 400  # nothing ticked
+        assert asyncio.run(post({"boards": 2, "sites": ["farnell"]})).status_code == 400
+        assert "sites" not in seen
+        asyncio.run(post({"boards": 2, "sites": ["lcsc", "digikey"]}))
+        assert seen["sites"] == ["lcsc", "digikey"]
+        assert job.lookup.sites == "Digi-Key and LCSC"  # only the ticked ones are named
+    finally:
+        bom.jobs.pop("look", None)

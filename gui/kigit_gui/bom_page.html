@@ -342,6 +342,16 @@ td.ordered { white-space: nowrap; font-variant-numeric: tabular-nums; }
 #xmenu button { display: block; width: 100%; text-align: left; border: 0; background: none; padding: 6px 10px; border-radius: 6px; }
 #xmenu button:hover { background: var(--hl); }
 #xmenu small { display: block; color: var(--muted); font-size: 11.5px; margin-top: 1px; } .chip.warn { color: var(--warn); }
+#lmenu { position: fixed; z-index: 8; display: none; background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
+  box-shadow: 0 6px 18px rgba(0,0,0,.35); padding: 8px 10px; width: 19rem; }
+#lmenu.on { display: block; }
+#lmenu b.h { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+#lmenu label { display: flex; gap: 8px; align-items: flex-start; padding: 3px 0; cursor: pointer; font-size: 13px; }
+#lmenu label.off { cursor: default; color: var(--faint); }
+#lmenu small { display: block; color: var(--muted); font-size: 11.5px; }
+#lmenu .again { border-top: 1px solid var(--line); margin-top: 6px; padding-top: 6px; }
+#lmenu .row { display: flex; gap: 8px; justify-content: flex-end; margin-top: 8px; }
+#lmenu button { white-space: nowrap; }
 button.more { padding: 1px 7px; font-size: 12px; }
 tr.choices td { background: var(--panel); padding: 4px 8px 10px 30px; cursor: default; }
 .cand { width: 100%; font-size: 12px; } .cand td { border-bottom: 1px dashed var(--line); padding: 4px 6px; }
@@ -399,7 +409,7 @@ dialog a { color: var(--link); }
     <button id="clearf" hidden title="Show every line again (filters from the column headers' &#9662;)"><i class="material-icons">filter_alt_off</i>Clear filters</button>
     <button id="resetw" hidden title="Put every column back to its own width (double-click a column's edge for just that one)"><i class="material-icons">width_normal</i>Reset widths</button>
     <span class="sep"></span>
-    <button id="lookup" title="Ask Mouser and Digi-Key (those you have a key for) for stock, prices and lifecycle, for Build qty boards (answers are kept a day; Shift+click asks again)"><i class="material-icons">travel_explore</i>Look up</button>
+    <button id="lookup" title="Pick the sites to ask (Mouser, Digi-Key, LCSC) for stock, prices and lifecycle, for Build qty boards"><i class="material-icons">travel_explore</i>Look up<i class="material-icons">arrow_drop_down</i></button>
     <button id="keybtn" title="Your Mouser and Digi-Key keys"><i class="material-icons">key</i>Keys</button>
     <button id="invbtn" title="Your inventory: a CSV of yours, anywhere, shared by every project"><i class="material-icons">inventory_2</i>Inventory</button>
     <button id="cartbtn" data-title="Import a cart exported from Mouser or LCSC into this build: what's ordered, line by line, and on the board" title=""><i class="material-icons">add_shopping_cart</i>Import cart<i class="material-icons">arrow_drop_down</i></button>
@@ -496,6 +506,13 @@ design before saving. The search links only open the distributors' sites; kigit 
     Quantity, Customer Reference... Lines need a Digi-Key number or an MPN.</small></button>
   <button data-export="all" role="menuitem"><b>All columns</b><small>Every part number, references, value, footprint, your fields
     and trackers. For a spreadsheet.</small></button>
+</div>
+<div id="lmenu" role="dialog" aria-label="Look up">
+  <b class="h">Ask these sites</b>
+  <div id="lsites"></div>
+  <label class="again"><input type="checkbox" id="lagain"><span>Ask again<small>Ignore answers from the last day (Shift+click Look up does the same)</small></span></label>
+  <div class="row"><button id="lkeys"><i class="material-icons">key</i>Keys</button>
+    <button id="lgo" class="primary"><i class="material-icons">travel_explore</i>Look up</button></div>
 </div>
 <div id="toasts" aria-live="polite"></div>
 <dialog id="lcscdlg"><div id="lcscbody"></div>
@@ -1422,13 +1439,62 @@ function askKey() {
   });
 }
 $("keybtn").addEventListener("click", askKey);
-$("lookup").addEventListener("click", async (e) => {
-  const k = await keys();
-  if (!Object.values(k).some((x) => x?.set) && !(await askKey())) return;
+// Look up opens #lmenu: a tick per site (those without a key can't be
+// ticked), remembered in kigit.bomLookupSites; its Look up asks the ticked ones.
+const LOOKUP_SITES = ["mouser", "digikey", "lcsc"];
+let lookKeys = {};
+function lookTicked() {
+  let t = null;
+  try { t = JSON.parse(localStorage.getItem("kigit.bomLookupSites")); } catch {}
+  return Array.isArray(t) ? t : LOOKUP_SITES;  // first time: every site
+}
+function lookChosen() {
+  return [...$("lsites").querySelectorAll("input:checked:not(:disabled)")].map((b) => b.value);
+}
+function lookGo() {
+  const n = lookChosen().length;
+  $("lgo").disabled = !n;
+  $("lgo").title = n ? "" : "Tick at least one site";
+}
+async function lookMenu(e) {
+  const m = $("lmenu");
+  if (m.classList.contains("on")) { m.classList.remove("on"); return; }
+  lookKeys = await keys();
+  const ticked = lookTicked();
+  $("lsites").innerHTML = LOOKUP_SITES.map((s) => {
+    const k = lookKeys[s] || {}, ok = !!k.set, name = esc(k.name || SITE_NAME[s]);
+    const note = s === "lcsc" ? (ok ? "No key needed (jlcparts' daily data)" : "Turned off (KIGIT_LCSC=off)")
+      : ok ? (k.env ? "Key from the environment" : "Key set") : "No key yet: add one in Keys";
+    return `<label class="${ok ? "" : "off"}"><input type="checkbox" value="${s}"${ok && ticked.includes(s) ? " checked" : ""}${ok ? "" : " disabled"}>` +
+      `<span>${name}<small>${note}</small></span></label>`;
+  }).join("");
+  $("lagain").checked = !!e?.shiftKey;
+  lookGo();
+  m.classList.add("on");
+  const r = $("lookup").getBoundingClientRect();
+  m.style.top = r.bottom + 4 + "px";
+  m.style.left = Math.max(8, Math.min(r.left, innerWidth - m.offsetWidth - 8)) + "px";
+}
+$("lookup").addEventListener("click", (e) => { e.stopPropagation(); lookMenu(e); });
+$("lmenu").addEventListener("click", (e) => e.stopPropagation());
+$("lsites").addEventListener("change", () => {
+  // Keep the choice for sites that can't be ticked now (no key yet).
+  const shown = LOOKUP_SITES.filter((s) => lookKeys[s]?.set);
+  const keep = lookTicked().filter((s) => !shown.includes(s));
+  try { localStorage.setItem("kigit.bomLookupSites", JSON.stringify([...keep, ...lookChosen()])); } catch {}
+  lookGo();
+});
+$("lkeys").addEventListener("click", async () => { $("lmenu").classList.remove("on"); if (await askKey()) lookMenu(); });
+$("lgo").addEventListener("click", async (e) => {
+  const sites = lookChosen();
+  if (!sites.length) return;
+  $("lmenu").classList.remove("on");
   const boards = Math.max(1, parseInt($("boards").value, 10) || 1);
-  try { lookState(await post("lookup", { boards, refresh: e.shiftKey })); pollLookup(); }
+  try { lookState(await post("lookup", { boards, refresh: $("lagain").checked || e.shiftKey, sites })); pollLookup(); }
   catch (err) { lookState({ error: err.message }); }
 });
+document.addEventListener("click", () => $("lmenu").classList.remove("on"));
+addEventListener("keydown", (e) => { if (e.key === "Escape") $("lmenu").classList.remove("on"); });
 
 
 // Hover a line: its parts light up; click selects it (Ctrl/Cmd and Shift for more), and they stay lit.

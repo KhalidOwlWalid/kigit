@@ -821,9 +821,12 @@ at once. localStorage settings are per origin, so per port.
   diff) calls `window.bomHover(ref)`. The 3D code is a trimmed copy of the
   3D diff's (merge by material, materials, picking), sized to its pane
   (ResizeObserver). Planned step 2: Digi-Key / Mouser API lookups (stock, price,
-  lifecycle, alternatives), keys in the app folder. Look up (every site with a key):
-  the page POSTs `/bom/{key}/lookup` {boards = Build qty, refresh =
-  Shift}, which runs `bom.run_lookup` as a task (`Job.lookup`: running,
+  lifecycle, alternatives), keys in the app folder. Look up opens `#lmenu`:
+  a tick per site (`LOOKUP_SITES`; no key = greyed, Keys button there),
+  kept in `kigit.bomLookupSites`, "Ask again" (= Shift); its Look up
+  POSTs `/bom/{key}/lookup` {boards = Build qty, refresh, sites} (empty
+  or unknown sites: 400; passed as `--site`), which runs
+  `bom.run_lookup` as a task (`Job.lookup`: running,
   done/total from kigit's "looking up i/n" stderr lines via
   `kigit.bom_lookup`'s Popen reader, result, error); the page polls GET
   `/bom/{key}/lookup` (also on load, so a reload keeps it). Rows match

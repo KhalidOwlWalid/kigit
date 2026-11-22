@@ -1222,12 +1222,18 @@ async def _set_key(key: str, request: Request) -> Response:
         return _err(str(e), 500, go="bom:keys")
 
 
-async def run_lookup(job: Job, boards: int, refresh: bool) -> None:
+# Sites Look up can ask (kigit bom --site).
+LOOKUP_SITES = ("mouser", "digikey", "lcsc")
+
+
+async def run_lookup(job: Job, boards: int, refresh: bool, sites: list[str] | None = None) -> None:
+    """Look up at the ticked sites (None: every site with a key)."""
     look = job.lookup
     look.running, look.done, look.total, look.error, look.boards = True, 0, len(job.data.get("lines", [])), "", boards
     look.what, look.started, look.stopped, look.proc = "", time.time(), False, None
     try:
-        names = [k.get("name", s) for s, k in (await kigit.bom_keys()).items() if k.get("set")]
+        names = [k.get("name", s) for s, k in (await kigit.bom_keys()).items()
+                 if k.get("set") and (sites is None or s in sites)]
     except kigit.KigitError:
         names = []
     look.sites = " and ".join(names) or "the parts sites"
@@ -1239,7 +1245,7 @@ async def run_lookup(job: Job, boards: int, refresh: bool) -> None:
         look.proc = proc
 
     try:
-        look.result = await kigit.bom_lookup(job.board, job.rev, boards, refresh, progress, started_proc)
+        look.result = await kigit.bom_lookup(job.board, job.rev, boards, refresh, progress, started_proc, sites)
         look.done = look.total
         from . import notices
         for site, info in look.result.get("sites", {}).items():
@@ -1283,7 +1289,13 @@ async def _start_lookup(key: str, request: Request) -> Response:
         boards = max(1, min(100000, int(body.get("boards", 1))))
     except (TypeError, ValueError):
         boards = 1
-    job.lookup.task = asyncio.create_task(run_lookup(job, boards, bool(body.get("refresh"))))
+    sites = body.get("sites")  # the ticked ones; missing: kigit's default
+    if sites is not None:
+        if not isinstance(sites, list) or any(s not in LOOKUP_SITES for s in sites):
+            return _err(f"Unknown site to look up at: {sites}", 400, go="bom:lookup")
+        if not sites:
+            return _err("Tick at least one site to look up at.", 400, go="bom:lookup")
+    job.lookup.task = asyncio.create_task(run_lookup(job, boards, bool(body.get("refresh")), sites))
     await asyncio.sleep(0)  # let it start, so the state says running
     return JSONResponse(job.lookup.state())
 
