@@ -36,10 +36,10 @@ option(KIGIT_PORTABLE "Build a self-contained kigit for distribution" OFF)
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 
 # Libraries: git submodules in submodules/, pinned to a release each
-# (nlohmann_json, spdlog, and doctest for the tests). Built in, never taken
-# from the system. After cloning: git submodule update --init
+# (nlohmann_json, spdlog, miniz, and doctest for the tests). Built in, never
+# taken from the system. After cloning: git submodule update --init
 set(KIGIT_SUBMODULES ${CMAKE_CURRENT_SOURCE_DIR}/submodules)
-foreach(lib json spdlog doctest)
+foreach(lib json spdlog miniz doctest)
   if(NOT EXISTS ${KIGIT_SUBMODULES}/${lib}/CMakeLists.txt)
     message(FATAL_ERROR "submodules/${lib} is missing. Run:\n  git submodule update --init")
   endif()
@@ -51,6 +51,12 @@ add_subdirectory(${KIGIT_SUBMODULES}/json EXCLUDE_FROM_ALL)
 
 set(SPDLOG_INSTALL OFF CACHE INTERNAL "")
 add_subdirectory(${KIGIT_SUBMODULES}/spdlog EXCLUDE_FROM_ALL)
+
+# miniz: gzip for the LCSC parts data (jlcparts' files are .gz).
+set(BUILD_EXAMPLES OFF CACHE INTERNAL "")
+set(BUILD_FUZZERS OFF CACHE INTERNAL "")
+set(INSTALL_PROJECT OFF CACHE INTERNAL "")
+add_subdirectory(${KIGIT_SUBMODULES}/miniz EXCLUDE_FROM_ALL)
 
 # Embed the HTML viewer into the binary: the page shell plus its scripts,
 # combined into one self-contained file.
@@ -76,6 +82,7 @@ add_library(kigit_core STATIC
   src/utils/sexpr.cpp
   src/utils/log.cpp
   src/utils/platform.cpp
+  src/utils/gzip.cpp
   src/pcb/board.cpp
   src/pcb/diff.cpp
   src/sch/schematic.cpp
@@ -89,6 +96,7 @@ add_library(kigit_core STATIC
   src/parts/source.cpp
   src/parts/mouser.cpp
   src/parts/digikey.cpp
+  src/parts/jlcparts.cpp
   src/parts/match.cpp
   src/parts/lookup.cpp
   src/git/git.cpp
@@ -98,7 +106,7 @@ add_library(kigit_core STATIC
 )
 target_include_directories(kigit_core PUBLIC include ${CMAKE_CURRENT_BINARY_DIR}/generated)
 target_compile_definitions(kigit_core PUBLIC KIGIT_VERSION="${PROJECT_VERSION}")
-target_link_libraries(kigit_core PUBLIC nlohmann_json::nlohmann_json spdlog::spdlog)
+target_link_libraries(kigit_core PUBLIC nlohmann_json::nlohmann_json spdlog::spdlog PRIVATE miniz)
 
 # The command line: main() and one file per command.
 add_executable(kigit

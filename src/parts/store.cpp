@@ -188,6 +188,7 @@ std::string set_digikey_login(const DigiKeyLogin& l) {
 }
 
 std::string key_place(const std::string& site) {
+    if (site == "lcsc") return has_key(site) ? "none needed" : "";
     if (key_from_env(site)) return "env";
     if (!has_key(site)) return "";
     return platform::keyring().available && platform::secret_get(site) ? "keyring" : "file";
@@ -196,6 +197,7 @@ std::string key_place(const std::string& site) {
 fs::path keys_path() { return keys_file(); }
 
 bool has_key(const std::string& site) {
+    if (site == "lcsc") return env("KIGIT_LCSC") != "off"; // no key: jlcparts' data
     if (site == "digikey") {
         DigiKeyLogin l = digikey_login();
         return !l.client_id.empty() && !l.client_secret.empty();

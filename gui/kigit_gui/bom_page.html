@@ -258,6 +258,14 @@ td.placed button { padding: 0 6px; font-size: 11px; margin-left: 2px; }
 @keyframes actslide { from { margin-left: -30%; } to { margin-left: 100%; } }
 #actbody .row { display: flex; gap: 8px; justify-content: flex-end; margin-top: 10px; }
 #actbody .now { color: var(--muted); } #actbody .now b { color: var(--text); }
+th .qhelp { padding: 0 5px; min-height: 0; margin-left: 4px; border-radius: 50%; font-size: 11px; line-height: 16px; width: 18px;
+  border: 1px solid var(--line); color: var(--muted); text-transform: none; vertical-align: 1px; }
+th .qhelp:hover { color: var(--primary); border-color: var(--primary); }
+#lcscdlg { max-width: 36rem; } #lcscbody ul { margin: 8px 0; padding-left: 18px; } #lcscbody li { margin: 4px 0; }
+#lcscbody .path { display: flex; gap: 6px; align-items: center; margin: 2px 0 0; padding: 4px 4px 4px 8px; background: #0b0d11; border-radius: 4px; }
+#lcscbody .path code { flex: 1; font-size: 12px; overflow-wrap: anywhere; user-select: all; }
+#lcscbody .path button, #lcscbody .warnbox button { font-size: 12px; padding: 2px 8px; }
+#lcscbody .warnbox { margin: 8px 0; padding: 8px 10px; border-radius: 6px; border: 1px solid rgba(242,192,55,.5); background: rgba(242,192,55,.08); }
 #usedlg { max-width: 34rem; } .usediff { border-collapse: collapse; margin: 8px 0; width: 100%; }
 .usediff th { text-align: left; font-size: 11px; color: var(--muted); font-weight: 500; padding: 2px 8px 2px 0; }
 .usediff td { padding: 3px 8px 3px 0; font-family: "Roboto Mono", monospace; font-size: 12.5px; }
@@ -490,6 +498,9 @@ design before saving. The search links only open the distributors' sites; kigit 
     and trackers. For a spreadsheet.</small></button>
 </div>
 <div id="toasts" aria-live="polite"></div>
+<dialog id="lcscdlg"><div id="lcscbody"></div>
+  <div class="row"><a href="https://github.com/yaqwsx/jlcparts" target="_blank" rel="noopener" class="sub" style="margin-right:auto">jlcparts on GitHub &#8599;</a>
+    <button id="lcscrefresh"><i class="material-icons">refresh</i>Refresh now</button><button id="lcscclose" class="primary">Close</button></div></dialog>
 <dialog id="usedlg"><div id="usebody"></div>
   <div class="row"><button id="useno">Cancel</button><button id="useok" class="primary">Use it</button></div></dialog>
 <dialog id="keydlg">
@@ -576,6 +587,7 @@ const GO = {
   inventory: async () => { await refreshStock(); invDialog(); },
   lookup: () => { $("lookstate").scrollIntoView({ block: "nearest" }); $("lookstate").animate([{ background: "rgba(248,81,73,.35)" }, { background: "transparent" }], 1500); },
   assemble: () => setView("assemble"),
+  lcsc: () => lcscHelp(),
   build: () => $("build").focus(),
 };
 const goTo = (go) => { const f = GO[String(go || "").replace(/^bom:/, "")]; if (f) { $("nmenu").classList.remove("on"); f(); } };
@@ -862,10 +874,14 @@ function tableCols() {
         td: (l, i) => trackCell(l, i, name) };
     }),
     ...lookSites().flatMap((site) => [
-      { id: "site:" + site, label: siteName(site), filter: "site", site, th: `<th title="${esc(siteName(site))}: the part, its stock and lifecycle">${esc(siteName(site))}</th>`,
+      { id: "site:" + site, label: siteName(site), filter: "site", site, th: site === "lcsc"
+          ? `<th title="LCSC: the part and JLCPCB's stock, from jlcparts' daily data (no key needed)">LCSC <button class="qhelp" data-lcschelp ` +
+            `title="LCSC data comes from jlcparts, downloaded once a day: no key needed. Click for details.">?</button></th>`
+          : `<th title="${esc(siteName(site))}: the part, its stock and lifecycle">${esc(siteName(site))}</th>`,
         td: (l, i) => `<td class="stock">${stockCell(l, i, site)}</td>` },
       { id: "price:" + site, label: `${siteName(site)} price`,
-        th: `<th title="What the parts cost at ${esc(siteName(site))} for ${LOOK.summary.boards} board${LOOK.summary.boards === 1 ? "" : "s"}">Price</th>`,
+        th: site === "lcsc" ? `<th title="JLCPCB's price (USD) for ${LOOK.summary.boards} board${LOOK.summary.boards === 1 ? "" : "s"}: close to LCSC's shop, not the same">Price</th>`
+          : `<th title="What the parts cost at ${esc(siteName(site))} for ${LOOK.summary.boards} board${LOOK.summary.boards === 1 ? "" : "s"}">Price</th>`,
         td: (l) => `<td class="stock">${priceCell(l, site)}</td>` }]),
     { id: "search", label: "Search links", th: `<th>Search</th>`, td: (l) => `<td class="links">${links(l)}</td>` },
   ];
@@ -1059,9 +1075,11 @@ let LOOK = null;
 const opened = new Set();  // "line|site" whose choices are shown
 function setLook(r) {
   LOOK = r && r.lines ? { ...r, byKey: new Map(r.lines.map((x) => [x.key, x])) } : null;
-  // A site that stopped (refused key, daily limit, no network): "!" on Look up.
+  // A site that stopped (refused key, daily limit, no network): "!" on Look up; old LCSC data: an amber one.
   const bad = Object.entries((r && r.sites) || {}).filter(([, i]) => i.error);
-  attn("lookup", bad.length ? "!" : 0, bad.map(([s, i]) => `${i.name || s}: ${i.error}`).join("\n"));
+  const stale = r?.sites?.lcsc?.notice;
+  attn("lookup", bad.length || stale ? "!" : 0, [...bad.map(([s, i]) => `${i.name || s}: ${i.error}`), stale].filter(Boolean).join("\n"),
+    bad.length ? "" : "warn");
 }
 const lookSites = () => LOOK ? Object.keys(LOOK.sites) : [];
 const siteName = (site) => LOOK?.sites?.[site]?.name || site;
@@ -1161,6 +1179,51 @@ $("rows").addEventListener("click", async (e) => {
     opened.delete(`${i}|${site}`); render();
   } catch (err) { problem("Not saved: " + err.message); }
 });
+// LCSC's "?": how LCSC lookups work with no key, where the files are, how old.
+async function lcscHelp() {
+  let info = {};
+  try { info = await (await fetch(`/bom/${KEY}/lcsc`)).json(); } catch {}
+  const mb = (b) => b >= 1048576 ? `${(b / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(b / 1024))} KB`;
+  const old = info.have && info.age > 86400, notice = LOOK?.sites?.lcsc?.notice;
+  $("lcscbody").innerHTML = `<b>LCSC lookups: how they work</b>` +
+    `<p class="sub">No key needed. kigit uses <b>jlcparts</b>, a free daily copy of JLCPCB's parts catalogue ` +
+    `(stocked from LCSC's warehouse), and searches it on this computer.</p>` +
+    (!info.have ? `<div class="warnbox"><i class="material-icons" style="color:var(--warn);font-size:16px;vertical-align:-3px">warning</i> ` +
+        `Not downloaded yet: it's downloaded on your next Look up (about 10 MB), or now with <b>Refresh now</b>.</div>`
+      : old || notice ? `<div class="warnbox"><i class="material-icons" style="color:var(--warn);font-size:16px;vertical-align:-3px">warning</i> ` +
+        `${esc(notice || `The data is from ${info.ago}.`)} Stock may have changed since: <b>Refresh now</b> when you're online.</div>` : "") +
+    `<ul><li><b>Downloaded:</b> ${info.have ? esc(info.ago) : "not yet"}</li>` +
+    `<li><b>Stored in</b> (${mb(info.bytes || 0)}${info.shards ? `, ${info.shards} part files` : ""}):` +
+    `<div class="path"><code>${esc(info.dir || "")}</code><button data-lcsccopy><i class="material-icons">content_copy</i>Copy</button>` +
+    `<button data-lcscopen><i class="material-icons">folder_open</i>Open</button></div></li>` +
+    `<li><b>Refreshed</b> once a day, on your first Look up. Nothing runs in the background.</li>` +
+    `<li><b>Stock and prices are JLCPCB's</b> (USD): close to LCSC's shop, not the same. Some LCSC parts aren't in it.</li>` +
+    `<li><b>Offline</b>, the last download is used. Deleting the folder is safe: it's downloaded again next time.</li></ul>`;
+  $("lcscbody").dataset.dir = info.dir || "";
+  if (!$("lcscdlg").open) $("lcscdlg").showModal();
+}
+$("lcscclose").addEventListener("click", () => $("lcscdlg").close());
+$("lcscrefresh").addEventListener("click", async () => {
+  const b = $("lcscrefresh");
+  b.disabled = true; b.innerHTML = `<i class="material-icons">hourglass_top</i>Downloading&hellip;`;
+  try { await post("lcsc", { action: "refresh" }); } catch (e) { problem(e.message, "lcsc"); }
+  b.disabled = false; b.innerHTML = `<i class="material-icons">refresh</i>Refresh now`;
+  lcscHelp();
+});
+$("lcscbody").addEventListener("click", async (e) => {
+  if (e.target.closest("[data-lcsccopy]")) {
+    try { await navigator.clipboard.writeText($("lcscbody").dataset.dir); e.target.closest("button").innerHTML = `<i class="material-icons">check</i>Copied`; }
+    catch { problem("Couldn't copy: select the path and copy it yourself."); }
+  }
+  if (e.target.closest("[data-lcscopen]")) {
+    try { await post("lcsc", { action: "open" }); } catch (err) { problem(err.message, "lcsc"); }
+  }
+});
+// The "?" in LCSC's column header (before the header's own clicks: sort, filter, rename).
+document.addEventListener("click", (e) => {
+  if (!e.target.closest("[data-lcschelp]")) return;
+  e.stopPropagation(); e.preventDefault(); lcscHelp();
+}, true);
 // Use would replace a part number: say exactly what changes, from -> to, and ask.
 function confirmUse(l, o, changes, stale) {
   return new Promise((done) => {

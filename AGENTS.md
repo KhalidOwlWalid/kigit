@@ -162,8 +162,8 @@ ctest --test-dir build -L gui     # GUI (needs uv)
 
 - C++20, CMake 3.16+ (tested up to 4.x).
 - Libraries are git submodules in `submodules/`, each pinned to a release
-  tag: `json` (nlohmann_json v3.11.3), `spdlog` (v1.14.1), `doctest`
-  (v2.4.11, tests only). They're built in with `add_subdirectory`; nothing is
+  tag: `json` (nlohmann_json v3.11.3), `spdlog` (v1.14.1), `miniz` (3.0.2,
+  gzip), `doctest` (v2.4.11, tests only). They're built in with `add_subdirectory`; nothing is
   taken from the system or downloaded at configure time. CMake stops with a
   hint if one is missing. They're shallow (`shallow = true` in
   `.gitmodules`). To update one:
@@ -337,6 +337,26 @@ at once. localStorage settings are per origin, so per port.
   from -> to table (`#usedlg`) with "also clear" for the stale numbers. Login in the keyring (see
   above), site and currency in `parts-keys.json` {"digikey": {site, currency}};
   `--set-key digikey` reads ID, secret, optional "SITE CURRENCY" lines.
+  LCSC (`parts/jlcparts`, no key; `KIGIT_LCSC=off` turns it off, the
+  tests and GUI tests do): jlcparts' GitHub Pages files
+  (`Jlcparts::kBase`): `search-index.tsv.gz` (LCSC number, shard name,
+  lower-case text "c98220 <mpn> <description>"; ~10 MB, 477k parts) is
+  downloaded when older than a day into `<app data>/kigit/parts-lcsc/`
+  (+ meta.json), shards (`<shard>.jsonl.gz`: a schema line, then rows;
+  `parse_jlcparts_shard`) into `shards/` when a part in them is asked for.
+  Request header `User-Agent: kigit` only. Search is local: LCSC number
+  or norm_pn(MPN) exact; words: each a whole word or its start, not
+  followed by a digit or "." (`has_word`), Ω dropped, "ohm" ignored, at
+  most 60 hits read in full. Offline: an old index is used and `notice()`
+  says how old (lookup JSON `sites.lcsc.notice` + `data` = `info()`; the
+  GUI makes it a warning and an amber "!" on Look up); a missing shard
+  gives the part without price/stock (`note`); no index at all is
+  `fatal`. Prices are JLCPCB's (USD, from its Open API via jlcparts).
+  `utils/gzip` (`gunzip`, miniz's raw inflate; the gzip CRC isn't
+  checked). CLI `--lcsc-info` / `--lcsc-refresh`; GUI GET/POST
+  `/bom/{key}/lcsc` {refresh|open} and the column header's `?`
+  (`lcscHelp`, `#lcscdlg`, GO "lcsc"). miniz is a submodule (MIT; in
+  THIRD_PARTY_NOTICES.md).
   Pace 600 ms (about 120 a minute). Checked against the real token
   endpoint (a fake ID gets "client_id form parameter has incorrect
   value"); not yet against a real reply.

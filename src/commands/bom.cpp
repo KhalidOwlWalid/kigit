@@ -8,6 +8,7 @@
 #include "git/locate.hpp"
 #include "net/http.hpp"
 #include "parts/digikey.hpp"
+#include "parts/jlcparts.hpp"
 #include "parts/lookup.hpp"
 #include "parts/mouser.hpp"
 #include "parts/store.hpp"
@@ -231,14 +232,15 @@ const char* kHelp =
     "  --force                write even if KiCad has the schematic open\n"
     "  --restore DIR          put back the files from a .kigit/bom-backup/ folder\n"
     "\n"
-    "  Looking parts up at Mouser and Digi-Key (free keys from each; see the docs):\n"
+    "  Looking parts up at Mouser and Digi-Key (free keys from each; see the docs),\n"
+    "  and LCSC (no key: jlcparts' daily copy of JLCPCB's catalogue, downloaded):\n"
     "  --lookup               stock, prices and lifecycle for each line. Lines with a\n"
     "                         part number get that part; lines without one get choices;\n"
     "                         parts short or ending get Digi-Key's suggested substitutes.\n"
     "                         Answers are kept a day (in kigit's app folder).\n"
     "  --boards N             how many boards to price for (default 1)\n"
-    "  --site LIST            sites to ask, comma separated: mouser, digikey\n"
-    "                         (default: every site with a key)\n"
+    "  --site LIST            sites to ask, comma separated: mouser, digikey, lcsc\n"
+    "                         (default: every site with a key, and lcsc)\n"
     "  --refresh              ask again even for answers kept from earlier\n"
     "  --set-key SITE         save a site's key, read from stdin (empty removes it):\n"
     "                         mouser: the API key; digikey: the client ID, then the\n"
@@ -246,6 +248,8 @@ const char* kHelp =
     "                         one per line. $KIGIT_MOUSER_API_KEY, $KIGIT_DIGIKEY_CLIENT_ID\n"
     "                         and _CLIENT_SECRET override the saved ones\n"
     "  --keys                 which sites have a key, as JSON (never the keys)\n"
+    "  --lcsc-info            where the LCSC data is kept, how old, how big (JSON)\n"
+    "  --lcsc-refresh         download the LCSC data now\n"
     "\n"
     "  Part numbers are read from the usual field names: MPN, Manufacturer,\n"
     "  DigiKey, Mouser, LCSC (and spellings like \"LCSC Part #\").\n";
@@ -253,8 +257,9 @@ const char* kHelp =
 // `--set-key SITE`: the key from stdin (a line), into the app folder.
 int set_key(const std::string& site) {
     const auto& known = parts::known_sites();
+    if (site == "lcsc") throw std::runtime_error("LCSC needs no key: kigit uses jlcparts' data");
     if (std::find(known.begin(), known.end(), site) == known.end())
-        throw std::runtime_error("kigit has no lookups for " + site + " (it knows: mouser, digikey)");
+        throw std::runtime_error("kigit has no lookups for " + site + " (it knows: mouser, digikey, lcsc)");
     auto line = [] {
         std::string s;
         std::getline(std::cin, s);
@@ -304,6 +309,7 @@ nlohmann::json run_lookup(const Bom& bom, const std::string& sites_arg, int boar
     if (const char* e = std::getenv("KIGIT_LOOKUP_PACE_MS"); e && *e) pace = std::atoi(e);
     std::unique_ptr<parts::Mouser> mouser;
     std::unique_ptr<parts::DigiKey> digikey;
+    std::unique_ptr<parts::Jlcparts> lcsc;
     std::map<std::string, parts::Source*> sources;
     std::map<std::string, std::string> problems;
     if (parts::has_key("mouser")) {
@@ -320,12 +326,23 @@ nlohmann::json run_lookup(const Bom& bom, const std::string& sites_arg, int boar
         problems["digikey"] = "no Digi-Key key: make an app on developer.digikey.com (Production, Product Information v4), "
                               "then save its client ID and secret with `kigit bom --set-key digikey` (two lines on stdin)";
     }
+    if (parts::has_key("lcsc")) {
+        lcsc = std::make_unique<parts::Jlcparts>(parts::Jlcparts::default_dir(), net::curl_http);
+        sources["lcsc"] = lcsc.get();
+    } else {
+        problems["lcsc"] = "LCSC lookups are off (KIGIT_LCSC=off)";
+    }
     parts::Cache cache(parts::Cache::default_file());
     auto progress = [](int done, int total, const std::string& what) {
         if (done < total) std::cerr << "kigit: looking up " << (done + 1) << "/" << total << " " << what << "\n";
     };
     nlohmann::json j = parts::lookup(bom, opt, sources, problems, cache, progress);
     cache.save();
+    if (lcsc && j["sites"].contains("lcsc")) { // where its data came from, and how old it is
+        j["sites"]["lcsc"]["notice"] = lcsc->notice();
+        j["sites"]["lcsc"]["data"] = parts::Jlcparts::info(parts::Jlcparts::default_dir());
+        if (!lcsc->notice().empty()) warn(lcsc->notice());
+    }
     for (const auto& [site, info] : j["sites"].items())
         if (!info["error"].get<std::string>().empty()) warn(site + ": " + info["error"].get<std::string>());
     return j;
@@ -355,7 +372,7 @@ fs::path root_schematic(const fs::path& path) {
 
 int run_bom(int argc, char** argv) {
     std::string rev_arg, path_arg, project_arg, out_file, format = "table", write_arg, restore_arg;
-    bool force = false, lookup = false, refresh = false, keys = false;
+    bool force = false, lookup = false, refresh = false, keys = false, lcsc_info = false, lcsc_refresh = false;
     int boards = 1;
     std::string sites_arg, set_key_arg;
     for (int i = 0; i < argc; ++i) {
@@ -370,6 +387,8 @@ int run_bom(int argc, char** argv) {
         else if (a == "--force") force = true;
         else if (a == "--lookup") lookup = true;
         else if (a == "--keys") keys = true;
+        else if (a == "--lcsc-info") lcsc_info = true;
+        else if (a == "--lcsc-refresh") lcsc_refresh = true;
         else if (a == "--refresh") refresh = true;
         else if (a == "--site" && i + 1 < argc) sites_arg = argv[++i];
         else if (a == "--set-key" && i + 1 < argc) set_key_arg = argv[++i];
@@ -402,6 +421,16 @@ int run_bom(int argc, char** argv) {
 
     if (!restore_arg.empty()) return restore(restore_arg);
     if (!set_key_arg.empty()) return set_key(set_key_arg);
+    if (lcsc_refresh) {
+        parts::Jlcparts src(parts::Jlcparts::default_dir(), net::curl_http);
+        std::string why;
+        if (!src.refresh(why)) throw std::runtime_error("couldn't download the LCSC data: " + why);
+        lcsc_info = true;
+    }
+    if (lcsc_info) {
+        std::cout << parts::Jlcparts::info(parts::Jlcparts::default_dir()).dump() << "\n";
+        return 0;
+    }
     if (keys) {
         nlohmann::json j = nlohmann::json::object();
         for (const auto& site : parts::known_sites()) {

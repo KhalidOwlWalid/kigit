@@ -14,13 +14,14 @@
 namespace kigit::parts {
 
 const std::vector<std::string>& known_sites() {
-    static const std::vector<std::string> sites = {"mouser", "digikey"};
+    static const std::vector<std::string> sites = {"mouser", "digikey", "lcsc"};
     return sites;
 }
 
 std::string site_name(const std::string& site) {
     if (site == "mouser") return "Mouser";
     if (site == "digikey") return "Digi-Key";
+    if (site == "lcsc") return "LCSC";
     return site;
 }
 

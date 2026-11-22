@@ -6,6 +6,8 @@ software, each under its own license, reproduced here as those licenses require.
 The GUI's Python packages (NiceGUI, pywebview, markdown2, latex2mathml and their dependencies) aren't part of the
 downloads: uv installs them on your computer the first time you run `kigit gui`. The 3D view uses the copy of three.js (MIT) that comes with NiceGUI, and KiCad's own `kicad-cli` if it's installed.
 
+LCSC lookups download parts data published by [jlcparts](https://github.com/yaqwsx/jlcparts) (MIT) from JLCPCB's catalogue, on your computer, when you look parts up; no parts data is part of the downloads.
+
 ## nlohmann/json
 
 https://github.com/nlohmann/json  
@@ -97,6 +99,36 @@ As an exception, if, as a result of your compiling your source code, portions
 of this Software are embedded into a machine-executable object form of such
 source code, you may redistribute such embedded portions in such object form
 without including the above copyright and permission notices.
+```
+
+## miniz
+
+https://github.com/richgel999/miniz  
+Compiled into `kigit` (reads the gzip files of the LCSC parts data). MIT License.
+
+```text
+Copyright 2013-2014 RAD Game Tools and Valve Software
+Copyright 2010-2014 Rich Geldreich and Tenacious Software LLC
+
+All Rights Reserved.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
 ```
 
 ## uv

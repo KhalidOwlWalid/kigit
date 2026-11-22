@@ -6,6 +6,7 @@ All notable changes to kigit, newest first. The format follows [Keep a Changelog
 
 ### Added
 
+- **LCSC in Look up, with no key**: Look up now also searches LCSC, through [jlcparts](https://github.com/yaqwsx/jlcparts)' free daily copy of JLCPCB's catalogue: by LCSC number, MPN or words, with JLCPCB's stock and prices (USD). The index (about 10 MB) is downloaded once a day and searched on your computer; offline, the last download is used and Look up says how old it is. **?** in the LCSC column says how it works and where the files are (**Copy**, **Open**, **Refresh now**). Look up now works with no keys at all. `kigit bom --lcsc-info`, `--lcsc-refresh`.
 - **Digi-Key carts**: **Import cart ▾** → **Digi-Key cart…** reads Digi-Key's cart CSV (its own "...-ND" numbers, MPNs, Customer Reference), matched like the others, and shows what's **on backorder** at Digi-Key. **Export CSV ▾** → **Digi-Key BOM Manager** writes the references into Customer Reference, so they come back with the cart. The Ordered column filters by the Digi-Key cart too.
 
 ### Fixed

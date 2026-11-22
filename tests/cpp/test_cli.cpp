@@ -148,6 +148,7 @@ TEST_CASE("kigit bom --lookup: Mouser through curl, the key on stdin only, answe
     kigit::platform::set_env("KIGIT_MOUSER_API_KEY", "");
     kigit::platform::set_env("KIGIT_LOG_DIR", ""); // else the keys go in the folder above it
     kigit::platform::set_env("KIGIT_KEYRING", "off");  // the file (the keyring's test is below)
+    kigit::platform::set_env("KIGIT_LCSC", "off");     // no downloads from jlcparts in tests
 
     // No key yet: every line skipped, and why.
     RunResult none = run_kigit("bom --no-log --lookup --json -C " + board);
@@ -205,7 +206,7 @@ TEST_CASE("kigit bom --lookup: Mouser through curl, the key on stdin only, answe
     REQUIRE(run("printf '\\n' | " + quote(KIGIT_BIN) + " bom --no-log --set-key digikey").code == 0);    // removed
     CHECK(parse(run_kigit("bom --no-log --keys"))["digikey"]["set"] == false);
     CHECK(json::parse(read_text(keys))["mouser"] == "MY-KEY"); // the other key stays
-    for (const char* v : {"KIGIT_CURL", "XDG_STATE_HOME", "KIGIT_LOOKUP_PACE_MS", "KIGIT_KEYRING"}) kigit::platform::set_env(v, "");
+    for (const char* v : {"KIGIT_CURL", "XDG_STATE_HOME", "KIGIT_LOOKUP_PACE_MS", "KIGIT_KEYRING", "KIGIT_LCSC"}) kigit::platform::set_env(v, "");
 }
 
 TEST_CASE("kigit bom --set-key: keys go into the keyring (secret on stdin), and move there from the file") {

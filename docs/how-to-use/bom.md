@@ -44,7 +44,15 @@ The links only open the sites in your browser. A part number you've typed in (no
 
 ## Stock and prices
 
-**Look up** on the BOM page (or `kigit bom --lookup`) asks **Mouser** and **Digi-Key** about each line: stock, price for the quantity you need, lead time and lifecycle (obsolete, end of life...), and for a part that's short or ending, what Digi-Key suggests instead. It asks every site you have a key for. It's the only time kigit contacts a parts site, and only when you press it.
+**Look up** on the BOM page (or `kigit bom --lookup`) asks **Mouser** and **Digi-Key** about each line: stock, price for the quantity you need, lead time and lifecycle (obsolete, end of life...), and for a part that's short or ending, what Digi-Key suggests instead. It asks every site you have a key for, and **LCSC**, which needs no key (below). It's the only time kigit contacts a parts site, and only when you press it.
+
+### LCSC, with no key
+
+LCSC has no public API, so kigit uses **[jlcparts](https://github.com/yaqwsx/jlcparts)**: a free copy of JLCPCB's parts catalogue (about 477,000 parts, stocked from LCSC's warehouse), rebuilt every night. Look up downloads its search index (about 10 MB) once a day, on your first Look up, and the details (price breaks, stock) of the parts it finds; then it searches it all **on your computer**: by LCSC number (`C98220`), by MPN, or by words like any other site. Click **?** in the LCSC column's header for when it was downloaded, where it's kept (with **Copy** and **Open**), and **Refresh now**.
+
+- **Stock and prices are JLCPCB's** (in USD): close to LCSC's shop, not the same. Some LCSC parts aren't in JLCPCB's catalogue.
+- **Offline**, the last download is used, and Look up says how old it is (an amber **!**); a part whose details were never downloaded is still found, without price or stock. With no download at all, LCSC is skipped and Look up says why.
+- It's kept in `parts-lcsc/` in the [app folder](../app-folder.md); deleting it is safe (it's downloaded again next time). `kigit bom --lcsc-info` shows where and how old; `--lcsc-refresh` downloads it now; `KIGIT_LCSC=off` turns LCSC lookups off.
 
 ### Keys
 

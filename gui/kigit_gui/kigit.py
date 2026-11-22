@@ -268,6 +268,13 @@ async def bom_restore(backup: str) -> dict:
     return json.loads(out)
 
 
+async def bom_lcsc_info(refresh: bool = False) -> dict:
+    """kigit bom --lcsc-info (or --lcsc-refresh, which downloads first): where
+    the LCSC data (jlcparts) is kept, when it was downloaded, its size."""
+    out, _ = await _run("bom", "--lcsc-refresh" if refresh else "--lcsc-info")
+    return json.loads(out)
+
+
 async def bom_keys() -> dict:
     """kigit bom --keys: {site: {set, env}} (never the keys themselves)."""
     out, _ = await _run("bom", "--keys")

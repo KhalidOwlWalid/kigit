@@ -522,3 +522,20 @@ def test_use_asks_before_replacing_part_numbers() -> None:
     assert "function confirmUse(l, o, changes, stale)" in page and 'id="usedlg"' in page
     assert "[col(site), o.sku]" in page and 'id="useclear"' in page
     assert "if (replacing || stale.length)" in page
+
+
+def test_lcsc_help_in_its_column() -> None:
+    """LCSC's column header has a "?" that opens how LCSC lookups work and
+    where the files are (Copy, Open, Refresh now)."""
+    page = _page()
+    assert "data-lcschelp" in page and "async function lcscHelp()" in page and 'id="lcscdlg"' in page
+    assert "data-lcsccopy" in page and "data-lcscopen" in page and 'id="lcscrefresh"' in page
+    assert 'lcsc: () => lcscHelp()' in page  # a notice's Show goes there
+
+
+def test_lcsc_info_through_kigit() -> None:
+    """kigit bom --lcsc-info: the folder in kigit's app folder (the tests' temp one), nothing downloaded."""
+    from kigit_gui import kigit
+    info = asyncio.run(kigit.bom_lcsc_info())
+    assert info["dir"].endswith("parts-lcsc") and info["have"] is False and info["bytes"] == 0
+    assert os.environ["KIGIT_LOG_DIR"].rsplit("/log", 1)[0] in info["dir"].replace("\\", "/")

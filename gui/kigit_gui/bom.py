@@ -1132,6 +1132,52 @@ async def _keys_answer() -> dict:
     return answer
 
 
+@app.get("/bom/{key}/lcsc")
+async def _lcsc(key: str) -> Response:
+    """Where the LCSC data (jlcparts) is kept, how old, how big: for the "?" popup."""
+    if _job(key) is None:
+        return _err("gone", 404)
+    try:
+        return JSONResponse(await kigit.bom_lcsc_info())
+    except kigit.KigitError as e:
+        return _err(str(e), 500, go="bom:lcsc")
+
+
+@app.post("/bom/{key}/lcsc")
+async def _lcsc_action(key: str, request: Request) -> Response:
+    """{action: refresh} downloads the LCSC data now; {action: open} opens its folder."""
+    if _job(key) is None:
+        return _err("gone", 404)
+    action = str((await request.json()).get("action", ""))
+    try:
+        if action == "refresh":
+            info = await kigit.bom_lcsc_info(refresh=True)
+            _done("LCSC data downloaded", info.get("dir", ""))
+            return JSONResponse(info)
+        if action == "open":
+            info = await kigit.bom_lcsc_info()
+            folder = Path(info["dir"])
+            folder.mkdir(parents=True, exist_ok=True)
+            _open_folder(folder)
+            return JSONResponse(info)
+    except kigit.KigitError as e:
+        return _err(f"couldn't download the LCSC data: {e}" if action == "refresh" else str(e), 502, go="bom:lcsc")
+    except OSError as e:
+        return _err(f"couldn't open the folder: {e}", 500, go="bom:lcsc")
+    return _err(f"unknown action {action}", 400)
+
+
+def _open_folder(folder: Path) -> None:
+    """Shows a folder in the system's file manager."""
+    import subprocess
+    import sys
+    if sys.platform.startswith("win"):
+        os.startfile(folder)  # type: ignore[attr-defined]  # noqa: S606
+    else:
+        subprocess.Popen(["open" if sys.platform == "darwin" else "xdg-open", str(folder)],  # noqa: S603
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
 @app.get("/bom/{key}/keys")
 async def _keys(key: str) -> Response:
     if _job(key) is None:
@@ -1200,6 +1246,10 @@ async def run_lookup(job: Job, boards: int, refresh: bool) -> None:
             if info.get("error"):
                 logs.log.warning("bom lookup: %s: %s", site, info["error"])
                 notices.add("warning", f"BOM: Look up at {info.get('name', site)} stopped", info["error"], go="bom:lookup")
+        notice = look.result.get("sites", {}).get("lcsc", {}).get("notice")
+        if notice:  # worked from an old download (offline)
+            logs.log.warning("bom lookup: %s", notice)
+            notices.add("warning", "BOM: LCSC data is old", notice, go="bom:lcsc")
         names = [i.get("name", s) for s, i in look.result.get("sites", {}).items() if not i.get("error")]
         if names:
             _done(f"Look up done at {' and '.join(names)}", f"{look.total} lines, {boards} board(s)")

@@ -10,3 +10,7 @@
 	path = submodules/doctest
 	url = https://github.com/doctest/doctest.git
 	shallow = true
+[submodule "submodules/miniz"]
+	path = submodules/miniz
+	url = https://github.com/richgel999/miniz.git
+	shallow = true
