@@ -268,7 +268,7 @@ def test_export_for_lcsc_and_mouser() -> None:
     assert "if (!mouser && !mpn) { left.push(l); continue; }" in page
     # Which lines: all, the ones shown (filters), or not yet in a tracker; every format uses it.
     assert 'id="xrule"' in page and '["shown", "Only the lines shown' in page and "`not:${t}`" in page
-    assert page.count("for (const l of ruleLines()) {") == 3
+    assert page.count("for (const l of ruleLines()) {") == 4  # LCSC, Mouser, Digi-Key, all
     assert '"kigit.bomExportRule"' in page
 
 

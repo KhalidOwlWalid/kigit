@@ -73,6 +73,21 @@ std::string package_of(const std::string& footprint) {
     return name;
 }
 
+// A capacitance or inductance as distributors search for it: "1n8" / "1n8F"
+// -> "1.8nF", "4u7" -> "4.7uF", "2p2" -> "2.2pF", "100n" -> "100nF",
+// "4n7H" -> "4.7nH" (unit F or H). Anything else as it is.
+std::string farads_or_henries(const std::string& value, const std::string& unit) {
+    std::string v = value;
+    for (const char* micro : {"\xC2\xB5", "\xCE\xBC"}) // µ and μ
+        for (size_t at; (at = v.find(micro)) != std::string::npos;) v.replace(at, 2, "u");
+    static const std::regex rkm(R"(^(\d+)([pnum])(\d+)\s*([FfHh])?$)");
+    static const std::regex plain(R"(^(\d+(?:\.\d+)?)\s*([pnum])\s*([FfHh])?$)");
+    std::smatch m;
+    if (std::regex_match(v, m, rkm)) return m[1].str() + "." + m[3].str() + m[2].str() + unit;
+    if (std::regex_match(v, m, plain)) return m[1].str() + m[2].str() + unit;
+    return value;
+}
+
 // A resistance as distributors search for it: "10kR" -> "10k", "5k1" ->
 // "5.1k", "4R7" -> "4.7 ohm", "27R" -> "27 ohm". Anything else as it is.
 std::string ohms(const std::string& value) {
@@ -185,7 +200,10 @@ std::pair<std::string, std::string> query_of(const BomLine& l) {
                                                             {"led", "LED"}, {"crystal", "crystal"}};
     auto w = word.find(l.kind);
     if (w != word.end()) {
-        std::string q = l.kind == "resistor" || l.kind == "ferrite" ? ohms(l.value) : l.value;
+        std::string q = l.kind == "resistor" || l.kind == "ferrite" ? ohms(l.value)
+                        : l.kind == "capacitor" ? farads_or_henries(l.value, "F")
+                        : l.kind == "inductor"  ? farads_or_henries(l.value, "H")
+                                                : l.value;
         static const std::regex khz(R"(^(\d+)[kK](\d+)$)"); // 32k768 -> 32.768kHz
         if (l.kind == "crystal") q = std::regex_replace(q, khz, "$1.$2kHz");
         if (!l.package.empty() && l.package != l.footprint && l.kind != "crystal") q += " " + l.package;

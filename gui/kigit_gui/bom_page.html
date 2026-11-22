@@ -473,6 +473,7 @@ design before saving. The search links only open the distributors' sites; kigit 
     <select id="cbuild" aria-label="Build for the cart" style="display:block;width:100%;margin-top:4px"></select></div>
   <button data-cart="mouser" role="menuitem"><b>Mouser cart&hellip;</b><small>Cart &rarr; Export (the .xls), or .xlsx / .csv</small></button>
   <button data-cart="lcsc" role="menuitem"><b>LCSC cart&hellip;</b><small>Cart &rarr; Export (the .csv), or .xlsx</small></button>
+  <button data-cart="digikey" role="menuitem"><b>Digi-Key cart&hellip;</b><small>Cart &rarr; Download (the .csv), or .xlsx</small></button>
   <button data-cart="show" role="menuitem" id="cartshow"><b>Carts and unmatched rows&hellip;</b><small>What was imported; give rows kigit couldn't match to a line</small></button>
 </div>
 <dialog id="invdlg"><div id="invbody"></div><div class="row"><button id="invclose" class="primary">Done</button></div></dialog>
@@ -483,8 +484,10 @@ design before saving. The search links only open the distributors' sites; kigit 
     For lcsc.com/bom.</small></button>
   <button data-export="mouser" role="menuitem"><b>Mouser</b> BOM tool<small>Mouser Part Number, Manufacturer Part Number, Quantity 1...
     Lines need a Mouser number or an MPN.</small></button>
+  <button data-export="digikey" role="menuitem"><b>Digi-Key</b> BOM Manager<small>Digi-Key Part Number, Manufacturer Part Number,
+    Quantity, Customer Reference... Lines need a Digi-Key number or an MPN.</small></button>
   <button data-export="all" role="menuitem"><b>All columns</b><small>Every part number, references, value, footprint, your fields
-    and trackers. For Digi-Key's BOM Manager or a spreadsheet.</small></button>
+    and trackers. For a spreadsheet.</small></button>
 </div>
 <div id="toasts" aria-live="polite"></div>
 <dialog id="usedlg"><div id="usebody"></div>
@@ -712,7 +715,7 @@ const FILTERS = {
   placed: [["done", "Placed"], ["not", "Not placed yet"], ["some", "Partly placed"]],
   stock: [["enough", "Enough in stock"], ["short", "Not enough in stock"], ["none", "Not in the inventory"]],
   ordered: [["enough", "Enough in the carts"], ["short", "Not enough"], ["none", "Not in a cart"],
-    ["from:mouser", "In the Mouser cart"], ["from:lcsc", "In the LCSC cart"]],
+    ["from:mouser", "In the Mouser cart"], ["from:lcsc", "In the LCSC cart"], ["from:digikey", "In the Digi-Key cart"]],
   site: [["ok", "Found"], ["short", "Short of stock"], ["ending", "Ending (obsolete, last buy...)"], ["choose", "To choose"],
     ["not_found", "Not found"], ["error", "Error or skipped"]],
 };
@@ -1902,7 +1905,7 @@ function placedMarks() {
 // and the board coloured by what's covered.
 let CART = { match: { lines: {}, unmatched: [], carts: {} } };
 const hasCarts = () => Object.keys(CART.match.carts || {}).length > 0;
-const SITE_NAME = { mouser: "Mouser", lcsc: "LCSC" };
+const SITE_NAME = { mouser: "Mouser", lcsc: "LCSC", digikey: "Digi-Key" };
 // What the carts have for a line: per site, the total, and whether it covers
 // the line's quantity for Build qty boards.
 function orderedOf(l) {
@@ -1928,10 +1931,14 @@ function orderedCell(l) {
   const o = orderedOf(l);
   if (!o.total) return `<td class="ordered"><span class="faint" title="In none of the imported carts">not in a cart</span></td>`;
   const per = Math.min(l.refs.length, Math.floor(o.total / buildQty()));
-  const how = o.rows.map((r) => `${SITE_NAME[r.site]} ${r.sku || r.mpn}: ${r.qty} (by ${r.by})`).join("\n");
+  const how = o.rows.map((r) => `${SITE_NAME[r.site]} ${r.sku || r.mpn}: ${r.qty} (by ${r.by})` +
+    (r.backorder ? `, ${r.backorder} on backorder` : "")).join("\n");
+  // On backorder: ordered, but the site doesn't have them yet.
+  const back = o.rows.reduce((n, r) => n + (r.backorder || 0), 0);
   return `<td class="ordered" title="${esc(how)}${o.enough ? "" : `\n${per} of ${l.refs.length} positions on each of ${buildQty()} board(s)`}">` +
     `<span class="oq ${o.enough ? "ok" : "short"}">${o.total} / ${o.need}</span><br>` +
-    Object.entries(o.qty).map(([s, n]) => `<span class="osite">${SITE_NAME[s]} ${n}</span>`).join("") + `</td>`;
+    Object.entries(o.qty).map(([s, n]) => `<span class="osite">${SITE_NAME[s]} ${n}</span>`).join("") +
+    (back ? `<br><span class="chip warn" title="The site doesn't have these yet: they'll ship when it does">${back} on backorder</span>` : "") + `</td>`;
 }
 // The build's loaded carts, in the toolbar: what's there, and a plain way to remove one.
 function cartChips() {
@@ -2000,7 +2007,7 @@ $("cartbtn").addEventListener("click", (e) => {
   if (!BUILD) $("cbuild").innerHTML = `<option value="">Pick a build&hellip;</option>` +
     BUILDS.map((b) => `<option value="${esc(b.id)}">${esc(b.name)} (${b.boards} board${b.boards === 1 ? "" : "s"})</option>`).join("") +
     `<option value="+">+ New build&hellip;</option>`;
-  m.querySelectorAll("[data-cart='mouser'], [data-cart='lcsc']").forEach((x) => (x.disabled = !BUILD));
+  m.querySelectorAll("[data-cart='mouser'], [data-cart='lcsc'], [data-cart='digikey']").forEach((x) => (x.disabled = !BUILD));
   m.classList.toggle("on"); m.style.top = r.bottom + 4 + "px";
   m.style.left = Math.max(8, Math.min(r.left, innerWidth - m.offsetWidth - 8)) + "px";
 });
@@ -2023,7 +2030,7 @@ $("cbuild").addEventListener("change", async () => {
   else { pickBuild(v); await loadState(); }
   $("cnobuild").hidden = !!BUILD;
   $("cartshow").hidden = !BUILD || !hasCarts();
-  $("cmenu").querySelectorAll("[data-cart='mouser'], [data-cart='lcsc']").forEach((x) => (x.disabled = !BUILD));
+  $("cmenu").querySelectorAll("[data-cart='mouser'], [data-cart='lcsc'], [data-cart='digikey']").forEach((x) => (x.disabled = !BUILD));
   $("cmenu").classList.add("on");
 });
 $("cartfile").addEventListener("change", async () => {
@@ -2200,6 +2207,19 @@ function csvLcsc() {
   return { text: toCsv(out), lines: out.length - 1, left: [] };
 }
 // Mouser's BOM template: a line needs a Mouser number or an MPN.
+// Digi-Key's BOM Manager: the references go in Customer Reference, which
+// comes back in Digi-Key's cart export (the surest match on import).
+function csvDigikey() {
+  const boards = buildQty(), left = [], out = [["Digi-Key Part Number", "Manufacturer Part Number", "Manufacturer",
+    "Quantity", "Customer Reference", "Description"]];
+  for (const l of ruleLines()) {
+    if (l.dnp) continue;
+    const dk = partNo("digikey", l), mpn = partNo("mpn", l);
+    if (!dk && !mpn) { left.push(l); continue; }
+    out.push([dk, mpn, partNo("manufacturer", l), exportQty(l, boards), refsShort(l, 48), describe(l)]);
+  }
+  return { text: toCsv(out), lines: out.length - 1, left };
+}
 function csvMouser() {
   const boards = buildQty(), left = [], out = [["Mouser Part Number", "Manufacturer Part Number", "Manufacturer Name",
     "Customer Part Number", "Description", "Quantity 1"]];
@@ -2222,12 +2242,12 @@ function exportAs(kind) {
   el.className = "";
   const which = exportRule === "all" ? "" : `, ${ruleName()}`;
   if (kind === "all") { download(csv(), `${NAME}-bom.csv`); el.textContent = `Exported every column for ${boards}${which}.`; return; }
-  const r = kind === "lcsc" ? csvLcsc() : csvMouser(), site = kind === "lcsc" ? "LCSC" : "Mouser";
+  const r = kind === "lcsc" ? csvLcsc() : kind === "digikey" ? csvDigikey() : csvMouser(), site = SITE_NAME[kind];
   if (r.lines) download(r.text, `${NAME}-bom-${kind}.csv`);
   if (!r.lines && !r.left.length) { el.className = "err"; el.textContent = `Nothing to export: none of ${ruleName()} is to be bought.`; return; }
   el.textContent = (r.lines ? `Exported ${r.lines} line${r.lines === 1 ? "" : "s"} for ${site}'s BOM tool (${boards}${which}).`
     : `Nothing exported for ${site}.`) +
-    (r.left.length ? ` Left out ${r.left.length} without a Mouser number or MPN: ${r.left.map((l) => l.refs[0] + (l.refs.length > 1 ? "…" : "")).join(", ")}.` : "");
+    (r.left.length ? ` Left out ${r.left.length} without a ${site} number or MPN: ${r.left.map((l) => l.refs[0] + (l.refs.length > 1 ? "…" : "")).join(", ")}.` : "");
   if (r.left.length) el.className = "err";
 }
 $("export").addEventListener("click", (e) => {

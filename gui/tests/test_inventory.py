@@ -48,6 +48,10 @@ def test_finding_parts(tmp_path: Path) -> None:
     assert inv.find({"kind": "other", "value": "DEMO", "package": "SOIC-8"})[0] is None  # only passives by value
     for a, b in (("10kΩ", "10k"), ("10 k ohm", "10k"), ("4R7", "4.7"), ("100R", "100"), ("1uF", "1u"), ("µ1", "u1")):
         assert inventory.norm_value(a) == b
+    # However it's written, the same value: 5.1k = 5k1 = 5k1R = 5.1kR, 1.8nF = 1n8 = 1n8F, 10k = 10kR.
+    for same in (("5.1k", "5k1", "5k1R", "5.1kR", "5K1"), ("1.8nF", "1n8", "1n8F", "1.8n"), ("10k", "10kR", "10K"),
+                 ("4.7uF", "4u7", "4u7F", "4µ7F"), ("100", "100R", "100Ω")):
+        assert len({inventory.norm_value(v) for v in same}) == 1, same
 
 
 def test_changes_touch_only_quantity(tmp_path: Path) -> None:

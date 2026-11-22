@@ -137,6 +137,10 @@ def _carts(data: dict) -> dict:
                 row["qty"] = max(0, int(r.get("qty", 0)))
             except (TypeError, ValueError):
                 row["qty"] = 0
+            try:  # on backorder at the site (Digi-Key says so): ordered, but not coming soon
+                row["backorder"] = min(row["qty"], max(0, int(r.get("backorder", 0))))
+            except (TypeError, ValueError):
+                row["backorder"] = 0
             row["refs"] = [x for x in r.get("refs", []) if isinstance(x, str)] if isinstance(r.get("refs"), list) else []
             if isinstance(r.get("assigned"), list):
                 row["assigned"] = [x for x in r["assigned"] if isinstance(x, str)]
@@ -350,7 +354,7 @@ def match_carts(data: dict, state: dict) -> dict:
     return out
 
 
-SITE_NAMES = {"mouser": "Mouser", "lcsc": "LCSC"}
+SITE_NAMES = {"mouser": "Mouser", "lcsc": "LCSC", "digikey": "Digi-Key"}
 
 # A cart row's description says what kind of part it is ("Thick Film Resistor", "MLCC").
 _KIND_WORDS = {"resistor": ("resistor",), "capacitor": ("capacitor", "mlcc"), "inductor": ("inductor",),
@@ -371,6 +375,7 @@ def si_value(text: str, kind: str = "") -> float | None:
     t = re.sub(r"\s+", "", str(text or "")).replace("Ω", "").replace("ohms", "").replace("ohm", "")
     t = re.sub(r"(?<=[\dpnuµμmkKMGRr])(F|H|Hz)$", "", t)
     t = re.sub(r"(?<=[pnuµμmkKMG])[Rr]$", "", t)                  # 10kR: the R is "ohms"
+    t = re.sub(r"^(\d+[pnuµμmkKMG]\d+)[Rr]$", r"\1", t)              # 5k1R, 2M2R: so is this one
     m = re.fullmatch(r"(\d+)([pnuµμmkKMGRr])(\d+)", t)            # 4k7, 32k768, 4R7
     if m:
         t = f"{m.group(1)}.{m.group(3)}{m.group(2)}"

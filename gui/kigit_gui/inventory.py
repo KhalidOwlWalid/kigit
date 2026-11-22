@@ -77,10 +77,11 @@ def norm_pn(pn: str) -> str:
 
 
 def norm_value(v: str) -> str:
-    """A passive's value, written one way: 10k, 10K, 10kΩ, 10k ohm -> 10k;
-    4k7 -> 4.7k; 100nF -> 100n; 4R7 -> 4.7."""
+    """A passive's value, written one way: 10k, 10K, 10kΩ, 10k ohm, 10kR -> 10k;
+    4k7, 4k7R, 4.7kR -> 4.7k; 100nF -> 100n; 1n8F -> 1.8n; 4R7 -> 4.7."""
     v = re.sub(r"\s+", "", (v or "").lower().replace("µ", "u").replace("μ", "u"))
     v = re.sub(r"(ohms?|ω|Ω)$", "", v)
+    v = re.sub(r"(?<=[0-9kmg])r$", "", v)                 # a trailing R is "ohms": 10kr, 5k1r, 100r
     v = re.sub(r"(?<=[0-9pnumk])[fh]$", "", v)          # 100nf -> 100n, 10uh -> 10u
     m = re.fullmatch(r"(\d+)([rkmgpnu])(\d+)", v)        # 4k7 -> 4.7k, 4r7 -> 4.7
     if m:

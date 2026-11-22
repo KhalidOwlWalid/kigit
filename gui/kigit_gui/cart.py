@@ -1,6 +1,6 @@
-"""Reading a cart exported from Mouser or LCSC into rows of {sku, mpn,
-manufacturer, description, qty, refs}, for the BOM page's Ordered column
-and board view.
+"""Reading a cart exported from Mouser, LCSC or Digi-Key into rows of {sku,
+mpn, manufacturer, description, qty, refs, backorder}, for the BOM page's
+Ordered column and board view.
 
 What the sites give (tests/test_examples/exported_boms_from_distributor):
 - LCSC: a CSV: Index, LCSC#, MPN, Manufacturer, Package, Customer #,
@@ -8,7 +8,11 @@ What the sites give (tests/test_examples/exported_boms_from_distributor):
 - Mouser: an old Excel .xls ("Cart" sheet): a title block, then Mouser No,
   Mfr. No, Manufacturer, Customer No, Description, RoHS, Lifecycle, Order
   Qty., Price (GBP), ... and totals rows after.
-"Customer #" / "Customer No" holds the references when the cart came from
+- Digi-Key: a CSV (UTF-8 with a BOM): Index, Quantity, Part Number (Digi-Key's
+  own, "...-ND"), Manufacturer Part Number, Description, Unit of Measure,
+  Customer Reference, Available, Backorder, Unit Price, Extended Price GBP.
+  The same part may be on two rows.
+"Customer #" / "Customer No" / "Customer Reference" holds the references when the cart came from
 kigit's own export, which is the surest match.
 
 Column names differ between sites and change over time, so columns are
@@ -24,7 +28,7 @@ import re
 import zipfile
 from xml.etree import ElementTree
 
-SITES = {"mouser": "Mouser", "lcsc": "LCSC"}
+SITES = {"mouser": "Mouser", "lcsc": "LCSC", "digikey": "Digi-Key"}
 MAX_BYTES = 5 * 1024 * 1024
 _NS = "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}"
 _REL = "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}"
@@ -137,7 +141,7 @@ def read_table(data: bytes, filename: str) -> list[list[str]]:
 # ------------------------------------------------------------------ carts
 def _role(name: str, site: str) -> str:
     """What a column is: sku (the site's number), mpn, manufacturer,
-    description, qty; "" for anything else."""
+    description, qty, backorder; "" for anything else."""
     k = _key(name)
     if not k:
         return ""
@@ -145,6 +149,11 @@ def _role(name: str, site: str) -> str:
         return "refs"
     if k.startswith(site) or (site == "lcsc" and k in ("productcode", "partcode", "lcscno", "lcsc")):
         return "sku"
+    # Digi-Key's own number is its plain "Part Number" (elsewhere that's the maker's).
+    if site == "digikey" and k in ("partnumber", "dkpartnumber", "dkpn", "dk"):
+        return "sku"
+    if k in ("backorder", "backorderqty", "backorderquantity", "backordered", "qtybackordered"):
+        return "backorder"
     if k in ("mpn",) or k.startswith(("mfrpart", "mfrno", "manufacturerpart", "manufacturepart", "mfgpart")) \
             or k in ("mfr", "mfrnumber", "manufacturerpn", "partnumber", "mfrpn"):
         return "mpn"
@@ -174,7 +183,7 @@ def parse_cart(data: bytes, filename: str, site: str) -> list[dict]:
     Rows without a quantity, or without any part number or references, are
     skipped (titles, totals)."""
     if site not in SITES:
-        raise CartError(f"kigit reads Mouser and LCSC carts, not {site}")
+        raise CartError(f"kigit reads Mouser, LCSC and Digi-Key carts, not {site}")
     rows = read_table(data, filename)
     for h, header in enumerate(rows[:30]):
         roles = [_role(c, site) for c in header]
@@ -196,7 +205,8 @@ def parse_cart(data: bytes, filename: str, site: str) -> list[dict]:
         if qty <= 0 or not (sku or mpn or refs):
             continue
         out.append({"sku": sku, "mpn": mpn, "manufacturer": get("manufacturer"),
-                    "description": get("description")[:200], "qty": qty, "refs": refs})
+                    "description": get("description")[:200], "qty": qty, "refs": refs,
+                    "backorder": min(qty, _number(get("backorder")))})
     if not out:
         raise CartError("the cart has no rows with a part number and a quantity")
     return out

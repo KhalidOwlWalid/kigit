@@ -33,7 +33,7 @@ Part numbers are read from the fields most people use, whatever the spelling: `M
 Each line has **Digi-Key**, **Mouser** and **LCSC** links that open the site's search for:
 
 - the line's own part number at that site, or its MPN;
-- otherwise, for chip resistors, capacitors, inductors, ferrites and LEDs, the value and package: "10k 0603 resistor" (`10kR`, `5k1` and `4R7` are written the way distributors search: `10k`, `5.1k`, `4.7 ohm`);
+- otherwise, for chip resistors, capacitors, inductors, ferrites and LEDs, the value and package: "10k 0603 resistor". Values written with the unit letter as the decimal point are rewritten the way distributors search: `10kR` → `10k`, `5k1R` → `5.1k`, `4R7` → `4.7 ohm`, `1n8F` → `1.8nF`, `4u7` → `4.7uF`, `4n7H` → `4.7nH`;
 - otherwise, for **connectors** (and any part whose value is a label, like `I2C` or `Debug`), the maker's part number in the **footprint's name**: KiCad's libraries put it there, so `JST_SH_BM04B-SRSS-TB_1x04-1MP_P1.00mm_Vertical` searches for `BM04B-SRSS-TB`;
 - otherwise the value, when it's a part name (as it usually is for an IC: `STM32F103C8T6`);
 - otherwise the footprint's own words, like "PinHeader 1x04 P2.54mm Vertical connector".
@@ -201,13 +201,13 @@ Why did you pick that regulator, that crystal, that 0603 over a 0402? **+ Notes*
 
 ## What's ordered: importing carts
 
-Fill your carts at Mouser and LCSC (the CSVs from **Export CSV** upload straight into their BOM tools), then bring each cart back into kigit to see what's ordered.
+Fill your carts at Mouser, LCSC and Digi-Key (the CSVs from **Export CSV** upload straight into their BOM tools), then bring each cart back into kigit to see what's ordered.
 
 ### Importing a cart
 
 1. Pick the [build](#builds) you're buying for.
-2. Export your cart from the site: Mouser gives an **.xls**, LCSC a **.csv** (.xlsx works too).
-3. Click **Import cart ▾** → **Mouser cart…** or **LCSC cart…** and choose the file.
+2. Export your cart from the site: Mouser gives an **.xls**, LCSC and Digi-Key a **.csv** (.xlsx works too).
+3. Click **Import cart ▾** → **Mouser cart…**, **LCSC cart…** or **Digi-Key cart…** and choose the file.
 
 The cart shows as a chip beside **Import cart**, like *LCSC cart · 7 rows*:
 
@@ -248,7 +248,8 @@ What the carts hold for each line against what you need (quantity × the build's
 
 - **Green**: enough. **Red**: not enough.
 - Each site's share is shown, like *Mouser 10 · LCSC 5*.
-- Its **▾** filters: *Enough*, *Not enough*, *Not in a cart*, *In the Mouser cart*, *In the LCSC cart*.
+- **On backorder**: Digi-Key's cart says how many it doesn't have in stock yet, and the line shows *N on backorder*: ordered, but they'll ship when Digi-Key has them.
+- Its **▾** filters: *Enough*, *Not enough*, *Not in a cart*, *In the Mouser cart*, *In the LCSC cart*, *In the Digi-Key cart*.
 
 ### On the board
 
@@ -294,7 +295,8 @@ Trackers belong to the [build](#builds) you've picked: they're kept in its `kigi
 
 - **LCSC BOM tool** (upload it at [lcsc.com/bom](https://www.lcsc.com/bom)): LCSC's template columns: Quantity, Manufacture Part Number, Manufacturer, Description, LCSC Part Number, Package and Customer Part Number (the references, shortened to fit: "R1 R3 R5 +4"). Every line goes in: LCSC matches by its own number, then the MPN, then the description.
 - **Mouser BOM tool** (upload it under **BOM Tool** in your Mouser account): Mouser Part Number, Manufacturer Part Number, Manufacturer Name, Customer Part Number, Description and Quantity 1. Mouser needs a Mouser number or an MPN, so lines with neither are left out, and the page says which.
-- **All columns**: quantity, manufacturer, MPN, Digi-Key, Mouser and LCSC part numbers, references, value, footprint, fields you added and your trackers. For Digi-Key's BOM Manager (it lets you match up the columns) or a spreadsheet.
+- **Digi-Key BOM Manager** (upload it under **myLists / BOM Manager** at digikey.com): Digi-Key Part Number, Manufacturer Part Number, Manufacturer, Quantity, Customer Reference (the references, shortened to fit) and Description. Digi-Key needs its own number or an MPN, so lines with neither are left out, and the page says which. Digi-Key keeps the Customer Reference into your cart, so the references come back when you import it.
+- **All columns**: quantity, manufacturer, MPN, Digi-Key, Mouser and LCSC part numbers, references, value, footprint, fields you added and your trackers. For a spreadsheet.
 
 **Which lines** (at the top of the menu, remembered) picks what goes in, whichever file you choose:
 

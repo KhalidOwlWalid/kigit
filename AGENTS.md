@@ -652,6 +652,13 @@ at once. localStorage settings are per origin, so per port.
   (from `cartChips`) -> `cartDialog(true)` scrolled to `#tomatch`; rows
   with a suggestion are pre-picked (★), `data-accept` / `#acceptall` call
   `assign()` (the same edit route as picking).
+  Digi-Key carts: `cart.SITES` has "digikey"; its plain "Part Number" is
+  the sku (only for Digi-Key; elsewhere `partnumber` is the MPN),
+  "Customer Reference" the refs; a `backorder` column (Digi-Key's
+  "Backorder") is kept per row (`_carts`), shown as "N on backorder" in
+  the Ordered cell. `csvDigikey` (Digi-Key BOM Manager: Digi-Key Part
+  Number, MPN, Manufacturer, Quantity, Customer Reference = `refsShort(l,
+  48)`, Description). Tests use the real `exported_boms_digikey.csv`.
   Carts (`cart.py`, `bom.py`): Import cart ▾ posts the file (raw body) to
   `/bom/{key}/cart/{site}?name=` -> `cart.parse_cart` (`.xls` via xlrd,
   the GUI's one dependency for this; `.xlsx` via zipfile + XML; CSV

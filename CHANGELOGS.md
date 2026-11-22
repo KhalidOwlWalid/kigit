@@ -4,6 +4,14 @@ All notable changes to kigit, newest first. The format follows [Keep a Changelog
 
 ## [Unreleased]
 
+### Added
+
+- **Digi-Key carts**: **Import cart ▾** → **Digi-Key cart…** reads Digi-Key's cart CSV (its own "...-ND" numbers, MPNs, Customer Reference), matched like the others, and shows what's **on backorder** at Digi-Key. **Export CSV ▾** → **Digi-Key BOM Manager** writes the references into Customer Reference, so they come back with the cart. The Ordered column filters by the Digi-Key cart too.
+
+### Fixed
+
+- **Values with the unit letter as the decimal point** (`5k1R`, `1n8F`, `4u7`) are read the same as `5.1k`, `1.8nF`, `4.7uF` everywhere: capacitors and inductors are now searched as `1.8nF`, not `1n8F`; a `10kR` or `5k1R` resistor finds its `10k` / `5.1k` row in your inventory; and cart rows match lines written `5k1R` or `2M2R`.
+
 ## [0.3.1] - 2026-11-22
 
 Look up helps you find parts, not just check them: alternatives when a part is short or can't be found, better searches for connectors, and progress you can follow. Your API keys move into your system's keyring, and problems on the BOM page can't go unnoticed.

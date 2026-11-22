@@ -1,4 +1,4 @@
-"""Carts exported from Mouser and LCSC (cart.py), and matching them to a BOM
+"""Carts exported from Mouser, LCSC and Digi-Key (cart.py), and matching them to a BOM
 (bom.match_carts). The two example files are real exports, from the owl
 board (tests/test_examples/exported_boms_from_distributor); the BOM here is
 made up to meet them, so nothing depends on that board."""
@@ -14,6 +14,7 @@ from kigit_gui import bom, cart
 EXAMPLES = Path(__file__).resolve().parents[2] / "tests" / "test_examples" / "exported_boms_from_distributor"
 LCSC = EXAMPLES / "exported_boms_lcsc.csv"
 MOUSER = EXAMPLES / "exported_boms_mouser.xls"
+DIGIKEY = EXAMPLES / "exported_boms_digikey.csv"
 
 
 def line(refs, value, mpn="", **kw) -> dict:
@@ -27,7 +28,8 @@ def test_lcsc_cart_csv() -> None:
     rows = cart.parse_cart(LCSC.read_bytes(), LCSC.name, "lcsc")
     assert len(rows) == 7
     assert rows[0] == {"sku": "C69082", "mpn": "FT230XS-R", "manufacturer": "FTDI",
-                       "description": "USB to UART 3Mbps SSOP-16-150mil Controllers RoHS", "qty": 3, "refs": ["U3"]}
+                       "description": "USB to UART 3Mbps SSOP-16-150mil Controllers RoHS", "qty": 3, "refs": ["U3"],
+                       "backorder": 0}
     assert rows[1]["refs"] == ["R1", "R2", "R11", "R19", "R20"] and rows[1]["qty"] == 100  # the MOQ, as ordered
 
 
@@ -47,8 +49,8 @@ def test_other_files_are_refused_with_a_reason() -> None:
         cart.parse_cart(b"Name,Age\nA,3\n", "x.csv", "lcsc")
     with pytest.raises(cart.CartError, match="Excel .xls"):
         cart.parse_cart(b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1 not really", "x.xls", "mouser")
-    with pytest.raises(cart.CartError, match="not digikey"):
-        cart.parse_cart(LCSC.read_bytes(), LCSC.name, "digikey")
+    with pytest.raises(cart.CartError, match="not rs"):
+        cart.parse_cart(LCSC.read_bytes(), LCSC.name, "rs")
     with pytest.raises(cart.CartError, match="no rows"):
         cart.parse_cart(b"LCSC#,Quantity\n", "x.csv", "lcsc")
 
@@ -186,6 +188,11 @@ def test_values_as_numbers() -> None:
                              ("100nF", "capacitor", 1e-7), ("0.1uF", "capacitor", 1e-7), ("1µF", "capacitor", 1e-6),
                              ("27nH", "inductor", 27e-9), ("8MHz", "crystal", 8e6), ("32k768", "crystal", 32768)):
         assert bom.si_value(text, kind) == pytest.approx(want), text
+    # The unit letter as the decimal point, with a trailing R / F / H too.
+    for text, kind, want in (("5k1R", "resistor", 5100), ("2M2R", "resistor", 2.2e6), ("4R7", "resistor", 4.7),
+                             ("1n8F", "capacitor", 1.8e-9), ("4u7F", "capacitor", 4.7e-6), ("2p2F", "capacitor", 2.2e-12),
+                             ("4n7H", "inductor", 4.7e-9)):
+        assert bom.si_value(text, kind) == pytest.approx(want), text
     assert bom.si_value("RED", "led") is None and bom.si_value("STM32", "other") is None
 
 
@@ -214,3 +221,39 @@ def test_unmatched_rows_get_a_suggested_line() -> None:
     assert sug("S2B-PH-K-S-GW") is None                          # nothing like it
     twins = lines + [{**line(["C30"], "100nF"), "kind": "capacitor", "package": "0603", "footprint": "other"}]
     assert bom.suggest_line(rows["0603ZC104K4T2A"], twins, {}, {}) is None  # two 100nF 0603 lines: no guess
+
+
+def test_digikey_cart_csv() -> None:
+    """Digi-Key's cart CSV (UTF-8 with a BOM): its own number is the plain
+    "Part Number" (...-ND), the maker's is "Manufacturer Part Number";
+    Customer Reference holds kigit's references; Backorder says what isn't
+    in stock yet."""
+    rows = cart.parse_cart(DIGIKEY.read_bytes(), DIGIKEY.name, "digikey")
+    assert len(rows) == 15
+    assert rows[0] == {"sku": "1276-CL05X226MS6NUW8CT-ND", "mpn": "CL05X226MS6NUW8", "manufacturer": "",
+                       "description": "0402 22UF X6S 2.5V 20%", "qty": 2, "refs": [], "backorder": 2}
+    assert rows[1]["sku"] == "1276-CL05B104KB54PNCCT-ND" and rows[1]["backorder"] == 0
+    assert [r["qty"] for r in rows if r["mpn"] == "RC0201FR-0710KL"] == [32, 1]  # the same part on two rows
+    # Elsewhere a plain "Part Number" is the maker's: only Digi-Key's is its own number.
+    other = cart.parse_cart(b"Part Number,Quantity\nRC0603FR-0710KL,5\n", "x.csv", "mouser")
+    assert other[0]["mpn"] == "RC0603FR-0710KL" and other[0]["sku"] == ""
+    # The references from kigit's Digi-Key export come back in Customer Reference.
+    back = cart.parse_cart("Index,Quantity,Part Number,Manufacturer Part Number,Customer Reference\n"
+                           "1,4,311-10.0KHRCT-ND,RC0603FR-0710KL,R1 R2 R3 +2\n".encode(), "c.csv", "digikey")
+    assert back[0]["refs"] == ["R1", "R2", "R3"]
+
+
+def test_digikey_cart_matched_with_backorders(tmp_path: Path) -> None:
+    """Matched by Digi-Key number (the line's own) or MPN; both rows of a part count; backorders are kept."""
+    data = {"field_names": {}, "lines": [line(["C1", "C2"], "22uF", digikey="1276-CL05X226MS6NUW8CT-ND"),
+                                         line(["R1"], "10k", "RC0201FR-0710KL")]}
+    board = tmp_path / "x.kicad_pcb"
+    rows = cart.parse_cart(DIGIKEY.read_bytes(), DIGIKEY.name, "digikey")
+    state = {"drafts": {}, "carts": bom._carts({"carts": {"digikey": {"file": "c.csv", "time": "t", "rows": rows}}})}
+    m = bom.match_carts(data, state)
+    c1 = m["lines"][bom.line_key(data["lines"][0])]
+    assert c1["qty"] == {"digikey": 2} and c1["rows"][0]["by"] == "Digi-Key number" and c1["rows"][0]["backorder"] == 2
+    r1 = m["lines"][bom.line_key(data["lines"][1])]
+    assert r1["qty"] == {"digikey": 33} and {r["by"] for r in r1["rows"]} == {"MPN"}
+    assert len(m["unmatched"]) == 15 - 3
+    assert board  # (no files needed)

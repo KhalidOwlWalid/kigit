@@ -168,3 +168,26 @@ TEST_CASE("search queries: a connector's part number comes from its footprint, n
     u.footprint = "Package_QFP:LQFP-48_7x7mm_P0.5mm";
     CHECK(kigit::query_of(u) == std::pair<std::string, std::string>{"STM32F103C8T6", "value"});
 }
+
+TEST_CASE("search queries: values written with the unit letter as the decimal point") {
+    auto q = [](const char* value, const char* kind) {
+        kigit::BomLine l;
+        l.value = value;
+        l.kind = kind;
+        l.package = "0603";
+        l.footprint = "Capacitor_SMD:C_0603_1608Metric";
+        return kigit::query_of(l).first;
+    };
+    CHECK(q("5k1R", "resistor") == "5.1k 0603 resistor");
+    CHECK(q("2M2R", "resistor") == "2.2M 0603 resistor");
+    CHECK(q("1n8F", "capacitor") == "1.8nF 0603 capacitor");
+    CHECK(q("1n8", "capacitor") == "1.8nF 0603 capacitor");
+    CHECK(q("4u7", "capacitor") == "4.7uF 0603 capacitor");
+    CHECK(q("4\xC2\xB5" "7F", "capacitor") == "4.7uF 0603 capacitor"); // 4µ7F
+    CHECK(q("2p2", "capacitor") == "2.2pF 0603 capacitor");
+    CHECK(q("100n", "capacitor") == "100nF 0603 capacitor");
+    CHECK(q("100nF", "capacitor") == "100nF 0603 capacitor");
+    CHECK(q("1.8nF", "capacitor") == "1.8nF 0603 capacitor");
+    CHECK(q("4n7H", "inductor") == "4.7nH 0603 inductor");
+    CHECK(q("10uF 25V", "capacitor") == "10uF 25V 0603 capacitor"); // anything else as written
+}
