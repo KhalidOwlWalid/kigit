@@ -81,10 +81,15 @@ class Lookup:
     result: dict | None = None
     error: str = ""
     task: asyncio.Task | None = None
+    what: str = ""                  # the line being looked up ("R1 R3 R5")
+    started: float = 0.0            # time.time() when it started
+    stopped: bool = False           # stopped by you
+    proc: object = None             # kigit's process, while it runs
 
     def state(self) -> dict:
         return {"running": self.running, "done": self.done, "total": self.total, "boards": self.boards,
-                "sites": self.sites, "result": self.result, "error": self.error}
+                "sites": self.sites, "result": self.result, "error": self.error, "what": self.what,
+                "elapsed": round(time.time() - self.started, 1) if self.started else 0, "stopped": self.stopped}
 
 
 jobs: dict[str, Job] = {}
@@ -1169,17 +1174,21 @@ async def _set_key(key: str, request: Request) -> Response:
 async def run_lookup(job: Job, boards: int, refresh: bool) -> None:
     look = job.lookup
     look.running, look.done, look.total, look.error, look.boards = True, 0, len(job.data.get("lines", [])), "", boards
+    look.what, look.started, look.stopped, look.proc = "", time.time(), False, None
     try:
         names = [k.get("name", s) for s, k in (await kigit.bom_keys()).items() if k.get("set")]
     except kigit.KigitError:
         names = []
     look.sites = " and ".join(names) or "the parts sites"
 
-    def progress(done: int, total: int) -> None:
-        look.done, look.total = done, total
+    def progress(done: int, total: int, what: str = "") -> None:
+        look.done, look.total, look.what = done, total, what
+
+    def started_proc(proc) -> None:
+        look.proc = proc
 
     try:
-        look.result = await kigit.bom_lookup(job.board, job.rev, boards, refresh, progress)
+        look.result = await kigit.bom_lookup(job.board, job.rev, boards, refresh, progress, started_proc)
         look.done = look.total
         from . import notices
         for site, info in look.result.get("sites", {}).items():
@@ -1190,6 +1199,10 @@ async def run_lookup(job: Job, boards: int, refresh: bool) -> None:
         if names:
             _done(f"Look up done at {' and '.join(names)}", f"{look.total} lines, {boards} board(s)")
     except kigit.KigitError as e:
+        if look.stopped:  # you stopped it: not a failure
+            look.error = ""
+            _done("Look up stopped", f"after {look.done} of {look.total} lines")
+            return
         look.error = str(e)
         logs.log.warning("bom lookup failed: %s", e)
         from . import notices
@@ -1200,7 +1213,7 @@ async def run_lookup(job: Job, boards: int, refresh: bool) -> None:
         from . import notices
         notices.add("warning", "BOM: Look up failed", str(e), go="bom:lookup")
     finally:
-        look.running = False
+        look.running, look.proc, look.what = False, None, ""
 
 
 @app.post("/bom/{key}/lookup")
@@ -1218,6 +1231,22 @@ async def _start_lookup(key: str, request: Request) -> Response:
     job.lookup.task = asyncio.create_task(run_lookup(job, boards, bool(body.get("refresh"))))
     await asyncio.sleep(0)  # let it start, so the state says running
     return JSONResponse(job.lookup.state())
+
+
+@app.post("/bom/{key}/lookup/stop")
+async def _stop_lookup(key: str) -> Response:
+    """Stops a running Look up (ends kigit's process; what it found so far isn't kept)."""
+    job = _job(key)
+    if job is None:
+        return _err("gone", 404)
+    look = job.lookup
+    if look.running and look.proc is not None:
+        look.stopped = True
+        try:
+            look.proc.terminate()
+        except OSError as e:
+            return _err(f"couldn't stop it: {e}", 500, go="bom:lookup")
+    return JSONResponse(look.state())
 
 
 @app.get("/bom/{key}/lookup")

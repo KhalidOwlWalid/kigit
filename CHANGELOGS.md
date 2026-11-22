@@ -4,6 +4,11 @@ All notable changes to kigit, newest first. The format follows [Keep a Changelog
 
 ## [Unreleased]
 
+### Added
+
+- **Stand-ins for short parts, from every site**: when the part is short for your boards (or ending), Look up now also finds similar parts itself, at Mouser too (which has no substitutes of its own): by a passive's value and package, or the part's family (`SN65HVD230` for `SN65HVD230QDG4`), keeping only those with enough stock that aren't ending. They're listed after the site's own substitutes, marked **similar**, with what to check before using one.
+- **Look up progress by the bell**: a ring next to the bell fills as lines are done and spins while kigit works; its panel shows a progress bar, the line being looked up, the time left and **Stop**, and minimises to the ring. Green with a summary when done, red if it failed.
+
 ### Changed
 
 - **Better searches for connectors**: a part without a part number whose value is a label (`I2C`, `Debug`, `USB`) is searched by the maker's part number in its footprint's name (`JST_SH_BM04B-SRSS-TB_...` → `BM04B-SRSS-TB`), instead of the label; Look up says where the search came from. Test points, mounting holes and fiducials aren't searched (nothing to buy).

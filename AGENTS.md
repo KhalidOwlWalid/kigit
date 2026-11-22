@@ -315,7 +315,15 @@ at once. localStorage settings are per origin, so per port.
   plus a fee; Tape & Reel's `mult` = its minimum, a whole reel). A pick
   that's short or `winding_down` gets `GET .../{DigiKey number}/
   substitutions` (cached `digikey|sub|...`, 404 = none) as the match's
-  `alternatives` (`note` = SubstituteType). Login in the keyring (see
+  `alternatives` (`note` = SubstituteType). Then, on every site while the
+  pick is short or ending and there are fewer than 5: `similar_term`
+  (`query_of` of the line without part numbers: passive query, or the
+  value/footprint part number when it isn't the part itself, else the
+  pick's MPN cut at `-/(#,` or minus 2 chars) searched by keyword (cached
+  like any search), `stand_ins` (not the pick's MPN, stock >= need, not
+  winding down, buyable, a passive's package in the description or MPN;
+  `note` "Similar: ..."), appended; `similar` in the match JSON. The page
+  shows "similar" chips (note on hover) after the site's substitutes. Login in the keyring (see
   above), site and currency in `parts-keys.json` {"digikey": {site, currency}};
   `--set-key digikey` reads ID, secret, optional "SITE CURRENCY" lines.
   Pace 600 ms (about 120 a minute). Checked against the real token
@@ -724,6 +732,13 @@ at once. localStorage settings are per origin, so per port.
   `markBoards` uses `placedMarks()` in Assemble (button reads "Placed").
   Buy: `placedOf(l)` comes off "need"; the header counts boards still to
   build (boards - done).
+  Activity: `#activity` (before `#bell`): an SVG ring (`.arc` dashoffset
+  = done/total, `.spin` animated while `working`, `.done` green, `.failed`
+  red) and `#actmenu` (bar, `what`, time left from `elapsed`, Stop ->
+  POST `/bom/{key}/lookup/stop` (terminates `Lookup.proc`, `stopped`),
+  minimise `#actmin` remembered in `kigit.bomActMin`), driven by
+  `activity(s)` from `lookState`. `kigit.bom_lookup` passes
+  `progress(done, total, what)` and `started_proc(proc)`.
   Log and bell: every BOM route error goes through `bom._err(message,
   status, what, **extra)`: the session log (warning; 404 "gone" only info)
   and `notices.add` ("warning", "error" for 5xx; titled "BOM: ..."); things

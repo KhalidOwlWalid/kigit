@@ -227,6 +227,34 @@ td.placed button { padding: 0 6px; font-size: 11px; margin-left: 2px; }
 .toast .ta { display: flex; gap: 4px; margin-top: 6px; }
 .toast button { font-size: 12px; padding: 2px 8px; }
 @keyframes tin { from { transform: translateX(20px); opacity: 0; } }
+/* What kigit is doing: a ring by the bell (fills as it goes, spins while working) and its panel */
+#activity { width: 36px; height: 36px; padding: 0; justify-content: center; }
+#activity svg { position: absolute; inset: 2px; width: 32px; height: 32px; transform: rotate(-90deg); }
+#activity circle { fill: none; stroke-width: 3; }
+#activity .track { stroke: rgba(255,255,255,.12); }
+#activity .arc { stroke: var(--primary); stroke-linecap: round; stroke-dasharray: 94.25; stroke-dashoffset: 94.25; transition: stroke-dashoffset .4s; }
+#activity .spin { stroke: rgba(255,255,255,.55); stroke-linecap: round; stroke-dasharray: 12 82.25; transform-origin: 18px 18px; opacity: 0; }
+#activity.working .spin { opacity: 1; animation: actspin 1.1s linear infinite; }
+#activity.done .arc { stroke: var(--ok); } #activity.failed .arc { stroke: var(--bad); }
+#activity .material-icons { font-size: 17px; color: var(--primary); }
+#activity.done .material-icons { color: var(--ok); } #activity.failed .material-icons { color: var(--bad); }
+@keyframes actspin { to { transform: rotate(360deg); } }
+#actmenu { position: fixed; z-index: 9; display: none; right: 56px; top: 56px; width: min(26rem, 94vw); background: var(--panel);
+  border: 1px solid var(--line); border-radius: 6px; box-shadow: 0 8px 28px rgba(0,0,0,.5); }
+#actmenu.on { display: block; }
+#actmenu .nhead { display: flex; gap: 10px; align-items: center; padding: 8px 8px 8px 12px; border-bottom: 1px solid var(--line); }
+#actmenu .nhead .sub { margin-right: auto; }
+#actbody { padding: 12px; font-size: 13px; }
+#actbody .bar { height: 8px; border-radius: 4px; background: rgba(255,255,255,.1); overflow: hidden; margin: 6px 0 8px; }
+#actbody .bar > div { height: 100%; background: var(--primary); transition: width .4s; }
+#actbody .bar.working > div { background-image: linear-gradient(45deg, rgba(255,255,255,.22) 25%, transparent 25%, transparent 50%,
+  rgba(255,255,255,.22) 50%, rgba(255,255,255,.22) 75%, transparent 75%); background-size: 16px 16px; animation: actstripes .8s linear infinite; }
+#actbody .bar.waiting > div { width: 30% !important; animation: actslide 1.2s ease-in-out infinite; }
+#actbody .bar.done > div { background: var(--ok); } #actbody .bar.failed > div { background: var(--bad); }
+@keyframes actstripes { to { background-position: 16px 0; } }
+@keyframes actslide { from { margin-left: -30%; } to { margin-left: 100%; } }
+#actbody .row { display: flex; gap: 8px; justify-content: flex-end; margin-top: 10px; }
+#actbody .now { color: var(--muted); } #actbody .now b { color: var(--text); }
 #nlist .n .go { margin-top: 4px; font-size: 12px; padding: 1px 8px; }
 #keystore.ok .material-icons { color: var(--ok); font-size: 16px; vertical-align: -3px; }
 #keystore.fixit { border: 1px solid rgba(242,192,55,.5); background: rgba(242,192,55,.08); border-radius: 6px; padding: 10px 12px; color: var(--text); }
@@ -333,6 +361,9 @@ dialog a { color: var(--link); }
     <button id="show2d" class="on" title="The board in 2D beside the list"><i class="material-icons">developer_board</i>PCB</button>
     <button id="show3d" class="on" title="The board in 3D beside the list"><i class="material-icons">view_in_ar</i>3D</button>
     <button id="shownotes" title="Notes about the BOM's lines (+ Notes on a line): why a part was chosen"><i class="material-icons">edit_note</i>Notes</button>
+    <button id="activity" class="icon" hidden title="What kigit is doing"><svg viewBox="0 0 36 36" aria-hidden="true">
+      <circle class="track" cx="18" cy="18" r="15"/><circle class="arc" cx="18" cy="18" r="15"/><circle class="spin" cx="18" cy="18" r="15"/></svg>
+      <i class="material-icons">manage_search</i></button>
     <button id="bell" class="icon" title="Notifications: what went wrong, and what was done (the same as kigit's bell)"><i class="material-icons">notifications</i><span id="bellbadge" hidden></span></button>
     <button id="logbtn" class="icon" title="kigit's session log, live, in a tab of its own"><i class="material-icons">article</i></button>
   </div>
@@ -362,6 +393,11 @@ dialog a { color: var(--link); }
     <span id="lookstate"></span>
  </div>
 </header>
+<div id="actmenu" role="dialog" aria-label="What kigit is doing">
+  <div class="nhead"><b id="acttitle">Look up</b><span class="sub" id="actsub"></span>
+    <button id="actmin" class="icon" title="Minimise: the ring next to the bell keeps showing progress"><i class="material-icons">remove</i></button></div>
+  <div id="actbody"></div>
+</div>
 <div id="nmenu" role="dialog" aria-label="Notifications">
   <div class="nhead"><b>Notifications</b><span class="sub">this session</span>
     <a href="/notices" target="_blank" rel="noopener">All</a><a href="/log" target="_blank" rel="noopener">Session log</a></div>
@@ -1032,7 +1068,7 @@ function stockCell(l, i, site) {
   const o = m.pick, n = m.candidates.length + m.alternatives.length, key = `${i}|${site}`;
   const label = m.alternatives.length ? `${m.alternatives.length} instead` : m.status === "choose" ? `${n} choices`
     : m.status === "ok" ? `+${n} more` : `${n} similar`;
-  const more = n ? ` <button class="more" data-key="${key}" title="${m.alternatives.length ? `What ${esc(siteName(site))} suggests instead` : ""}">${opened.has(key) ? "hide" : label}</button>` : "";
+  const more = n ? ` <button class="more" data-key="${key}" title="${m.alternatives.length ? `The pick is short or ending: parts that could stand in, with enough stock` : ""}">${opened.has(key) ? "hide" : label}</button>` : "";
   if (m.status === "dnp") return "";
   if (m.status === "skipped" || m.status === "error") return `<span class="faint" title="${esc(m.error)}">${m.status === "error" ? "error" : "&ndash;"}</span>`;
   if (m.status === "not_found") return `<span class="chip need" title="${esc(siteName(site))} has no ${esc(m.searched)}">not at ${esc(siteName(site))}</span>${more}`;
@@ -1049,7 +1085,8 @@ function priceCell(l, site) {
 }
 function offerRows(list, i, site, which) {
   return list.map((o, n) => `<tr><td class="num">${esc(o.mpn)}<div class="faint">${esc(o.manufacturer)}</div></td>` +
-    `<td>${o.note ? `<span class="chip ok">${esc(o.note)}</span> ` : ""}${esc(o.description)} ${lifeChip(o)}` +
+    `<td>${o.note ? (/^Similar/.test(o.note) ? `<span class="chip picked" title="${esc(o.note)}">similar</span> `
+      : `<span class="chip ok" title="The site's own substitute">${esc(o.note)}</span> `) : ""}${esc(o.description)} ${lifeChip(o)}` +
     `${o.package ? `<div class="faint">${esc(o.package)}</div>` : ""}</td>` +
     `<td class="stock">${o.stock < 0 ? "" : (o.short ? `<span class="short">${count(o.stock)}</span>` : count(o.stock)) + " in stock"}</td>` +
     `<td class="stock">${o.cost ? money(o.cost.unit, o.currency) + " each" : ""}</td>` +
@@ -1067,7 +1104,10 @@ function choicesRow(l, i, span, site) {
       `typing the part number into MPN gets that exact part):`
     : m.status === "ok" ? "The same part in other packagings:" : `Similar parts at ${name} (no exact <b>${esc(m.searched)}</b>):`;
   return `<tr class="choices"><td colspan="${span}">` +
-    (m.alternatives.length ? `<div class="faint">${name} suggests instead (the pick is ${m.pick?.short ? "short" : "ending"}):</div>` +
+    (m.alternatives.length ? `<div class="faint">Instead of the pick (it's ${m.pick?.short ? `short: ${count(m.pick.stock)} in stock, ${count(LOOK.byKey.get(lineKey(l))?.need ?? 0)} needed` : "ending"}): ` +
+      [m.alternatives.some((a) => !/^Similar/.test(a.note || "")) ? `${name}'s own substitutes` : "",
+       m.similar && m.alternatives.some((a) => /^Similar/.test(a.note || "")) ? `parts kigit found like it at ${name} (searched <b>${esc(m.similar)}</b>), each with enough stock (hover "similar" for what to check)` : ""]
+        .filter(Boolean).join(", then ") + `. Check one fits before you use it.</div>` +
       `<table class="cand">${offerRows(m.alternatives, i, site, "alternatives")}</table>` : "") +
     (m.candidates.length ? `<div class="faint">${what}</div><table class="cand">${offerRows(m.candidates, i, site, "candidates")}</table>` : "") +
     `</td></tr>`;
@@ -1082,7 +1122,66 @@ $("rows").addEventListener("click", async (e) => {
     opened.delete(`${i}|${use.dataset.site}`); render();
   } catch (err) { problem("Not saved: " + err.message); }
 });
+// ------------------------------------------------- what kigit is doing
+// The ring by the bell and its panel follow the Look up: filling as lines are
+// done, spinning while kigit works, green when done, red when it failed.
+let actMin = false, actShown = null;
+try { actMin = localStorage.getItem("kigit.bomActMin") === "1"; } catch {}
+function activity(s) {
+  const btn = $("activity"), menu = $("actmenu");
+  const running = !!s.running, failed = !running && !!s.error, done = !running && !!s.result && !s.error;
+  const frac = s.total ? Math.min(1, s.done / s.total) : 0;
+  if (running && actShown !== "running") {  // it just started: show it, unless you'd rather not
+    btn.hidden = false;
+    if (!actMin) menu.classList.add("on");
+  }
+  if (!running && actShown === "running") setTimeout(() => {  // finished: the ring stays a moment, then goes
+    if (!LOOKING) { btn.hidden = !$("actmenu").classList.contains("on") && !btn.classList.contains("failed"); }
+  }, 8000);
+  actShown = running ? "running" : done ? "done" : failed ? "failed" : "idle";
+  btn.classList.toggle("working", running);
+  btn.classList.toggle("done", done);
+  btn.classList.toggle("failed", failed);
+  btn.querySelector(".arc").style.strokeDashoffset = String(94.25 * (1 - (running ? frac : done || failed ? 1 : 0)));
+  btn.querySelector(".material-icons").textContent = running ? "manage_search" : done ? "check" : failed ? "error" : "manage_search";
+  const left = running && s.done > 0 ? Math.max(0, Math.round(s.elapsed / s.done * (s.total - s.done))) : null;
+  const time = (t) => t >= 90 ? `about ${Math.round(t / 60)} min` : `${t} s`;
+  btn.title = running ? `Looking up parts: ${s.done} of ${s.total} lines${left !== null ? `, ${time(left)} left` : ""} (click for more)`
+    : done ? "Look up done (click for the summary)" : failed ? `Look up failed: ${s.error}` : "What kigit is doing";
+  $("acttitle").textContent = `Look up at ${s.sites || "the parts sites"}`;
+  $("actsub").textContent = running ? (s.done ? `${Math.round(frac * 100)}%` : "starting...") : done ? "done" : failed ? "failed" : s.stopped ? "stopped" : "";
+  const sum = done ? Object.keys(s.result.sites || {}).map((site) => {
+    const x = s.result.summary?.[site] || {};
+    return `<div><b>${esc(s.result.sites[site]?.name || siteName(site))}</b>: ${x.ok || 0} found` + (x.choose ? `, ${x.choose} to choose` : "") +
+      (x.short ? `, <b style="color:var(--bad)">${x.short} short</b>` : "") + (x.winding_down ? `, <b style="color:var(--warn)">${x.winding_down} ending</b>` : "") +
+      (x.cost ? ` &middot; ${money(x.cost, x.currency)}` : "") + (s.result.sites?.[site]?.error ? ` <span style="color:var(--bad)">(${esc(s.result.sites[site].error)})</span>` : "") + `</div>`;
+  }).join("") : "";
+  $("actbody").innerHTML =
+    `<div class="bar ${running ? (s.done ? "working" : "working waiting") : done ? "done" : failed ? "failed" : ""}"><div style="width:${(running ? frac : 1) * 100}%"></div></div>` +
+    (running ? `<div class="now">${s.done} of ${s.total} lines${s.what ? ` &middot; now <b>${esc(s.what)}</b>` : ""}` +
+        (left !== null ? ` &middot; ${time(left)} left` : "") + `</div>` +
+        `<div class="faint" style="margin-top:4px">Sites are asked a little apart (their rules), so this takes a while. You can keep working.</div>` +
+        `<div class="row"><button id="actstop"><i class="material-icons">stop</i>Stop</button></div>`
+      : done ? sum + `<div class="row"><button id="actclose">Close</button></div>`
+      : failed ? `<div style="color:var(--bad)">${esc(s.error)}</div><div class="row"><button id="actclose">Close</button></div>`
+      : s.stopped ? `<div>Stopped. Nothing it found was kept: Look up again for all lines.</div><div class="row"><button id="actclose">Close</button></div>` : "");
+}
+let LOOKING = false;
+$("activity").addEventListener("click", (e) => { e.stopPropagation(); $("actmenu").classList.toggle("on"); $("nmenu").classList.remove("on"); });
+$("actmenu").addEventListener("click", async (e) => {
+  e.stopPropagation();
+  if (e.target.closest("#actmin")) {
+    $("actmenu").classList.remove("on");
+    actMin = LOOKING; try { localStorage.setItem("kigit.bomActMin", actMin ? "1" : ""); } catch {}  // minimised while working: next time too
+  }
+  if (e.target.closest("#actclose")) { $("actmenu").classList.remove("on"); $("activity").hidden = true; }
+  if (e.target.closest("#actstop")) {
+    try { lookState(await post("lookup/stop", {})); } catch (err) { problem("Couldn't stop it: " + err.message, "lookup"); }
+  }
+});
 function lookState(s) {
+  LOOKING = !!s.running;
+  if (s.running || s.result || s.error || s.stopped) activity(s);
   const el = $("lookstate");
   el.className = s.error ? "err" : "";
   if (s.error) attn("lookup", "!", `Look up failed: ${s.error}`);

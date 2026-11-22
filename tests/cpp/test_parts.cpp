@@ -49,6 +49,7 @@ BomLine line(const std::string& value, int qty, const std::string& mpn = "") {
     l.value = value;
     l.footprint = "Resistor_SMD:R_0603_1608Metric";
     l.package = "0603";
+    l.kind = "resistor";
     l.mpn = mpn;
     l.query = value + " 0603 resistor";
     for (int i = 1; i <= qty; ++i) l.refs.push_back("R" + std::to_string(i));
@@ -246,7 +247,7 @@ TEST_CASE("lookup: through the cache, DNP skipped, no key explained, totals") {
     LookupOptions opt;
     opt.boards = 2;
     json r = lookup(bom, opt, {{"mouser", &m}}, {}, cache);
-    CHECK(calls == 2);
+    CHECK(calls == 3); // 10k's part number, 1k's words, and parts like the 10k (it's short)
     REQUIRE(r["lines"].size() == 3);
     const json& first = r["lines"][0]["sites"]["mouser"];
     CHECK(r["lines"][0]["need"] == 6);
@@ -254,21 +255,26 @@ TEST_CASE("lookup: through the cache, DNP skipped, no key explained, totals") {
     CHECK(first["status"] == "ok");
     CHECK(first["pick"]["short"] == true); // 2 in stock, 6 needed
     CHECK(first["pick"]["cost"]["unit"].get<double>() == doctest::Approx(0.10));
+    // Short at Mouser, which has no substitutes: kigit's own search found one with enough stock.
+    CHECK(first["similar"] == "10k 0603 resistor");
+    REQUIRE(first["alternatives"].size() == 1);
+    CHECK(first["alternatives"][0]["sku"] == "603-1K");
+    CHECK(first["alternatives"][0]["note"].get<std::string>().find("same value and package") != std::string::npos);
     CHECK(r["lines"][1]["sites"]["mouser"]["status"] == "choose");
     CHECK(r["lines"][2]["sites"]["mouser"]["status"] == "dnp");
     CHECK(r["summary"]["mouser"]["short"] == 1);
     CHECK(r["summary"]["mouser"]["currency"] == "USD");
-    CHECK(r["sites"]["mouser"]["calls"] == 2);
+    CHECK(r["sites"]["mouser"]["calls"] == 3);
 
     cache.save();
     Cache again(tmp / "cache.json");
     json r2 = lookup(bom, opt, {{"mouser", &m}}, {}, again);
-    CHECK(calls == 2); // all from the cache
-    CHECK(r2["sites"]["mouser"]["cached"] == 2);
+    CHECK(calls == 3); // all from the cache
+    CHECK(r2["sites"]["mouser"]["cached"] == 3);
     CHECK(r2["lines"][0]["sites"]["mouser"]["pick"]["sku"] == "603-RC0603FR-0710KL");
     opt.refresh = true;
     lookup(bom, opt, {{"mouser", &m}}, {}, again);
-    CHECK(calls == 4);
+    CHECK(calls == 6);
     CHECK_FALSE(again.get("mouser|pn|RC0603FR0710KL", -1)); // too old for a max age below 0
 
     json none = lookup(bom, LookupOptions{}, {}, {{"mouser", "no Mouser API key"}}, cache);
@@ -450,3 +456,42 @@ TEST_CASE("run_input: the program reads what's given on stdin") {
 #endif
 
 } // TEST_SUITE
+
+TEST_CASE("stand-ins for a short part: what to search for, and what may stand in") {
+    BomLine u;
+    u.kind = "other";
+    u.value = "SN65HVD230";
+    u.mpn = "SN65HVD230QDG4";
+    u.footprint = "Package_SO:SOIC-8_3.9x4.9mm_P1.27mm";
+    u.package = "SOIC-8_3.9x4.9mm_P1.27mm";
+    Offer pick;
+    pick.mpn = "SN65HVD230QDG4";
+    CHECK(similar_term(u, pick) == "SN65HVD230"); // the value is the family
+    u.value = "SN65HVD230QDG4";
+    CHECK(similar_term(u, pick) == "SN65HVD230QD"); // no family in the value: the number without its suffix
+    pick.mpn = u.mpn = u.value = "UJ20-C-H-G-MSMT-4B-P16-TR";
+    CHECK(similar_term(u, pick) == "UJ20-C-H-G-MSMT-4B-P16"); // without "-TR": the same part, other packagings
+    BomLine r = line("10k", 1, "RC0603FR-0710KL");
+    pick.mpn = "RC0603FR-0710KL";
+    CHECK(similar_term(r, pick) == "10k 0603 resistor");
+
+    auto offer = [](const std::string& mpn, long stock, const std::string& desc, const std::string& life = "") {
+        Offer o;
+        o.site = "mouser";
+        o.sku = "603-" + mpn;
+        o.mpn = mpn;
+        o.stock = stock;
+        o.description = desc;
+        o.lifecycle = life;
+        o.prices = {{1, 0.01}};
+        return o;
+    };
+    std::vector<Offer> found = {offer("RC0603FR-0710KL", 5000, "10K OHM 1% 0603"),         // the pick itself
+                                offer("RC0603JR-0710KL", 20, "10K OHM 5% 0603"),           // too few
+                                offer("ERJ-3EKF1002V", 9000, "10 kOhms 1% 0603"),          // yes
+                                offer("CRCW040210K0FKED", 9000, "10K OHM 1% 0402"),        // other package
+                                offer("RC0603FR-1310KL", 9000, "10K OHM 1% 0603", "Obsolete")};  // ending
+    std::vector<Offer> s = stand_ins(r, pick, found, 100);
+    REQUIRE(s.size() == 1);
+    CHECK(s[0].mpn == "ERJ-3EKF1002V");
+}

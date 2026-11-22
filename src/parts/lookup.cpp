@@ -8,6 +8,7 @@
 #include <cctype>
 #include <cstdio>
 #include <map>
+#include <set>
 #include <sstream>
 
 namespace kigit::parts {
@@ -49,7 +50,8 @@ nlohmann::json match_json(const Match& m, int need) {
             {"error", m.error},
             {"pick", m.pick ? offer_json(*m.pick, need) : nlohmann::json(nullptr)},
             {"candidates", c},
-            {"alternatives", a}};
+            {"alternatives", a},
+            {"similar", m.similar}};
 }
 
 // A search through the cache. Returns false (and sets m.error) on an error.
@@ -142,6 +144,22 @@ nlohmann::json lookup(const Bom& bom, const LookupOptions& opt, const std::map<s
                                           sub_error))
                             m.alternatives = rank(line, subs, need);
                         if (m.alternatives.size() > 5) m.alternatives.resize(5);
+                    }
+                    // Still short of choices: kigit looks for similar parts itself (every site).
+                    if (m.pick && !stopped.count(site) && m.alternatives.size() < 5 &&
+                        ((m.pick->stock >= 0 && m.pick->stock < need) || winding_down(*m.pick))) {
+                        const Offer pick = *m.pick;
+                        m.similar = similar_term(line, pick);
+                        std::vector<Offer> like;
+                        std::string like_error;
+                        if (!m.similar.empty() &&
+                            cached_search(cache_key(site, m.similar, true), opt, cache, sites[site], stopped, site,
+                                          [&] { return src->keyword(m.similar); }, like, like_error)) {
+                            std::set<std::string> have;
+                            for (const auto& a : m.alternatives) have.insert(norm_pn(a.mpn));
+                            for (const auto& o : stand_ins(line, pick, like, need))
+                                if (m.alternatives.size() < 5 && have.insert(norm_pn(o.mpn)).second) m.alternatives.push_back(o);
+                        }
                     }
                 }
                 sites[site]["calls"] = src->calls();

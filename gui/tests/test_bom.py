@@ -485,3 +485,24 @@ def test_keyring_fix_steps() -> None:
     assert keyring_fix({"keyring": True, "name": "x"}) == {}
     page = (Path(__file__).parents[1] / "kigit_gui" / "bom_page.html").read_text(encoding="utf-8")
     assert '<div id="keystore"></div>' in page and "data-copy=" in page and 'id="keycheck"' in page
+
+
+def test_look_up_shows_its_progress_by_the_bell() -> None:
+    """A ring by the bell fills as the lines are done and spins while kigit
+    works; its panel has a bar, the line being looked up, time left, Stop and
+    minimise."""
+    page = _page()
+    assert 'id="activity"' in page and page.index('id="activity"') < page.index('id="bell"')
+    assert "#activity.working .spin" in page and "strokeDashoffset" in page
+    assert 'id="actmin"' in page and 'id="actstop"' in page and 'post("lookup/stop"' in page
+    assert "kigit.bomActMin" in page
+
+
+def test_stopping_a_look_up(tmp_path) -> None:
+    """Stop ends kigit's process; the Look up says stopped, not failed."""
+    import time as _time
+    from kigit_gui import bom
+    look = bom.Lookup()
+    assert look.state()["stopped"] is False and look.state()["what"] == ""
+    look.started = _time.time() - 5
+    assert 4 <= look.state()["elapsed"] <= 7

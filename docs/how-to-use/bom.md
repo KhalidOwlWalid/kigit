@@ -82,8 +82,14 @@ On the page, Look up prices **Build qty** boards and adds two columns per site: 
 - **A line with a part number** (the site's own number, else its MPN) gets that exact part. If the site sells it in several packagings (Digi-Key's cut tape and reels), the one with enough stock comes first, then the cheapest.
 - **A line without one** (most resistors and capacitors) gets up to five **choices** from searching "10k 0603 resistor", ranked by stock, lifecycle and package. kigit doesn't pick one for you: put the one you want in the MPN column.
 - **SHORT** means the site has fewer than you need (the line's quantity × `--boards`). The price is for what you'd buy: at least the minimum, in its multiples (a reel is a whole reel), at that quantity's price break.
-- **Short or ending** (obsolete, last time buy, not for new designs): Digi-Key's **substitutes** show as **N instead**, marked *Direct* (a drop-in) or *Upgrade* and the like, each with its stock and price and a **Use** button.
+- **Short or ending** (too few in stock for your boards, or obsolete, last time buy, not for new designs): **N instead** lists parts that could stand in, up to five, each with its stock, price and a **Use** button:
+    - first the site's own **substitutes**, when it has them (Digi-Key does; they're marked *Direct* for a drop-in, *Upgrade* and the like);
+    - then parts **kigit finds itself**, on every site, Mouser included. It searches for parts like yours (a passive's value and package; else the part's family, like `SN65HVD230` for `SN65HVD230QDG4`), and keeps only those with **enough stock** for your boards that aren't ending; a passive's must be in the same package. They're marked **similar**: hover it for what to check (rating for passives; package and pinout for anything else).
+
+    kigit never swaps a part for you: check the one you like fits, then **Use** it.
 - DNP lines aren't looked up.
+
+**While it looks up**, a ring next to the bell fills as the lines are done and spins while kigit is working. Click it for the details: a progress bar, the line being looked up, roughly how long is left, and **Stop**. **–** minimises the panel to the ring (kigit remembers that for next time), and you can keep working meanwhile. When it's done the ring turns green with a summary (found, to choose, short, the cost), or red if it failed.
 
 Answers are kept for a day (`parts-cache.json` in the app folder): asking again is instant and free. Mouser allows 30 searches a minute and 1000 a day, so kigit waits 2 seconds between them; Digi-Key allows about 120 a minute and 1000 a day (0.6 seconds). A refused key or a site's daily limit stops that site with a message, instead of trying every line; the other site carries on.
 

@@ -283,14 +283,16 @@ async def bom_set_key(site: str, *lines: str) -> None:
 
 
 # kigit bom --lookup's progress lines: "kigit: looking up 3/40 R1 R2"
-_PROGRESS = re.compile(r"^kigit: looking up (\d+)/(\d+)")
+_PROGRESS = re.compile(r"^kigit: looking up (\d+)/(\d+)[ \t]*(.*)")
 
 
 async def bom_lookup(board: str, rev: str = "LOCAL", boards: int = 1, refresh: bool = False,
-                     progress: Callable[[int, int], None] | None = None) -> dict:
+                     progress: Callable[..., None] | None = None,
+                     started_proc: Callable[[subprocess.Popen], None] | None = None) -> dict:
     """kigit bom --lookup --json: stock, prices and lifecycle at Mouser for
     each line. Mouser is asked about 2 s apart, so this can take a minute;
-    progress(done, total) follows kigit's progress lines."""
+    progress(done, total, what) follows kigit's progress lines (what: the
+    line's references); started_proc gets the process, so it can be stopped."""
     args = ("bom", "--lookup", "--json", "--boards", str(max(1, boards)), *(["--refresh"] if refresh else []),
             *([] if rev == "LOCAL" else [rev]), board)
     started = time.monotonic()
@@ -298,6 +300,8 @@ async def bom_lookup(board: str, rev: str = "LOCAL", boards: int = 1, refresh: b
     def go() -> tuple[int, bytes, bytes]:
         proc = subprocess.Popen(_command(args), stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
                                 stderr=subprocess.PIPE, creationflags=_NO_WINDOW)
+        if started_proc:
+            started_proc(proc)
         out: list[bytes] = []
         reader = threading.Thread(target=lambda: out.append(proc.stdout.read()), daemon=True)
         reader.start()
@@ -306,7 +310,7 @@ async def bom_lookup(board: str, rev: str = "LOCAL", boards: int = 1, refresh: b
             err.append(raw)
             m = _PROGRESS.match(raw.decode(errors="replace"))
             if m and progress:
-                progress(int(m.group(1)) - 1, int(m.group(2)))
+                progress(int(m.group(1)) - 1, int(m.group(2)), m.group(3).strip())
         reader.join()
         return proc.wait(), b"".join(out), b"".join(err)
 
