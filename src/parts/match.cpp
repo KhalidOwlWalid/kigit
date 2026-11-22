@@ -2,6 +2,8 @@
 
 #include <algorithm>
 #include <cctype>
+#include <regex>
+#include <set>
 
 namespace kigit::parts {
 
@@ -82,13 +84,38 @@ std::string similar_term(const BomLine& line, const Offer& pick) {
     std::string own = norm_pn(pick.mpn.empty() ? line.mpn : pick.mpn);
     if (from == "passive") return q;
     if (!q.empty() && (from == "value" || from == "footprint") && norm_pn(q) != own) return q;
-    // The part's family: its number without the ordering suffix (packaging, temperature).
-    std::string pn = pick.mpn.empty() ? line.mpn : pick.mpn;
+    return family_of(pick.mpn.empty() ? line.mpn : pick.mpn);
+}
+
+std::string family_of(const std::string& pn) {
+    std::string own = norm_pn(pn);
     size_t cut = pn.find_first_of("-/(#,");
     std::string family = cut != std::string::npos && cut >= 5 ? pn.substr(0, cut) : pn;
     if (norm_pn(family) == own && family.size() > 7) family = family.substr(0, family.size() - 2);
     while (!family.empty() && !std::isalnum(static_cast<unsigned char>(family.back()))) family.pop_back();
     return norm_pn(family) == own || family.size() < 4 ? "" : family;
+}
+
+std::vector<std::pair<std::string, std::string>> fallback_searches(const BomLine& line) {
+    std::vector<std::pair<std::string, std::string>> out;
+    std::set<std::string> numbers = {norm_pn(line.mpn), norm_pn(line.mouser), norm_pn(line.digikey), norm_pn(line.lcsc)};
+    auto add = [&](const std::string& q, const std::string& why) {
+        if (q.empty() || numbers.count(norm_pn(q))) return;
+        for (const auto& [have, _] : out)
+            if (have == q) return;
+        out.emplace_back(q, why);
+    };
+    BomLine plain = line;
+    plain.mpn = plain.digikey = plain.mouser = plain.lcsc = "";
+    auto [q, from] = query_of(plain);
+    bool passive = is_passive(line.kind);
+    if (passive) add(q, "its value and package");
+    for (const auto& d : description_searches(line)) add(d, "its description");
+    if (!passive && from == "value") add(q, "its value");
+    if (!passive && from == "footprint") add(q, "the part number in its footprint");
+    add(family_of(line.mpn), "its part family");
+    if (!passive && from == "footprint words") add(q, "its footprint");
+    return out;
 }
 
 std::vector<Offer> stand_ins(const BomLine& line, const Offer& pick, const std::vector<Offer>& found, int need) {
@@ -106,6 +133,58 @@ std::vector<Offer> stand_ins(const BomLine& line, const Offer& pick, const std::
     }
     out = rank(line, out, need);
     if (out.size() > kChoices) out.resize(kChoices);
+    return out;
+}
+
+std::vector<std::string> description_searches(const BomLine& line) {
+    std::string d = line.description;
+    if (d.empty()) return {};
+    std::string up = upper(d);
+    auto has = [&](const char* w) { return up.find(w) != std::string::npos; };
+    // What it is, in the words distributors use (most specific first).
+    struct Kind { const char* find; const char* say; };
+    static const Kind kinds[] = {
+        {"N-CHANNEL", "N-Channel MOSFET"}, {"N-CH", "N-Channel MOSFET"}, {"P-CHANNEL", "P-Channel MOSFET"},
+        {"P-CH", "P-Channel MOSFET"}, {"MOSFET", "MOSFET"}, {"SCHOTTKY", "Schottky diode"}, {"TVS", "TVS diode"},
+        {"ZENER", "Zener diode"}, {"ESD", "ESD protection"}, {"RECTIFIER", "rectifier diode"}, {"NPN", "NPN transistor"},
+        {"PNP", "PNP transistor"}, {"LDO", "LDO regulator"}, {"BUCK", "buck converter"}, {"BOOST", "boost converter"},
+        {"REGULATOR", "voltage regulator"}, {"OP AMP", "op amp"}, {"OPERATIONAL AMPLIFIER", "op amp"},
+        {"COMPARATOR", "comparator"}, {"TRANSCEIVER", "transceiver"}, {"OSCILLATOR", "oscillator"}, {"CRYSTAL", "crystal"},
+        {"FERRITE", "ferrite bead"}, {"INDUCTOR", "inductor"}, {"FUSE", "fuse"}, {"RELAY", "relay"}, {"LED", "LED"},
+        {"SWITCH", "switch"}, {"CONNECTOR", "connector"}, {"HEADER", "header"}, {"DIODE", "diode"},
+        {"TRANSISTOR", "transistor"}};
+    std::string kind;
+    for (const auto& k : kinds)
+        if (has(k.find)) { kind = k.say; break; }
+    if (kind.empty()) return {};
+    // Ratings written alone ("40V", "75A", "55W"), not as test conditions ("1.5V@250uA").
+    std::string volts, amps;
+    static const std::regex rating(R"((?:^|[\s,;/(=])(\d+(?:\.\d+)?)\s?(V|A|mA)(?=$|[\s,;/)]))");
+    double best_v = -1, best_a = -1;
+    for (std::sregex_iterator it(d.begin(), d.end(), rating), end; it != end; ++it) {
+        size_t after = it->position(0) + it->length(0);
+        if (after < d.size() && d[after] == '@') continue;
+        double v = std::stod((*it)[1]);
+        std::string unit = (*it)[2];
+        if (unit == "V" && v > best_v) best_v = v, volts = (*it)[1].str() + "V";
+        if (unit == "A" && v > best_a) best_a = v, amps = (*it)[1].str() + "A";
+        if (unit == "mA" && v / 1000 > best_a) best_a = v / 1000, amps = (*it)[1].str() + "mA";
+    }
+    // The package family: "PDFN-8L(3x3)" -> "PDFN", "SOT-23-3" -> "SOT-23".
+    std::string package;
+    static const std::regex pkg(R"(\b((?:P|W|V|U|X)?(?:DFN|QFN|SON|SOIC|SOP|SSOP|TSSOP|MSOP|SOT-?\d+|SOD-?\d+|TO-?\d+|DPAK|D2PAK|SMA|SMB|SMC|LQFP|TQFP|BGA))\b)",
+                                std::regex::icase);
+    std::smatch pm;
+    if (std::regex_search(d, pm, pkg)) package = pm[1];
+    auto join = [](std::initializer_list<std::string> ws) {
+        std::string q;
+        for (const auto& w : ws)
+            if (!w.empty()) q += (q.empty() ? "" : " ") + w;
+        return q;
+    };
+    std::vector<std::string> out;
+    for (const std::string& q : {join({kind, volts, amps, package}), join({kind, volts, amps}), join({kind, volts})})
+        if (std::find(out.begin(), out.end(), q) == out.end() && q != kind) out.push_back(q);
     return out;
 }
 

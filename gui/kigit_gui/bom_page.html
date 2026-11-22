@@ -142,6 +142,9 @@ tr.dnp td { opacity: .55; }
 .pkg { color: var(--muted); font-size: 12px; } .desc { color: var(--faint); font-size: 12px; }
 .num { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; }
 .chip { display: inline-block; font-size: 11px; border-radius: 999px; padding: 0 7px; border: 1px solid; white-space: nowrap; }
+td button.chip { display: inline-block; font: inherit; font-size: 11px; text-transform: none; letter-spacing: 0; padding: 0 7px;
+  border-radius: 999px; border: 1px solid; background: none; min-height: 0; line-height: 1.6; }
+td button.chip.need { color: var(--warn); } td button.chip.more:hover { background: rgba(242,192,55,.15); }
 .chip.ok { color: var(--ok); } .chip.picked { color: var(--accent); } .chip.need { color: var(--warn); } .chip.dnp { color: var(--faint); }
 .links a { display: block; color: var(--link); text-decoration: none; white-space: nowrap; }
 .links a:hover { text-decoration: underline; }
@@ -255,6 +258,11 @@ td.placed button { padding: 0 6px; font-size: 11px; margin-left: 2px; }
 @keyframes actslide { from { margin-left: -30%; } to { margin-left: 100%; } }
 #actbody .row { display: flex; gap: 8px; justify-content: flex-end; margin-top: 10px; }
 #actbody .now { color: var(--muted); } #actbody .now b { color: var(--text); }
+#usedlg { max-width: 34rem; } .usediff { border-collapse: collapse; margin: 8px 0; width: 100%; }
+.usediff th { text-align: left; font-size: 11px; color: var(--muted); font-weight: 500; padding: 2px 8px 2px 0; }
+.usediff td { padding: 3px 8px 3px 0; font-family: "Roboto Mono", monospace; font-size: 12.5px; }
+.usediff td:first-child { font-family: inherit; color: var(--muted); }
+.usediff .old { color: #ff9a94; text-decoration: line-through; } .usediff .new { color: #7ee29a; }
 #nlist .n .go { margin-top: 4px; font-size: 12px; padding: 1px 8px; }
 #keystore.ok .material-icons { color: var(--ok); font-size: 16px; vertical-align: -3px; }
 #keystore.fixit { border: 1px solid rgba(242,192,55,.5); background: rgba(242,192,55,.08); border-radius: 6px; padding: 10px 12px; color: var(--text); }
@@ -479,6 +487,8 @@ design before saving. The search links only open the distributors' sites; kigit 
     and trackers. For Digi-Key's BOM Manager or a spreadsheet.</small></button>
 </div>
 <div id="toasts" aria-live="polite"></div>
+<dialog id="usedlg"><div id="usebody"></div>
+  <div class="row"><button id="useno">Cancel</button><button id="useok" class="primary">Use it</button></div></dialog>
 <dialog id="keydlg">
   <b>Parts sites' keys</b>
   <p class="sub">Look up asks every site you have a key for. Both are free. kigit never puts them in logs.</p>
@@ -1071,7 +1081,15 @@ function stockCell(l, i, site) {
   const more = n ? ` <button class="more" data-key="${key}" title="${m.alternatives.length ? `The pick is short or ending: parts that could stand in, with enough stock` : ""}">${opened.has(key) ? "hide" : label}</button>` : "";
   if (m.status === "dnp") return "";
   if (m.status === "skipped" || m.status === "error") return `<span class="faint" title="${esc(m.error)}">${m.status === "error" ? "error" : "&ndash;"}</span>`;
-  if (m.status === "not_found") return `<span class="chip need" title="${esc(siteName(site))} has no ${esc(m.searched)}">not at ${esc(siteName(site))}</span>${more}`;
+  if (m.status === "not_found") {
+    // Not there by its part number; what its description found instead is behind the chip (and "N similar").
+    const tried = (m.tried || []).join("; ");
+    const by = m.similar ? `: ${n} found by ${m.similar_by || "its description"} (${m.similar}), click to see`
+      : tried ? `, and other searches found nothing either (${tried})` : "";
+    return `<button class="chip need${n ? " more" : ""}"${n ? ` data-key="${key}"` : ""} title="${esc(siteName(site))} has no ${esc(m.searched)}${esc(by)}">` +
+      `not at ${esc(siteName(site))}${n ? ` <i class="material-icons" style="font-size:14px;vertical-align:-3px">${opened.has(key) ? "expand_less" : "travel_explore"}</i>` : ""}</button>` +
+      (n ? ` <button class="more" data-key="${key}">${opened.has(key) ? "hide" : `${n} found another way`}</button>` : "");
+  }
   if (!o) return `<span class="faint">no part number:</span>${more}`;
   return `<a href="${esc(o.url)}" target="_blank" rel="noopener" title="${esc(o.description)}${o.package ? " · " + esc(o.package) : ""}">${esc(o.sku || o.mpn)}</a><br>` +
     (o.short ? `<span class="short" title="${esc(siteName(site))} has ${count(o.stock)}, you need ${count(LOOK.byKey.get(lineKey(l)).need)}">SHORT: ${count(o.stock)}</span>`
@@ -1085,7 +1103,8 @@ function priceCell(l, site) {
 }
 function offerRows(list, i, site, which) {
   return list.map((o, n) => `<tr><td class="num">${esc(o.mpn)}<div class="faint">${esc(o.manufacturer)}</div></td>` +
-    `<td>${o.note ? (/^Similar/.test(o.note) ? `<span class="chip picked" title="${esc(o.note)}">similar</span> `
+    `<td>${o.note ? (/^Found by /.test(o.note) ? `<span class="chip picked" title="${esc(o.note)}">by ${esc(o.note.replace(/^Found by (its |the )?/, "").split(":")[0])}</span> `
+      : /^Similar/.test(o.note) ? `<span class="chip picked" title="${esc(o.note)}">similar</span> `
       : `<span class="chip ok" title="The site's own substitute">${esc(o.note)}</span> `) : ""}${esc(o.description)} ${lifeChip(o)}` +
     `${o.package ? `<div class="faint">${esc(o.package)}</div>` : ""}</td>` +
     `<td class="stock">${o.stock < 0 ? "" : (o.short ? `<span class="short">${count(o.stock)}</span>` : count(o.stock)) + " in stock"}</td>` +
@@ -1102,7 +1121,11 @@ function choicesRow(l, i, span, site) {
   const from = FROM[l.query_from] && m.searched === l.query ? ` <span class="faint">(${FROM[l.query_from]})</span>` : "";
   const what = m.status === "choose" ? `${name}'s best matches for <b>${esc(m.searched)}</b>${from} (kigit doesn't pick one for you; ` +
       `typing the part number into MPN gets that exact part):`
-    : m.status === "ok" ? "The same part in other packagings:" : `Similar parts at ${name} (no exact <b>${esc(m.searched)}</b>):`;
+    : m.status === "ok" ? "The same part in other packagings:"
+    : m.similar ? `${name} has no <b>${esc(m.searched)}</b>, so kigit searched by ${esc(m.similar_by || "its description")}: <b>${esc(m.similar)}</b>` +
+      ((m.tried || []).length > 1 ? ` <span class="faint">(first tried, nothing: ${m.tried.slice(0, -1).map(esc).join("; ")})</span>` : "") +
+      `. Check one is the part you need (ratings, package, pinout) before you use it:`
+    : `Similar parts at ${name} (no exact <b>${esc(m.searched)}</b>):`;
   return `<tr class="choices"><td colspan="${span}">` +
     (m.alternatives.length ? `<div class="faint">Instead of the pick (it's ${m.pick?.short ? `short: ${count(m.pick.stock)} in stock, ${count(LOOK.byKey.get(lineKey(l))?.need ?? 0)} needed` : "ending"}): ` +
       [m.alternatives.some((a) => !/^Similar/.test(a.note || "")) ? `${name}'s own substitutes` : "",
@@ -1116,12 +1139,45 @@ $("rows").addEventListener("click", async (e) => {
   const more = e.target.closest("button.more");
   if (more) { const k = more.dataset.key; opened.has(k) ? opened.delete(k) : opened.add(k); render(); return; }
   const use = e.target.closest("button[data-use]"); if (!use) return;
-  const i = +use.dataset.use, l = DATA.lines[i], o = lookOf(l, use.dataset.site)[use.dataset.list][+use.dataset.n], [mpn, maker] = columns();
+  const i = +use.dataset.use, l = DATA.lines[i], site = use.dataset.site, o = lookOf(l, site)[use.dataset.list][+use.dataset.n];
+  const cols = columns(), col = (kind) => cols.find((c) => c.kind === kind);
+  // What Use changes: MPN, manufacturer and this site's number (when the project has that column) ...
+  const sets = [[col("mpn"), o.mpn], [col("manufacturer"), o.manufacturer], [col(site), o.sku]].filter(([c, v]) => c && v);
+  // ... and the other sites' numbers, which are for the old part.
+  const stale = ["digikey", "mouser", "lcsc"].filter((k) => k !== site).map(col).filter((c) => c && shown(l, c));
+  const changes = sets.filter(([c, v]) => shown(l, c) !== v);
+  if (!changes.length && !stale.length) return;
+  const replacing = changes.some(([c]) => shown(l, c));
+  if (replacing || stale.length) {
+    const ok = await confirmUse(l, o, changes, stale);
+    if (!ok) return;
+    sets.length = 0; sets.push(...changes, ...stale.filter((c) => ok.clear).map((c) => [c, ""]));
+  }
   try {
-    for (const [c, v] of [[mpn, o.mpn], [maker, o.manufacturer]]) if (v) drafts = await post("drafts", { key: lineKey(l), field: c.name, value: v === current(l, c) ? null : v });
-    opened.delete(`${i}|${use.dataset.site}`); render();
+    for (const [c, v] of sets) drafts = await post("drafts", { key: lineKey(l), field: c.name, value: v === current(l, c) ? null : v });
+    opened.delete(`${i}|${site}`); render();
   } catch (err) { problem("Not saved: " + err.message); }
 });
+// Use would replace a part number: say exactly what changes, from -> to, and ask.
+function confirmUse(l, o, changes, stale) {
+  return new Promise((done) => {
+    const d = $("usedlg");
+    $("usebody").innerHTML = `<b>Use ${esc(o.mpn)} for ${esc(l.refs.join(", "))}?</b>` +
+      `<p class="sub">This replaces the line's part information (as drafts: nothing is written to the schematic until you ` +
+      `<b>Write to schematic</b>, and you can still undo it).</p>` +
+      `<table class="usediff"><tr><th>Field</th><th>Now</th><th></th><th>Becomes</th></tr>` +
+      changes.map(([c, v]) => `<tr><td>${esc(c.label)}</td><td class="old">${esc(shown(l, c)) || `<span class="faint">empty</span>`}</td>` +
+        `<td>&rarr;</td><td class="new">${esc(v)}</td></tr>`).join("") + `</table>` +
+      (stale.length ? `<label class="sub"><input type="checkbox" id="useclear" checked> Also clear ` +
+        stale.map((c) => `${esc(c.label)} <code>${esc(shown(l, c))}</code>`).join(" and ") +
+        `: ${stale.length > 1 ? "they're" : "it's"} for the old part</label>` : "");
+    const close = (v) => { d.close(); $("useok").onclick = $("useno").onclick = null; done(v); };
+    $("useok").onclick = () => close({ clear: !!$("useclear")?.checked });
+    $("useno").onclick = () => close(null);
+    d.onclose = () => done(null);
+    d.showModal();
+  });
+}
 // ------------------------------------------------- what kigit is doing
 // The ring by the bell and its panel follow the Look up: filling as lines are
 // done, spinning while kigit works, green when done, red when it failed.

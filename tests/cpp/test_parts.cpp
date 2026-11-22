@@ -495,3 +495,87 @@ TEST_CASE("stand-ins for a short part: what to search for, and what may stand in
     REQUIRE(s.size() == 1);
     CHECK(s[0].mpn == "ERJ-3EKF1002V");
 }
+
+TEST_CASE("not at a site by its part number: searches from its description") {
+    BomLine q;
+    q.description = "-55°C~+150°C 1.5V@250uA 1.675nF 2.9mΩ@10V 26nC@20V 31pF 395pF 40V 55W 75A N-Channel PDFN-8L(3x3) MOSFETs ROHS";
+    std::vector<std::string> s = description_searches(q);
+    REQUIRE(s.size() == 3);
+    CHECK(s[0] == "N-Channel MOSFET 40V 75A PDFN");  // the ratings, not the test conditions (1.5V@250uA)
+    CHECK(s[1] == "N-Channel MOSFET 40V 75A");
+    CHECK(s[2] == "N-Channel MOSFET 40V");
+    q.description = "Schottky Diodes & Rectifiers VR=20V, IO=500mA SOD-323";
+    CHECK(description_searches(q)[0] == "Schottky diode 20V 500mA SOD-323");  // "VR=20V, IO=500mA"
+    q.description = "Generic connectable mounting pin connector, single row, 01x04";
+    CHECK(description_searches(q).empty());  // "connector" alone says nothing useful
+    q.description = "";
+    CHECK(description_searches(q).empty());
+
+    // In a Look up: the part number finds nothing, the description does.
+    TempDir tmp;
+    Bom bom;
+    BomLine l = line("DOY180N03T", 1, "DOY180N03T");
+    l.kind = "other";
+    l.description = "40V 75A N-Channel PDFN-8L(3x3) MOSFETs";
+    bom.lines = {l};
+    std::vector<std::string> keywords;
+    auto http = [&](const net::HttpRequest& rq) {
+        bool keyword = rq.url.find("keyword") != std::string::npos;
+        if (keyword) keywords.push_back(json::parse(rq.body)["SearchByKeywordRequest"]["keyword"]);
+        json r = keyword && keywords.size() == 2 ? reply({mouser_part("771-PSMN1R8-40YLC", "PSMN1R8-40YLC", "5000")})
+                                                  : reply({});
+        return net::HttpResponse{200, r.dump(), ""};
+    };
+    Mouser m("k", http, 0);
+    Cache cache(tmp / "cache.json");
+    json r = lookup(bom, LookupOptions{}, {{"mouser", &m}}, {}, cache);
+    const json& site = r["lines"][0]["sites"]["mouser"];
+    CHECK(site["status"] == "not_found");
+    CHECK(keywords == std::vector<std::string>{"N-Channel MOSFET 40V 75A PDFN", "N-Channel MOSFET 40V 75A"});
+    CHECK(site["similar"] == "N-Channel MOSFET 40V 75A");
+    CHECK(site["similar_by"] == "its description");
+    CHECK(site["tried"].size() == 2);
+    REQUIRE(site["candidates"].size() == 1);
+    CHECK(site["candidates"][0]["mpn"] == "PSMN1R8-40YLC");
+    CHECK(site["candidates"][0]["note"].get<std::string>().find("description") != std::string::npos);
+}
+
+TEST_CASE("not at a site: fallbacks in turn, a resistor by its value and package first") {
+    BomLine r = line("10k", 1, "RC0603FR-07XYZ");  // a part number that doesn't exist
+    r.description = "Thick Film Resistors 10 kOhms 1% 0603";
+    auto f = fallback_searches(r);
+    REQUIRE(f.size() >= 2);
+    CHECK(f[0] == std::pair<std::string, std::string>{"10k 0603 resistor", "its value and package"});
+    CHECK(f.back().first == "RC0603FR");  // its family, last
+    for (const auto& [q, why] : f) CHECK(norm_pn(q) != norm_pn(r.mpn));  // never the part number again
+
+    BomLine q;
+    q.kind = "other";
+    q.mpn = q.value = "DOY180N03T";
+    q.description = "40V 75A N-Channel PDFN-8L(3x3) MOSFETs";
+    f = fallback_searches(q);
+    CHECK(f[0].second == "its description");
+    CHECK(f.back() == std::pair<std::string, std::string>{"DOY180N0", "its part family"});
+    for (const auto& [s, why] : f) CHECK(s != "DOY180N03T");  // the value is the part number: not again
+
+    // In a Look up: nothing for the part number, nothing for the first fallback, the second finds parts.
+    TempDir tmp;
+    Bom bom;
+    bom.lines = {r};
+    int keyword_calls = 0;
+    auto http = [&](const net::HttpRequest& rq) {
+        bool keyword = rq.url.find("keyword") != std::string::npos;
+        if (keyword) ++keyword_calls;
+        json rp = keyword && keyword_calls == 2 ? reply({mouser_part("603-RC0603FR-0710KL", "RC0603FR-0710KL", "9000")}) : reply({});
+        return net::HttpResponse{200, rp.dump(), ""};
+    };
+    Mouser m("k", http, 0);
+    Cache cache(tmp / "cache.json");
+    json res = lookup(bom, LookupOptions{}, {{"mouser", &m}}, {}, cache);
+    const json& site = res["lines"][0]["sites"]["mouser"];
+    CHECK(site["status"] == "not_found");
+    CHECK(site["tried"].size() == 2);
+    CHECK(site["tried"][0] == "10k 0603 resistor");                       // found nothing
+    CHECK(site["similar_by"] == fallback_searches(r)[1].second);           // the second one found it
+    CHECK(site["candidates"][0]["mpn"] == "RC0603FR-0710KL");
+}

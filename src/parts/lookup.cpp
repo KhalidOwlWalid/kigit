@@ -51,7 +51,9 @@ nlohmann::json match_json(const Match& m, int need) {
             {"pick", m.pick ? offer_json(*m.pick, need) : nlohmann::json(nullptr)},
             {"candidates", c},
             {"alternatives", a},
-            {"similar", m.similar}};
+            {"similar", m.similar},
+            {"similar_by", m.similar_by},
+            {"tried", m.tried}};
 }
 
 // A search through the cache. Returns false (and sets m.error) on an error.
@@ -133,6 +135,25 @@ nlohmann::json lookup(const Bom& bom, const LookupOptions& opt, const std::map<s
                     Match c = choose(line, found, by_words, need);
                     c.searched = m.searched;
                     m = c;
+                    // Its part number isn't there: other ways to find it, in turn, until one finds parts.
+                    if (m.status == "not_found" && !by_words && m.candidates.empty() && !stopped.count(site)) {
+                        for (const auto& [q, why] : fallback_searches(line)) {
+                            std::vector<Offer> like;
+                            std::string like_error;
+                            if (!cached_search(cache_key(site, q, true), opt, cache, sites[site], stopped, site,
+                                               [&] { return src->keyword(q); }, like, like_error))
+                                break;
+                            m.tried.push_back(q);
+                            if (like.empty()) continue;
+                            m.similar = q;
+                            m.similar_by = why;
+                            m.candidates = rank(line, like, need);
+                            if (m.candidates.size() > 5) m.candidates.resize(5);
+                            for (auto& o : m.candidates)
+                                o.note = "Found by " + why + ": check it's the part you need (ratings, package, pinout)";
+                            break;
+                        }
+                    }
                     // Short or ending: what the site suggests instead.
                     if (m.pick && src->has_substitutes() && !stopped.count(site) &&
                         ((m.pick->stock >= 0 && m.pick->stock < need) || winding_down(*m.pick))) {

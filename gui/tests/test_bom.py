@@ -506,3 +506,19 @@ def test_stopping_a_look_up(tmp_path) -> None:
     assert look.state()["stopped"] is False and look.state()["what"] == ""
     look.started = _time.time() - 5
     assert 4 <= look.state()["elapsed"] <= 7
+
+
+def test_not_found_opens_what_its_description_found() -> None:
+    page = _page()
+    assert 'button class="chip need${n ? " more" : ""}"' in page
+    assert "so kigit searched by ${esc(m.similar_by" in page
+    assert 'by ${esc(o.note.replace(' in page  # how each was found
+    assert "first tried, nothing" in page
+
+
+def test_use_asks_before_replacing_part_numbers() -> None:
+    """Use shows each field from -> to and asks; fills the site's number; offers to clear other sites' numbers."""
+    page = _page()
+    assert "function confirmUse(l, o, changes, stale)" in page and 'id="usedlg"' in page
+    assert "[col(site), o.sku]" in page and 'id="useclear"' in page
+    assert "if (replacing || stale.length)" in page

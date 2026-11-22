@@ -7,6 +7,8 @@ All notable changes to kigit, newest first. The format follows [Keep a Changelog
 ### Added
 
 - **Stand-ins for short parts, from every site**: when the part is short for your boards (or ending), Look up now also finds similar parts itself, at Mouser too (which has no substitutes of its own): by a passive's value and package, or the part's family (`SN65HVD230` for `SN65HVD230QDG4`), keeping only those with enough stock that aren't ending. They're listed after the site's own substitutes, marked **similar**, with what to check before using one.
+- **Not at a site? Other ways to find it**: when a part number isn't at Mouser or Digi-Key (resistors included), Look up tries, in turn: a passive's value and package; what its description says it is (*N-Channel MOSFET 40V 75A PDFN*, then fewer words); its value or footprint part number; its part family. Click **not at Mouser** to see what was found, and how.
+- **Use asks before replacing part numbers**: a dialog shows each field from → to (*MPN: DOY180N03T → PSMN1R8-40YLC*); Use also fills in the site's own number, and offers to clear other sites' numbers that are for the old part.
 - **Look up progress by the bell**: a ring next to the bell fills as lines are done and spins while kigit works; its panel shows a progress bar, the line being looked up, the time left and **Stop**, and minimises to the ring. Green with a summary when done, red if it failed.
 
 ### Changed

@@ -21,6 +21,8 @@ struct Match {
     std::vector<Offer> candidates;
     std::vector<Offer> alternatives; // instead of a pick that's short or ending: the site's substitutes, then kigit's
     std::string similar;             // what kigit searched for those ("" if it didn't)
+    std::string similar_by;          // what that search was made from ("its description", ...)
+    std::vector<std::string> tried;  // the searches tried when the part number wasn't found, in order
 };
 
 // How a line is searched on a site: its own number there, else the MPN
@@ -46,6 +48,23 @@ std::string similar_term(const BomLine& line, const Offer& pick);
 // not winding down, can be bought; a passive's also in the line's package.
 // Best first, each with a `note` saying what to check before using it.
 std::vector<Offer> stand_ins(const BomLine& line, const Offer& pick, const std::vector<Offer>& found, int need);
+
+// Searches made from a line's description, for when its part number isn't
+// at a site: what it is ("N-Channel MOSFET"), its main ratings ("40V 75A")
+// and its package family ("PDFN"), most specific first, each with fewer
+// words. Empty when the description says nothing kigit can use.
+std::vector<std::string> description_searches(const BomLine& line);
+
+// A part number without its ordering suffix (packaging, temperature):
+// "SN65HVD230QDG4" -> "SN65HVD230QD", "UJ20-C-...-P16-TR" -> "UJ20-C-...-P16".
+// "" when nothing shorter means anything.
+std::string family_of(const std::string& pn);
+
+// The searches to try, in order, when a line's part number isn't at a site,
+// each with what it's made from: for a passive its value and package first;
+// then its description; then its value or the part number in its footprint;
+// then its part family. Never the part number itself again.
+std::vector<std::pair<std::string, std::string>> fallback_searches(const BomLine& line);
 
 // The match from a search's offers.
 Match choose(const BomLine& line, const std::vector<Offer>& found, bool by_words, int need);

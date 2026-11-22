@@ -323,7 +323,18 @@ at once. localStorage settings are per origin, so per port.
   like any search), `stand_ins` (not the pick's MPN, stock >= need, not
   winding down, buyable, a passive's package in the description or MPN;
   `note` "Similar: ..."), appended; `similar` in the match JSON. The page
-  shows "similar" chips (note on hover) after the site's substitutes. Login in the keyring (see
+  shows "similar" chips (note on hover) after the site's substitutes.
+  Not found by a part number (and no near misses): `fallback_searches`
+  -> [(search, made from)]: passive query; `description_searches` (a kind
+  word from `kinds`, the highest standalone V and A/mA ratings, not "x@y"
+  test conditions, a package family; fewer words each); value / footprint
+  part number; `family_of(mpn)`; never a part number of the line's. Tried
+  in turn (`tried`) until one finds parts: the candidates (`note` "Found by
+  <made from>: ..."), `similar`, `similar_by`. The page's "not at <site>"
+  chip is then a `button.more`. Use (`data-use`): MPN, manufacturer and
+  the site's number column (`o.sku`) if the project has it; when that
+  replaces anything, or other sites' numbers are set, `confirmUse` shows a
+  from -> to table (`#usedlg`) with "also clear" for the stale numbers. Login in the keyring (see
   above), site and currency in `parts-keys.json` {"digikey": {site, currency}};
   `--set-key digikey` reads ID, secret, optional "SITE CURRENCY" lines.
   Pace 600 ms (about 120 a minute). Checked against the real token
