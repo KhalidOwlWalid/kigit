@@ -538,4 +538,5 @@ def test_lcsc_info_through_kigit() -> None:
     from kigit_gui import kigit
     info = asyncio.run(kigit.bom_lcsc_info())
     assert info["dir"].endswith("parts-lcsc") and info["have"] is False and info["bytes"] == 0
-    assert os.environ["KIGIT_LOG_DIR"].rsplit("/log", 1)[0] in info["dir"].replace("\\", "/")
+    # In the folder above the logs (kigit's app folder in tests): compared as paths, so on Windows too.
+    assert Path(info["dir"]).parent == Path(os.environ["KIGIT_LOG_DIR"]).parent
