@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "name": "First PCB",
+  "boards": 1,
+  "created": "2026-11-20 16:03",
+  "revision": null,
+  "head": "1f5b897d1436029143f90220d11bd67cdbb4c081",
+  "tracking": {
+    "columns": [],
+    "done": {}
+  }
+}

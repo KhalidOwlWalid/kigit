@@ -106,7 +106,10 @@ Other folders:
   the review panel and discussions).
 - `submodules/`: the libraries (json, spdlog, doctest) as pinned git submodules.
 - `tests/`: `cpp/` (doctest), `fixtures/` (demo v1/v2, hier, bus projects),
-  `regression.sh`.
+  `regression.sh`, `test_examples/` (real files: distributor cart exports;
+  `non_git_files/OwlKit-38fc8742` (older) and `-805531ee` (newer), two copies
+  of the user's board outside git, for the no-git tests in test_cli and
+  test_app; tests copy only their `.kicad_*` files to a temp folder).
 - `gui/tests/`: pytest with NiceGUI's simulated `user` fixture.
 - `examples/blinky/`: the example project (`kigit example`, the landing
   page's "Try the example project"): `steps/<n>/` is the whole project at
@@ -626,7 +629,13 @@ at once. localStorage settings are per origin, so per port.
   Chrome renders big models in software and slowly.
 - BOM (`bom.py`): the header's BOM button (opens its tab in the click,
   `window.kigitBomTab`) runs `kigit bom --json` for the working tree or the
-  one ticked commit and shows `/bom/{key}` (`bom.jobs`, in memory). It's
+  one ticked commit and shows `/bom/{key}` (`bom.jobs`, in memory). No git:
+  while folders are compared (`files_pair`) it's the newer folder's board,
+  else a project opened outside git (`state["disk_board"]`, set by
+  `open_disk_project`; the commit list is hidden; a folder compare also
+  `clear_project()`s the git project open before, so nothing on screen is
+  about another board, and the header names the two folders); both read from disk
+  (`disk:` rev for the 3D model, `board_json` via `--files B B`). It's
   also the editor for part information fields: columns MPN, Manufacturer,
   Digi-Key/Mouser/LCSC (when used), fields added with + Field, each by the
   project's own name (`field_names` in the JSON). Edited cells are drafts

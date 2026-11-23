@@ -721,4 +721,48 @@ TEST_CASE("errors: clear message, non-zero exit") {
     CHECK(bad_opt.code == 2);
 }
 
+// The KiCad files of one of the real OwlKit copies in
+// tests/test_examples/non_git_files, copied outside any git repo.
+static fs::path owl_copy(const TempDir& tmp, const std::string& name) {
+    fs::path from = fixture("../test_examples/non_git_files/" + name), to = tmp / name;
+    fs::create_directories(to);
+    for (const auto& e : fs::directory_iterator(from))
+        if (e.is_regular_file() && e.path().extension().string().rfind(".kicad_", 0) == 0)
+            fs::copy_file(e.path(), to / e.path().filename());
+    return to;
+}
+
+TEST_CASE("no git: two real copies of a board are compared, and the newer one's BOM read from disk") {
+    TempDir tmp;
+    fs::path old_dir = owl_copy(tmp, "OwlKit-38fc8742"), new_dir = owl_copy(tmp, "OwlKit-805531ee");
+    std::string old_pcb = quote((old_dir / "owl_v1.kicad_pcb").string());
+    std::string new_pcb = quote((new_dir / "owl_v1.kicad_pcb").string());
+
+    // Found as a project, not in git.
+    json found = parse(run_kigit("-C " + quote(new_dir.string()) + " --projects"));
+    REQUIRE(found["projects"].size() == 1);
+    CHECK(found["projects"][0]["git"] == false);
+    CHECK(found["projects"][0]["pcb"] == true);
+
+    json d = parse(run_kigit("-n -q --json -o - --files " + old_pcb + " " + new_pcb));
+    std::set<std::string> added, removed;
+    for (const auto& f : d["footprints"]) {
+        if (f["st"] == 1) added.insert(f["ref"].get<std::string>());
+        if (f["st"] == 2) removed.insert(f["ref"].get<std::string>());
+    }
+    CHECK(added == std::set<std::string>{"C20", "C21", "D5", "R19", "R20", "SW2", "SW3"});
+    CHECK(removed == std::set<std::string>{"SW1"});
+    CHECK(d["nets"].size() == 79);
+    CHECK(!d["schematic_diff"]["nets"].empty()); // the schematics (several sheets) are compared too
+
+    // The BOM of the newer copy, read from disk (no git).
+    json bom = parse(run_kigit("bom --json " + new_pcb));
+    CHECK(bom["summary"]["parts"] == 69);
+    CHECK(bom["summary"]["lines"] == 37);
+    bool c20 = false;
+    for (const auto& l : bom["lines"])
+        for (const auto& r : l["refs"]) c20 = c20 || r == "C20";
+    CHECK(c20); // a part only the newer copy has
+}
+
 }

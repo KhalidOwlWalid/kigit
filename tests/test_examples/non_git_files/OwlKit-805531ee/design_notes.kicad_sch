@@ -1,0 +1,24 @@
+(kicad_sch
+	(version 20260306)
+	(generator "eeschema")
+	(generator_version "10.0")
+	(uuid "ee215b2b-8ecc-4b97-8393-6d835b3bde78")
+	(paper "A4")
+	(lib_symbols)
+	(text "TODO:\n- Integrate external power input other than USB power\n- LEDs where necessary?"
+		(exclude_from_sim no)
+		(at 16.764 41.148 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "3730b7de-76c4-4be4-8273-d5135c357e9d")
+	)
+	(sheet_instances
+		(path "/"
+			(page "6")
+		)
+	)
+)

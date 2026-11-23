@@ -1,0 +1,32 @@
+{
+  "version": 2,
+  "drafts": {
+    "25pF|Capacitor_SMD:C_0603_1608Metric|06035A250GAT2A": {
+      "LCSC Part #": "C20069424"
+    },
+    "27R|Resistor_SMD:R_0603_1608Metric": {
+      "MPN": "AC0603FR-0727RL",
+      "Manufacturer": "YAGEO",
+      "Mouser": "603-AC0603FR-0727RL"
+    },
+    "27nH|Inductor_SMD:L_0603_1608Metric|C18830": {
+      "MPN": "AISC-0603-R027G-T",
+      "Manufacturer": "ABRACON",
+      "Mouser": "815-AISC0603R027GT"
+    },
+    "5k1R|Resistor_SMD:R_0603_1608Metric": {
+      "LCSC Part #": "C105580",
+      "MPN": "RC0603FR-075K1L",
+      "Manufacturer": "YAGEO"
+    },
+    "TLV73333PDBV|Package_TO_SOT_SMD:SOT-23-5|TLV73333PDBVT": {
+      "Mouser": "595-REG113NA-33250G4"
+    }
+  },
+  "columns": [
+    "Mounting Type",
+    "Package/Case",
+    "Voltage Rating",
+    "Current Consumption"
+  ]
+}

@@ -1907,3 +1907,74 @@ async def test_wrap_messages(user: User, monkeypatch) -> None:
     user.find(marker="wrap-messages").click()
     assert "kigit-wrap" not in table.classes
     assert [c["name"] for c in table.columns] == ["short", "tags", "date", "subject"]
+
+
+async def _new_bom_job(user: User):
+    from kigit_gui import bom
+
+    before = set(bom.jobs)
+    user.find(marker="bom-button").click()
+    for _ in range(100):
+        made = [bom.jobs[k] for k in set(bom.jobs) - before]
+        if made:
+            return made[0]
+        await asyncio.sleep(0.1)
+    raise AssertionError("no BOM job was made")
+
+
+async def test_project_without_git_has_a_bom(user: User, monkeypatch, tmp_path: Path) -> None:
+    """A project outside git: no commits, but BOM reads it from disk (2D
+    board included), and Compare folders starts with it as the new copy."""
+    copy = tmp_path / "copy"
+    shutil.copytree(REPO_ROOT / "tests" / "fixtures" / "v2", copy)
+    await open_at(user, monkeypatch, str(copy))
+    await user.should_see("isn't in a git repository", retries=50)
+    job = await _new_bom_job(user)
+    assert Path(job.board) == copy / "demo.kicad_pcb" and "on disk (no git)" in job.title
+    assert job.rev == app.LOCAL and job.data["summary"]["parts"] > 0
+    board = json.loads((app.CACHE / job.board_json).read_text(encoding="utf-8"))
+    assert any(it["k"] == "p" and it.get("ref") for it in board["items"])
+    user.find(marker="compare-folders").click()
+    await user.should_see(marker="folder-new", retries=50)
+    assert Path(marked(user, "folder-new").value) == copy
+
+
+def _owl_copy(name: str, dest: Path) -> Path:
+    """The KiCad files of one of the real OwlKit copies (tests/test_examples/
+    non_git_files), copied outside any git repo."""
+    dest.mkdir(parents=True)
+    for f in (REPO_ROOT / "tests" / "test_examples" / "non_git_files" / name).iterdir():
+        if f.is_file() and f.suffix.startswith(".kicad_"):
+            shutil.copy2(f, dest / f.name)
+    return dest
+
+
+async def test_bom_follows_the_folders_compared(user: User, monkeypatch, tmp_path: Path) -> None:
+    """With a git project open, comparing two folders (two real copies of a
+    board) makes BOM show the newer folder's board, not the git project's."""
+    old = _owl_copy("OwlKit-38fc8742", tmp_path / "old")
+    new = _owl_copy("OwlKit-805531ee", tmp_path / "new")
+    await open_at(user, monkeypatch, PROJECT)
+    await user.should_see("Pick two commits on the left", retries=50)
+    user.find(marker="compare-folders").click()
+    await user.should_see(marker="folder-old", retries=50)
+    for key, folder in (("old", old), ("new", new)):
+        box = marked(user, f"folder-{key}")
+        box.value = str(folder)
+        user.find(marker=f"folder-{key}").trigger("keydown.enter")
+    for _ in range(100):
+        if marked(user, "compare-folders-go").enabled:
+            break
+        await asyncio.sleep(0.1)
+    user.find(marker="compare-folders-go").click()
+    await user.should_see("(no git)", retries=100)
+    # The git project open before is left: no commits, no discussions badge.
+    assert commit_table(user).rows == []
+    assert not marked(user, "discussions-badge").visible
+    await user.should_see("old ↔ new")
+    job = await _new_bom_job(user)
+    assert Path(job.board) == new / "owl_v1.kicad_pcb" and "on disk (no git)" in job.title
+    assert job.data["summary"]["parts"] == 69  # the newer copy's (it has C20, C21, D5, ...)
+    assert any("C20" in line["refs"] for line in job.data["lines"])
+    board = json.loads((app.CACHE / job.board_json).read_text(encoding="utf-8"))  # its 2D board, from disk
+    assert any(it.get("ref") == "C20" for it in board["items"])

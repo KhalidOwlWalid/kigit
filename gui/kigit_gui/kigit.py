@@ -331,8 +331,12 @@ async def bom_lookup(board: str, rev: str = "LOCAL", boards: int = 1, refresh: b
 
 async def board_json(board: str, rev: str, out_file: Path) -> None:
     """One revision's board as kigit's viewer data (outline, tracks, pads with
-    their parts, zones): kigit --json REV..REV. For the BOM page's 2D view."""
-    await _run("-n", "-q", "--json", "-o", str(out_file), f"{rev}..{rev}", board)
+    their parts, zones): kigit --json REV..REV, or --files B B for a board on
+    disk ("disk:<board>", no git). For the BOM page's 2D view."""
+    if rev.startswith(DISK):
+        await _run("-n", "-q", "--json", "-o", str(out_file), "--files", rev[len(DISK):], rev[len(DISK):])
+    else:
+        await _run("-n", "-q", "--json", "-o", str(out_file), f"{rev}..{rev}", board)
 
 
 async def diff_json(project: str, old: str, new: str, out_file: Path) -> None:

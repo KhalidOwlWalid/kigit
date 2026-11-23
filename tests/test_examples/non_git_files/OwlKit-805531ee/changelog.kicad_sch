@@ -1,0 +1,56 @@
+(kicad_sch
+	(version 20260306)
+	(generator "eeschema")
+	(generator_version "10.0")
+	(uuid "e759c18d-aa4e-4b2e-8689-75064b1ead06")
+	(paper "A4")
+	(lib_symbols)
+	(rectangle
+		(start 16.51 18.542)
+		(end 127 52.832)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(fill
+			(type none)
+		)
+		(uuid "a05e5d74-58fe-4876-8abf-61ac1a2e955b")
+	)
+	(text "15th October 2026\n\nChanges: Changing linear power regulator LDO from\n		 XC6206P302 to TLV77333PDBVR.\n\nReason: Higher current output at 300mA compared to 200mA. Also,\n		XC6206P302 is supposed to be XC6206P332.\n"
+		(exclude_from_sim no)
+		(at 19.812 39.116 0)
+		(effects
+			(font
+				(size 2.032 2.032)
+			)
+			(justify left)
+		)
+		(uuid "399c34d0-64ad-4499-8d36-9c339fb5db8d")
+	)
+	(text "Power Regulation"
+		(exclude_from_sim no)
+		(at 35.56 24.13 0)
+		(effects
+			(font
+				(size 2.54 2.54)
+				(thickness 0.508)
+				(bold yes)
+			)
+		)
+		(uuid "6dffc5c3-9b42-4747-9cea-9df42f0a65bd")
+	)
+	(group ""
+		(uuid "91706ed4-7ce7-4587-8731-7e6aba2d378c")
+		(members "399c34d0-64ad-4499-8d36-9c339fb5db8d" "a05e5d74-58fe-4876-8abf-61ac1a2e955b")
+	)
+	(group ""
+		(uuid "a0108d9a-4e39-45e5-9750-3376c5369de2")
+		(members "6dffc5c3-9b42-4747-9cea-9df42f0a65bd" "91706ed4-7ce7-4587-8731-7e6aba2d378c")
+	)
+	(sheet_instances
+		(path "/"
+			(page "7")
+		)
+	)
+)

@@ -5,3 +5,5 @@ tests/fixtures/** -text
 # The example project too: its commit hashes depend on the exact bytes
 # (pinned in tests/cpp/test_cli.cpp), so no CRLF on Windows checkouts.
 examples/** -text
+# Real projects and distributor exports used by the tests: byte-for-byte too.
+tests/test_examples/** -text

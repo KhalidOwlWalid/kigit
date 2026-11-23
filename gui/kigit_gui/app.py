@@ -327,7 +327,8 @@ def build(start_folder: str):
     caller can open the starting folder once the page exists."""
     ui.dark_mode(True)
     ui.query(".nicegui-content").classes("p-0 gap-0")
-    state: dict = {"board": None, "history": None, "strays": []}
+    # disk_board: a project opened from a folder without git (its board), for the BOM and Compare folders.
+    state: dict = {"board": None, "history": None, "strays": [], "disk_board": None}
     resizer = Resizer()
     panels = Panels()
     owl.add()  # (off unless you find its door)
@@ -358,7 +359,7 @@ def build(start_folder: str):
         diff3d_btn.set_visibility(False)
         bom_btn = ui.button("BOM", icon="receipt_long").props("flat dense").tooltip(
             "The bill of materials in a new tab: part numbers, Digi-Key / Mouser / LCSC search, CSV export "
-            "(the working tree, or the one commit ticked)").mark("bom-button")
+            "(the working tree, or the one commit ticked; when comparing folders, the newer folder's)").mark("bom-button")
         with ui.button("Notebook", icon="edit_note", on_click=lambda: notes.show()).props("flat dense").mark(
                 "notebook-button"):
             notes_badge = ui.badge("", color="amber-8").props("floating rounded").mark("notebook-badge")
@@ -1003,13 +1004,20 @@ body.kigit-dragging iframe { pointer-events: none; }  /* else the frames swallow
             await open_folder(chosen)
 
     def clear_project() -> None:
-        state["board"] = state["history"] = None
+        """Forgets the open project: its commits, discussions, notes count,
+        reviews of rewritten commits and activity."""
+        state["board"] = state["history"] = state["disk_board"] = None
+        state["strays"] = []
         disc.set_project(None)
+        activity.use(None, "")
         table.rows = []
         table.selected = []
         table.update()
         project_label.text = ""
         count.text = ""
+        stray_bar.set_visibility(False)
+        notes_counted(0)
+        threads_changed()
         on_select()
 
     async def open_folder(folder: str, startup: bool = False, prefer: str = "") -> bool:
@@ -1068,14 +1076,7 @@ body.kigit-dragging iframe { pointer-events: none; }  /* else the frames swallow
             show_message("folder_open", "Several projects here; none chosen.")
             return False
         if not project.git:
-            status.text = ""
-            show_message("history_toggle_off", f"{project.name} isn't in a git repository.",
-                         "There's no history to pick commits from, but you can compare it with another "
-                         "copy of the project (an older backup, a colleague's version, ...).",
-                         "text-red-400")
-            no_git_button.on_click(lambda: compare_folders(new=project.dir))
-            no_git_button.set_visibility(True)
-            notify(f"{project.name} isn't in a git repository", type="negative")
+            open_disk_project(project)
             return False
         return await load_history(project)
 
@@ -1121,6 +1122,24 @@ body.kigit-dragging iframe { pointer-events: none; }  /* else the frames swallow
         moved = [f for f in h.folders if f != here]
         if moved:
             count.text += f" · project was also in: {', '.join(moved)}"
+
+    def open_disk_project(project: kigit.Project) -> None:
+        """A project in a folder without git: no commits to list, but its BOM
+        (from the files on disk) and comparing it with another copy work."""
+        logs.log.info("opened %s without git (on disk only)", project.board)
+        sessions.opened(project.dir, project.board, project.name)
+        background_tasks.create(take_snapshots([project.board]))
+        state["disk_board"], state["name"] = project.board, project.name
+        folder_input.value = project.dir
+        project_label.text = project.name
+        status.text = f"{project.dir} (no git)"
+        commits_drawer.hide()  # no history to list
+        show_message("history_toggle_off", f"{project.name} isn't in a git repository.",
+                     "There's no history to pick commits from. You can compare it with another copy of the "
+                     "project (an older backup, a colleague's version, ...), and BOM shows its parts as they "
+                     "are on disk.")
+        no_git_button.on_click(lambda: compare_folders(new=project.dir))
+        no_git_button.set_visibility(True)
 
     async def load_history(project: kigit.Project) -> bool:
         status.text = f"Reading {project.name} history..."
@@ -1687,18 +1706,24 @@ body.kigit-dragging iframe { pointer-events: none; }  /* else the frames swallow
             ui.run_javascript(f"""(() => {{ const w = window.kigitBomTab; window.kigitBomTab = null;
                 if (!{json.dumps(url)}) {{ w && w.close(); return; }}
                 if (w && !w.closed) w.location.href = {json.dumps(url)}; else window.open({json.dumps(url)}, "_blank"); }})()""")
-        board = state.get("board")
+        # Comparing folders: the newer folder's board. Else the git project's
+        # (working tree or the commit ticked), else a project opened without git.
+        pair = state.get("pair")
+        disk = (pair[1][len(kigit.DISK):] if state.get("files_pair") and pair and pair[1].startswith(kigit.DISK)
+                else None if state.get("board") else state.get("disk_board"))
+        board = disk or state.get("board")
         if not board:
             tab(None)
             notify("Open a KiCad project first", type="warning")
             return
-        picked = table.selected if len(table.selected) == 1 else []
+        picked = table.selected if len(table.selected) == 1 and not disk else []
         rev = picked[0]["hash"] if picked else LOCAL
-        name = state.get("name") or Path(board).stem
+        name = (Path(board).parent.name or Path(board).stem) if disk else (state.get("name") or Path(board).stem)
+        model_rev = kigit.DISK + board if disk else rev  # 3D and 2D: from the file on disk, no git
         # The board for the 2D view: kept per revision (LOCAL: by the board's time and size).
-        glb = board3d_name(board, rev)
+        glb = board3d_name(board, model_rev)
         board_data = Path(glb).stem + "-board.json"
-        data, made = await asyncio.gather(kigit.bom(board, rev), kigit.board_json(board, rev, CACHE / board_data),
+        data, made = await asyncio.gather(kigit.bom(board, rev), kigit.board_json(board, model_rev, CACHE / board_data),
                                           return_exceptions=True)
         if isinstance(data, BaseException):
             tab(None)
@@ -1707,7 +1732,7 @@ body.kigit-dragging iframe { pointer-events: none; }  /* else the frames swallow
         if isinstance(made, BaseException):  # the list still works without the 2D board
             logs.log.warning("bom: no board data: %s", made)
             board_data = ""
-        title = f"{name} · {'working tree' if rev == LOCAL else short_rev(rev)}"
+        title = f"{name} · {'on disk (no git)' if disk else 'working tree' if rev == LOCAL else short_rev(rev)}"
         todo = not (CACHE / glb).exists()
         job = bom.Job(board, title, data, rev=rev, board_json=board_data, glb=glb,
                       expected=buildtime.estimate(board, 1) if todo else 1.0)
@@ -1716,7 +1741,7 @@ body.kigit-dragging iframe { pointer-events: none; }  /* else the frames swallow
         tab(f"/bom/{key}")
         # Then the 3D model, while the page shows the list and the 2D board.
         try:
-            failed = await build_models({rev: glb})
+            failed = await build_models({model_rev: glb})
             if failed:
                 job.model_error = str(failed[0][1])
             else:
@@ -1825,7 +1850,10 @@ body.kigit-dragging iframe { pointer-events: none; }  /* else the frames swallow
 
     # ------------------------------------------------- compare folders (no git)
     async def compare_folders(old: str = "", new: str = "") -> None:
-        """Compare two copies of a project, each given by its folder."""
+        """Compare two copies of a project, each given by its folder (new: the
+        project opened without git, if any)."""
+        if not new and state.get("disk_board"):
+            new = str(Path(state["disk_board"]).parent)
         boards: dict[str, str | None] = {"old": None, "new": None}
 
         with dialog_host, ui.dialog() as dialog, ui.card().classes("w-[44rem] max-w-full bg-[#161a20] gap-3"):
@@ -1933,6 +1961,14 @@ body.kigit-dragging iframe { pointer-events: none; }  /* else the frames swallow
             notify(str(e), type="negative", multi_line=True, close_button=True)
             return
         label = lambda b: Path(b).parent.name or Path(b).name
+        # No git here: leave the project open before (its commit list and the
+        # rest), so nothing on screen is about another board.
+        if state["board"] or state["disk_board"] != new_board:
+            clear_project()
+            commits_drawer.hide()
+        state["disk_board"], state["name"] = new_board, label(new_board)
+        folder_input.value = str(Path(new_board).parent)
+        project_label.text = f"{label(old_board)} ↔ {label(new_board)}"
         status.text = f"{label(old_board)} ↔ {label(new_board)} (no git) · {time.monotonic() - started:.1f} s"
         logs.log.info("compared files in %.2f s", time.monotonic() - started)
         show_page(name)
