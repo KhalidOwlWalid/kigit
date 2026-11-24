@@ -5,6 +5,7 @@
 #include "commands/common.hpp"
 #include "commands/options.hpp"
 #include "utils/log.hpp"
+#include "utils/platform.hpp"
 
 #include <spdlog/spdlog.h>
 
@@ -56,15 +57,9 @@ int run(int argc, char** argv) {
 
 // Logging options, read before anything else so the whole run is logged.
 logging::Options log_options(int argc, char** argv) {
-    logging::Options o;
-    for (int i = 1; i < argc; ++i) {
-        std::string a = argv[i];
-        if (a == "--no-log") o.enabled = false;
-        else if (a == "--log-stderr") o.console = true;
-        else if (a == "-V" || a == "--verbose") o.console = o.debug = true;
-        else if (a == "--log-dir" && i + 1 < argc) o.dir = cmd::expand_home(argv[++i]);
-        else if (a == "--log-file" && i + 1 < argc) o.file = cmd::expand_home(argv[++i]);
-    }
+    logging::Options o = logging::from_args(argc, argv);
+    o.dir = o.dir.empty() ? "" : cmd::expand_home(o.dir);
+    o.file = o.file.empty() ? "" : cmd::expand_home(o.file);
     return o;
 }
 
@@ -90,16 +85,22 @@ int main(int argc, char** argv) {
         return code;
     }
 
-    logging::Options lo = log_options(argc, argv);
+    logging::Options lo;
+    try {
+        lo = log_options(argc, argv);
+    } catch (const std::invalid_argument& e) {
+        std::cerr << "kigit: " << e.what() << "\n";
+        return 2;
+    }
     std::string log_path = logging::start(lo);
-    std::string args;
-    for (int i = 1; i < argc; ++i) args += std::string(i > 1 ? " " : "") + argv[i];
+    std::string args = platform::command_line(std::vector<std::string>(argv + 1, argv + argc));
     std::error_code ec;
     // Appending to someone else's log (the GUI's session): this run is one
     // step in that session, not a session of its own.
     bool step = !lo.file.empty();
-    if (step) spdlog::info("run: kigit {}", args);
-    else spdlog::info("session start: kigit {} | cwd {} | args: {}", KIGIT_VERSION, fs::current_path(ec).string(), args);
+    if (step) spdlog::info("run: $ kigit {}", args);
+    else spdlog::info("session start: kigit {} | cwd {} | $ kigit {}", KIGIT_VERSION, fs::current_path(ec).string(), args);
+    if (!step) spdlog::info("system: {}", platform::system_name());
     if (!log_path.empty()) spdlog::debug("log file: {}", log_path);
 
     auto started = std::chrono::steady_clock::now();

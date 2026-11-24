@@ -65,6 +65,7 @@ bool cached_search(const std::string& key, const LookupOptions& opt, Cache& cach
     if (hit) {
         found = hit->get<std::vector<Offer>>();
         info["cached"] = info["cached"].get<int>() + 1;
+        spdlog::debug("lookup: {} from the cache: {} part(s)", key, found.size());
         return true;
     }
     Search s = ask();
@@ -73,11 +74,15 @@ bool cached_search(const std::string& key, const LookupOptions& opt, Cache& cach
         if (s.fatal) {
             stopped[site] = s.error;
             info["error"] = s.error;
+            spdlog::info("lookup: no more searches at {}: {}", site_name(site), s.error);
+        } else {
+            spdlog::debug("lookup: {} failed: {}", key, s.error);
         }
         return false;
     }
     found = s.offers;
     cache.put(key, found);
+    spdlog::debug("lookup: {} asked: {} part(s)", key, found.size());
     return true;
 }
 
@@ -100,8 +105,13 @@ nlohmann::json lookup(const Bom& bom, const LookupOptions& opt, const std::map<s
             stopped[site] = "kigit can't look up " + site + " yet";
         else if (src == sources.end() || !src->second)
             stopped[site] = problems.count(site) ? problems.at(site) : "no key for " + site_name(site);
-        if (stopped.count(site)) sites[site]["error"] = stopped[site];
+        if (stopped.count(site)) {
+            sites[site]["error"] = stopped[site];
+            spdlog::info("lookup: not asking {}: {}", site_name(site), stopped[site]);
+        }
     }
+    spdlog::info("lookup: {} lines for {} board(s) at {} site(s){}", bom.lines.size(), std::max(1, opt.boards),
+                 opt.sites.size(), opt.refresh ? ", asking again (no cache)" : "");
 
     nlohmann::json lines = nlohmann::json::array();
     int total = static_cast<int>(bom.lines.size()), done = 0;
@@ -186,6 +196,13 @@ nlohmann::json lookup(const Bom& bom, const LookupOptions& opt, const std::map<s
                 }
                 sites[site]["calls"] = src->calls();
             }
+            if (spdlog::should_log(spdlog::level::debug)) {
+                std::string what = m.pick ? m.pick->mpn + " (" + std::to_string(m.pick->stock) + " in stock)"
+                                          : std::to_string(m.candidates.size()) + " candidate(s)";
+                spdlog::debug("lookup: {} at {}: '{}' -> {}: {}{}{}", join_refs(line.refs), site, m.searched, m.status,
+                              what, m.alternatives.empty() ? "" : ", " + std::to_string(m.alternatives.size()) + " instead",
+                              m.error.empty() ? "" : " (" + m.error + ")");
+            }
             lj["sites"][site] = match_json(m, need);
         }
         lines.push_back(lj);
@@ -219,6 +236,10 @@ nlohmann::json lookup(const Bom& bom, const LookupOptions& opt, const std::map<s
         s["cost"] = cost;
         s["currency"] = mixed ? "" : currency;
         summary[site] = s;
+        std::string counts;
+        for (const auto& [k, v] : count) counts += (counts.empty() ? "" : ", ") + std::to_string(v) + " " + k;
+        spdlog::info("lookup at {}: {} call(s), {} from the cache; {}", site_name(site), sites[site]["calls"].get<int>(),
+                     sites[site]["cached"].get<int>(), counts);
     }
     return {{"lines", lines}, {"sites", sites}, {"summary", summary}};
 }

@@ -64,7 +64,10 @@ def add(level: str, title: str, detail: str = "", headers: tuple[str, ...] = (),
     items.insert(0, n)
     del items[KEEP:]
     version += 1
-    if n.rows:  # the list goes to the log too, for later
+    # What the bell shows, in the log too (debug: whoever added it logs the
+    # problem itself); a list goes in whole, for later.
+    logs.log.debug("bell (%s): %s%s", n.level, title, f": {detail}" if detail else "")
+    if n.rows:
         logs.log.info("notice: %s\n%s", title, "\n".join("  " + "  ".join(r) for r in n.rows))
     return n
 

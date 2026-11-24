@@ -2,6 +2,8 @@
 
 #include "utils/sexpr.hpp"
 
+#include <spdlog/spdlog.h>
+
 #include <filesystem>
 #include <cctype>
 #include <regex>
@@ -582,6 +584,9 @@ Board load_board(std::string_view text, bool silkscreen) {
             }
         }
     }
+    spdlog::debug("board: format {}, {} copper layers, {} items, {} footprints, {} zones{}", board.version,
+                  board.layers.size(), board.items.size(), board.footprints.size(), board.zones.size(),
+                  silkscreen ? ", " + std::to_string(board.silk.size()) + " silkscreen shapes" : "");
     return board;
 }
 

@@ -28,6 +28,8 @@ import re
 import zipfile
 from xml.etree import ElementTree
 
+from .logs import log
+
 SITES = {"mouser": "Mouser", "lcsc": "LCSC", "digikey": "Digi-Key"}
 MAX_BYTES = 5 * 1024 * 1024
 _NS = "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}"
@@ -207,6 +209,8 @@ def parse_cart(data: bytes, filename: str, site: str) -> list[dict]:
         out.append({"sku": sku, "mpn": mpn, "manufacturer": get("manufacturer"),
                     "description": get("description")[:200], "qty": qty, "refs": refs,
                     "backorder": min(qty, _number(get("backorder")))})
+    log.debug("cart %s (%s): header on row %d, columns %s; %d of %d rows kept", filename, site, h + 1,
+              {r: i for r, i in col.items() if r}, len(out), len(rows) - h - 1)
     if not out:
         raise CartError("the cart has no rows with a part number and a quantity")
     return out

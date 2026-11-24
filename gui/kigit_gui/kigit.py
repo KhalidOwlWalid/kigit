@@ -6,8 +6,10 @@ import asyncio
 import json
 import os
 import re
+import shlex
 import shutil
 import subprocess
+import sys
 import threading
 import time
 from collections.abc import Callable
@@ -37,9 +39,7 @@ _LOG_LINE = re.compile(r"^\[\d{4}-\d\d-\d\d \d\d:\d\d:\d\d")
 
 
 def _command(args: tuple[str, ...]) -> list[str]:
-    session_log = os.environ.get(logs.SESSION_FILE_ENV)
-    extra = ["--log-file", session_log, "--log-stderr"] if session_log else ["--no-log"]
-    return [kigit_binary(), *args, *extra]
+    return [kigit_binary(), *args, *logs.kigit_flags()]
 
 
 _NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)  # no console flash on Windows
@@ -58,15 +58,23 @@ async def _run(*args: str, input: bytes | None = None) -> tuple[bytes, str]:
     return _finish(args, proc.returncode, proc.stdout, proc.stderr, started)
 
 
+def command_line(args: tuple[str, ...] | list[str]) -> str:
+    """A command as you'd type it (quoted only where needed), for the log."""
+    if sys.platform == "win32":
+        return subprocess.list2cmdline(list(args))
+    return shlex.join(args)
+
+
 def _finish(args: tuple[str, ...], code: int, out: bytes, err: bytes, started: float) -> tuple[bytes, str]:
     """Logs a finished run; raises KigitError if it failed."""
     lines = err.decode(errors="replace").splitlines()
     logs.echo_kigit_lines([l for l in lines if _LOG_LINE.match(l)])
     text = "\n".join(l for l in lines if not _LOG_LINE.match(l)).strip()
-    logs.log.debug("kigit %s -> exit %d in %.2f s", " ".join(args), code, time.monotonic() - started)
+    cmd = command_line(("kigit", *args))
+    logs.log.debug("$ %s  [exit %d%s, %.2f s]", cmd, code, "" if code == 0 else " FAILED", time.monotonic() - started)
     if code != 0:
         message = text.removeprefix("kigit: ") or f"kigit exited with {code}"
-        logs.log.warning("kigit %s failed: %s", " ".join(args), message)  # a user-facing problem, not a GUI error
+        logs.log.warning("$ %s failed: %s", cmd, message)  # a user-facing problem, not a GUI error
         raise KigitError(message)
     return out, text
 

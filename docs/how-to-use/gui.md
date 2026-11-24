@@ -140,6 +140,8 @@ The :material-receipt-text: log button shows the session's log file and its late
 
 Logs are kept in the `log/` folder of kigit's [app folder](../app-folder.md): `%LOCALAPPDATA%\kigit\log` on Windows, `~/.local/state/kigit/log` on Linux.
 
+The file keeps every step (debug lines included), and every kigit call the GUI makes writes to the same file. The console the GUI was started from shows `info` and above. To change either, start it with `kigit gui --console-level warning` (or `debug`, `error`, `off`) and `--log-level`, or set `KIGIT_CONSOLE_LEVEL` / `KIGIT_LOG_LEVEL`. The levels are explained under [Command line: Levels](command-line.md#levels).
+
 ## Shortcuts
 
 The :material-keyboard: button in the header, or **?** anywhere outside a text box, lists every keyboard and mouse shortcut, by where it works.

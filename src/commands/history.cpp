@@ -3,6 +3,8 @@
 #include "git/git.hpp"
 #include "git/locate.hpp"
 
+#include <spdlog/spdlog.h>
+
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
@@ -71,6 +73,9 @@ void print_log(const std::string& root, const std::string& board_rel, git::LogQu
         changed.push_back(f);
         kind(f, pcb, sch);
     }
+    spdlog::info("history of {} in {}: {} of {} commit(s) listed{}, {} uncommitted file(s){}", board_rel, root,
+                 commits.size(), total, kicad_only ? " (board or schematic only)" : "", changed.size(),
+                 dirs.size() > 1 ? ", also in " + std::to_string(dirs.size() - 1) + " earlier folder(s)" : "");
     nlohmann::json past = nlohmann::json::array();
     for (const auto& d : dirs) past.push_back(d.empty() ? "." : d.substr(0, d.size() - 1));
     nlohmann::json out = {

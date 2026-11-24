@@ -14,6 +14,7 @@
 #include "parts/store.hpp"
 #include "sch/bom.hpp"
 #include "sch/fields.hpp"
+#include "utils/log.hpp"
 #include "utils/platform.hpp"
 
 #include <spdlog/spdlog.h>
@@ -305,6 +306,11 @@ nlohmann::json run_lookup(const Bom& bom, const std::string& sites_arg, int boar
             if (parts::has_key(s)) opt.sites.push_back(s);
         if (opt.sites.empty()) opt.sites = parts::known_sites();
     }
+    std::string asked;
+    for (const auto& s : opt.sites) asked += (asked.empty() ? "" : ", ") + s;
+    spdlog::debug("lookup: asking {}{}", asked, sites_arg.empty() ? " (every site with a key)" : "");
+    for (const auto& s : parts::known_sites()) // where each key is (never the key)
+        spdlog::debug("lookup: {} key: {}", s, parts::has_key(s) ? parts::key_place(s) : "none");
     int pace = -1; // each site's own unless set
     if (const char* e = std::getenv("KIGIT_LOOKUP_PACE_MS"); e && *e) pace = std::atoi(e);
     std::unique_ptr<parts::Mouser> mouser;
@@ -406,8 +412,8 @@ int run_bom(int argc, char** argv) {
         else if (a == "--csv") format = "csv";
         else if ((a == "-o" || a == "--output") && i + 1 < argc) out_file = argv[++i];
         else if ((a == "-C" || a == "--kicad-repo") && i + 1 < argc) project_arg = argv[++i];
-        else if (a == "--log-dir" || a == "--log-file") ++i; // read by main()
-        else if (a == "--no-log" || a == "--log-stderr" || a == "-V" || a == "--verbose" || a == "-q" || a == "--quiet") {
+        else if (int n = logging::flag_arity(a); n >= 0) i += n; // read by main()
+        else if (a == "-q" || a == "--quiet") {
         } else if (!a.empty() && a[0] == '-' && a != "-") {
             std::cerr << "kigit: unknown option " << a << " (see kigit bom --help)\n";
             return 2;
@@ -481,6 +487,8 @@ int run_bom(int argc, char** argv) {
     Schematic sch = load_schematic(name, reader);
     for (const auto& w : sch.warnings) warn("schematic: " + w);
     Bom bom = make_bom(sch);
+    spdlog::info("bom: {} lines, {} parts ({} DNP), {} line(s) without a part number", bom.lines.size(), bom.parts,
+                 bom.dnp_parts, bom.without_number);
 
     std::string text;
     if (lookup) {

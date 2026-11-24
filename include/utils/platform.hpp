@@ -37,6 +37,11 @@ CommandResult run_shell(const std::string& command_line, bool keep_stderr = fals
 // One argument, quoted for this platform's shell.
 std::string quote(const std::string& arg);
 
+// A command for people to read (logs) and paste into a terminal: the
+// arguments joined by spaces, each quoted for this platform's shell only
+// when it needs it.
+std::string command_line(const std::vector<std::string>& args);
+
 // Makes stdout binary (Windows would otherwise turn "\n" into "\r\n"),
 // for output other programs read (-o -). Does nothing elsewhere.
 void binary_stdout();
@@ -85,6 +90,9 @@ bool open_in_browser(const std::filesystem::path& file);
 
 void set_env(const std::string& name, const std::string& value);
 int process_id();
+
+// The OS, for the log: "Linux 6.8.0 x86_64", "Windows 10.0.19045 AMD64", ...
+std::string system_name();
 std::tm local_time(std::time_t t);
 
 // The user's home folder (HOME, or USERPROFILE on Windows).

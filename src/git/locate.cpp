@@ -1,5 +1,7 @@
 #include "git/locate.hpp"
 
+#include <spdlog/spdlog.h>
+
 #include <algorithm>
 #include <cstdio>
 #include <filesystem>
@@ -133,6 +135,7 @@ BoardSource find_similar_board(const std::string& root, const std::string& expec
     }
 
     std::string where = rev.local ? "the working tree" : rev.short_hash;
+    spdlog::debug("locate: {} isn't in {}; {} board(s) there:{}", expected_rel, where, candidates.size(), report);
     if (candidates.empty())
         throw std::runtime_error("no .kicad_pcb file exists at all in " + where);
     if (best.score < kMinScore)

@@ -177,7 +177,7 @@ bool DigiKey::login(Search& s) {
               "&grant_type=client_credentials";
     rq.secrets = {login_.client_secret, net::url_encode(login_.client_secret)};
     net::HttpResponse r = send(rq);
-    spdlog::info("digikey: token -> {}", r.status);
+    spdlog::debug("digikey: token -> {}", r.status);
     s.fatal = true; // without a token nothing else will work either
     if (r.status == 0) {
         s.error = net::redact(r.error, rq.secrets);
@@ -217,7 +217,7 @@ Search DigiKey::call(const std::string& method, const std::string& path, const n
         }
         rq.secrets = {token_, login_.client_secret};
         net::HttpResponse r = send(rq);
-        spdlog::info("digikey: {} {} {} -> {}", method, path, body.is_null() ? "" : body.dump(), r.status);
+        spdlog::debug("digikey: {} {} {} -> {}", method, path, body.is_null() ? "" : body.dump(), r.status);
         if (r.status == 0) {
             s.error = net::redact(r.error, rq.secrets);
             s.fatal = true;

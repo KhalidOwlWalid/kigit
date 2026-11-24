@@ -109,7 +109,7 @@ Search Mouser::post(const std::string& path, const nlohmann::json& body) {
     rq.body = body.dump();
     rq.secrets = {key_, net::url_encode(key_)};
     net::HttpResponse r = send(rq);
-    spdlog::info("mouser: {} {} -> {}", path, body.dump(), r.status);
+    spdlog::debug("mouser: {} {} -> {}", path, body.dump(), r.status);
     if (r.status == 0) {
         s.error = net::redact(r.error, rq.secrets);
         s.fatal = true; // no network or no curl: the next call won't do better

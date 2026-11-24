@@ -721,6 +721,49 @@ TEST_CASE("errors: clear message, non-zero exit") {
     CHECK(bad_opt.code == 2);
 }
 
+TEST_CASE("log levels: the file and the console each have their own") {
+    TempDir tmp;
+    make_fixture_repo(tmp / "repo");
+    std::string board = quote((tmp / "repo/board/demo.kicad_pcb").string());
+    auto log_text = [&](const std::string& dir) {
+        std::string all;
+        for (const auto& e : fs::directory_iterator(tmp / dir)) all += read_text(e.path());
+        return all;
+    };
+
+    // Defaults: everything in the file (git commands at debug), nothing on stderr.
+    RunResult quiet = run_kigit("--log -C " + board + " --log-dir " + quote((tmp / "a").string()));
+    CHECK(parse(quiet)["commits"].size() == 4); // stdout is only the data
+    CHECK(quiet.err.find("[info]") == std::string::npos);
+    std::string a = log_text("a");
+    CHECK(a.find("[debug] $ git -C") != std::string::npos);
+    CHECK(a.find("  [exit 0, ") != std::string::npos); // then how it went
+    CHECK(a.find("[info] session start: kigit ") != std::string::npos);
+    CHECK(a.find("| $ kigit --log -C ") != std::string::npos);
+    CHECK(a.find("[info] history of") != std::string::npos);
+
+    // The console at debug, the file at warning (nothing to warn about here).
+    RunResult loud = run_kigit("--log -C " + board + " --log-dir " + quote((tmp / "b").string()) +
+                               " --console-level debug --log-level warning");
+    parse(loud);
+    CHECK(loud.err.find("[debug] $ git") != std::string::npos);
+    CHECK(log_text("b").empty());
+
+    // From the environment; a flag wins over it.
+    kigit::platform::set_env("KIGIT_CONSOLE_LEVEL", "info");
+    RunResult env = run_kigit("--log -C " + board + " --no-log");
+    RunResult flag = run_kigit("--log -C " + board + " --no-log --console-level warning");
+    kigit::platform::set_env("KIGIT_CONSOLE_LEVEL", "");
+    CHECK(env.err.find("[info] history of") != std::string::npos);
+    CHECK(env.err.find("[debug]") == std::string::npos);
+    CHECK(flag.err.find("[info]") == std::string::npos);
+
+    RunResult bad = run_kigit("--log -C " + board + " --no-log --log-level loud");
+    CHECK(bad.code == 2);
+    CHECK(bad.err.find("unknown log level 'loud'") != std::string::npos);
+    CHECK(run_kigit("bom --no-log --console-level warning " + board).code == 0); // kigit bom takes them too
+}
+
 // The KiCad files of one of the real OwlKit copies in
 // tests/test_examples/non_git_files, copied outside any git repo.
 static fs::path owl_copy(const TempDir& tmp, const std::string& name) {

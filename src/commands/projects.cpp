@@ -4,6 +4,7 @@
 #include "git/locate.hpp"
 
 #include <nlohmann/json.hpp>
+#include <spdlog/spdlog.h>
 
 #include <algorithm>
 #include <cstdio>
@@ -62,6 +63,10 @@ int run_projects(const fs::path& dir, int depth) {
     std::sort(projects.begin(), projects.end(), [](const auto& a, const auto& b) {
         return std::tie(a["level"], a["dir"], a["name"]) < std::tie(b["level"], b["dir"], b["name"]);
     });
+    spdlog::info("projects in {} ({} levels down): {}", dir.string(), depth, projects.size());
+    for (const auto& p : projects)
+        spdlog::debug("project {} in {}: board {}, git {}", p["name"].get<std::string>(), p["dir"].get<std::string>(),
+                      p["pcb"].get<bool>() ? "yes" : "no", p["git"].get<bool>() ? "yes" : "no");
     nlohmann::json out = {{"dir", fs::absolute(dir).lexically_normal().string()}, {"depth", depth}, {"projects", projects}};
     std::printf("%s\n", out.dump().c_str());
     return 0;

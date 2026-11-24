@@ -174,7 +174,7 @@ int run_diff(const Options& o, const fs::path& project) {
         auto ms = [](auto a, auto b) { return std::chrono::duration<double, std::milli>(b - a).count(); };
         int nets_changed = 0;
         for (const auto& [n, st] : diff.nets) nets_changed += st.changed_any();
-        spdlog::info("timing: read {:.0f} ms, parse {:.0f} ms, diff {:.0f} ms, schematics {:.0f} ms, o.output {:.0f} ms "
+        spdlog::debug("timing: read {:.0f} ms, parse {:.0f} ms, diff {:.0f} ms, schematics {:.0f} ms, o.output {:.0f} ms "
                      "({} + {} items)",
                      ms(t0, t1), ms(t1, t2), ms(t2, t3), sch_ms, ms(t3, t4), old_board.items.size(),
                      new_board.items.size());

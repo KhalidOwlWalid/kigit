@@ -24,16 +24,8 @@ namespace {
 // an argument is ever interpreted). `ok` receives success.
 std::string git(const std::string& dir, std::vector<std::string> args, bool& ok) {
     args.insert(args.begin(), {"git", "-C", dir});
-    auto started = std::chrono::steady_clock::now();
-    platform::CommandResult r = platform::run(args);
+    platform::CommandResult r = platform::run(args); // logged there (debug)
     ok = r.ok;
-    if (spdlog::should_log(spdlog::level::debug)) {
-        std::string line;
-        for (const auto& a : args) line += (line.empty() ? "" : " ") + a;
-        spdlog::debug("git: {} ({:.0f} ms){}", line,
-                      std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - started).count(),
-                      ok ? "" : " FAILED");
-    }
     return r.out;
 }
 

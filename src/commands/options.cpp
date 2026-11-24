@@ -1,4 +1,5 @@
 #include "commands/options.hpp"
+#include "utils/log.hpp"
 
 #include "commands/common.hpp"
 
@@ -71,6 +72,7 @@ OPTIONS
         --no-swap       Keep the revision order as given
     -q, --quiet         Only print errors and the output path
     -V, --verbose       Also print the session log (with debug lines) to stderr
+                        (= --console-level debug)
 
 LOGGING
     Every run writes a session log, named after when it started
@@ -79,7 +81,16 @@ LOGGING
                         else ~/.local/state/kigit/log)
         --log-file FILE Append to this file instead (used by the GUI so a
                         session and the kigit calls it makes share one log)
-        --log-stderr    Also print log lines to stderr
+        --log-stderr    Also print log lines to stderr (= --console-level info)
+        --log-level LEVEL
+                        Lowest level written to the log file: debug (the
+                        default: everything, for a log sent in with a
+                        problem), info, warning, error or off
+                        ($KIGIT_LOG_LEVEL)
+        --console-level LEVEL
+                        Lowest level printed to stderr: debug, info,
+                        warning, error or off (the default)
+                        ($KIGIT_CONSOLE_LEVEL)
         --no-log        Don't write a log file
         --log           Print HEAD's history as JSON, newest first, each commit
                         flagged if it changed the board or schematic, plus
@@ -218,10 +229,8 @@ std::optional<int> parse_options(int argc, char** argv, Options& o) {
                 return 2;
             }
             o.netlist_file = argv[i];
-        } else if (a == "--log-dir" || a == "--log-file") {
-            ++i; // handled in main()
-        } else if (a == "--no-log" || a == "--log-stderr" || a == "-V" || a == "--verbose") {
-            // handled in main()
+        } else if (int n = logging::flag_arity(a); n >= 0) {
+            i += n; // handled in main()
         } else if (a == "-q" || a == "--quiet") {
             o.quiet = true;
         } else if (a.starts_with("-") && a.size() > 1) {

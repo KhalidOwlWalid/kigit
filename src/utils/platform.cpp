@@ -1,7 +1,10 @@
 #include "utils/platform.hpp"
 
+#include <spdlog/spdlog.h>
+
 #include <algorithm>
 #include <array>
+#include <cctype>
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
@@ -24,6 +27,7 @@
 #include <poll.h>
 #include <thread>
 #include <spawn.h>
+#include <sys/utsname.h>
 #include <sys/wait.h>
 #include <unistd.h>
 extern char** environ;
@@ -254,6 +258,22 @@ void set_env(const std::string& name, const std::string& value) { _putenv_s(name
 
 int process_id() { return _getpid(); }
 
+std::string system_name() {
+    // RtlGetVersion gives the real version (GetVersionEx is capped by the manifest).
+    std::string v = "Windows";
+    using Fn = LONG(WINAPI*)(PRTL_OSVERSIONINFOW);
+    if (HMODULE nt = GetModuleHandleW(L"ntdll.dll"))
+        if (auto get = reinterpret_cast<Fn>(reinterpret_cast<void*>(GetProcAddress(nt, "RtlGetVersion")))) {
+            RTL_OSVERSIONINFOW info{};
+            info.dwOSVersionInfoSize = sizeof info;
+            if (get(&info) == 0)
+                v += " " + std::to_string(info.dwMajorVersion) + "." + std::to_string(info.dwMinorVersion) + "." +
+                     std::to_string(info.dwBuildNumber);
+        }
+    std::string arch = env("PROCESSOR_ARCHITECTURE");
+    return arch.empty() ? v : v + " " + arch;
+}
+
 std::tm local_time(std::time_t t) {
     std::tm out{};
     localtime_s(&out, &t);
@@ -452,6 +472,12 @@ void set_env(const std::string& name, const std::string& value) { ::setenv(name.
 
 int process_id() { return static_cast<int>(::getpid()); }
 
+std::string system_name() {
+    struct utsname u{};
+    if (uname(&u) != 0) return "unknown";
+    return std::string(u.sysname) + " " + u.release + " " + u.machine;
+}
+
 std::tm local_time(std::time_t t) {
     std::tm out{};
     localtime_r(&t, &out);
@@ -471,12 +497,58 @@ fs::path state_dir() {
 
 #endif
 
+std::string command_line(const std::vector<std::string>& args) {
+    // Safe unquoted in both shells; % and \ only in one of them.
+#ifdef _WIN32
+    const std::string extra = "\\";
+#else
+    const std::string extra = "%";
+#endif
+    std::string out;
+    for (const auto& a : args) {
+        bool plain = !a.empty() && std::all_of(a.begin(), a.end(), [&](unsigned char c) {
+            return std::isalnum(c) || std::string("_-./:=@,+").find(static_cast<char>(c)) != std::string::npos ||
+                   extra.find(static_cast<char>(c)) != std::string::npos;
+        });
+        out += (out.empty() ? "" : " ") + (plain ? a : quote(a));
+    }
+    return out;
+}
+
+namespace {
+
+std::string size_text(size_t n) {
+    char buf[32];
+    if (n < 1024) std::snprintf(buf, sizeof buf, "%zu B", n);
+    else if (n < 1024 * 1024) std::snprintf(buf, sizeof buf, "%.1f KB", n / 1024.0);
+    else std::snprintf(buf, sizeof buf, "%.1f MB", n / (1024.0 * 1024.0));
+    return buf;
+}
+
+// One debug line per program run, as you'd type it, then how it went:
+//   $ git -C /repo log -1 'HEAD^{commit}'  [exit 0, 5 ms, 1.2 KB out]
+// stdin shows as its size only (keys go there).
+RunResult logged_run(const std::vector<std::string>& args, bool capture_stderr, const std::string* input) {
+    auto started = std::chrono::steady_clock::now();
+    RunResult r = run_impl(args, capture_stderr, input);
+    double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - started).count();
+    std::string cmd = command_line(args) + (input ? " < (" + size_text(input->size()) + " on stdin)" : "");
+    if (r.code == -1) // callers say so when it matters (some only probe: the keyring)
+        spdlog::debug("$ {}  [not started: not installed, or not on PATH?]", cmd);
+    else
+        spdlog::debug("$ {}  [exit {}{}, {:.0f} ms, {} out]", cmd, r.code, r.code == 0 ? "" : " FAILED", ms,
+                      size_text(r.out.size()));
+    return r;
+}
+
+} // namespace
+
 RunResult run(const std::vector<std::string>& args, bool capture_stderr) {
-    return run_impl(args, capture_stderr, nullptr);
+    return logged_run(args, capture_stderr, nullptr);
 }
 
 RunResult run_input(const std::vector<std::string>& args, const std::string& input, bool capture_stderr) {
-    return run_impl(args, capture_stderr, &input);
+    return logged_run(args, capture_stderr, &input);
 }
 
 std::time_t file_time(const fs::path& p) {

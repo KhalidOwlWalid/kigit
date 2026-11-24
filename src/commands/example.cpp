@@ -7,6 +7,7 @@
 // {{short:N}}: filled in once that commit exists. The last copy is left
 // uncommitted, to show the working tree.
 #include "commands/commands.hpp"
+#include "utils/log.hpp"
 #include "utils/platform.hpp"
 
 #include <nlohmann/json.hpp>
@@ -105,11 +106,11 @@ int run_example(const char* argv0, int argc, char** argv) {
                          "                      kigit gui DIR\n";
             return 0;
         }
-        if (a == "--log-file" || a == "--log-dir") { // from the GUI: logging isn't needed here
-            ++i;
+        if (int n = logging::flag_arity(a); n >= 0) { // from the GUI: logging isn't needed here
+            i += n;
             continue;
         }
-        if (a == "--log-stderr" || a == "--no-log" || a == "-q" || a == "--quiet") continue;
+        if (a == "-q" || a == "--quiet") continue;
         if (a.starts_with("-")) {
             std::cerr << "kigit: unknown option " << a << " (see kigit example --help)\n";
             return 2;

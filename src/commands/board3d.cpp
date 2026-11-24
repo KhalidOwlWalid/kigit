@@ -241,7 +241,7 @@ int run_board3d(const Options& o, const fs::path& project) {
         for (std::string l; std::getline(in, l);) {
             while (!l.empty() && (l.back() == '\r' || l.back() == ' ')) l.pop_back();
             if (l.empty()) continue;
-            spdlog::info("kicad-cli: {}", l);
+            spdlog::debug("kicad-cli: {}", l);
             static const std::string part = "Could not add 3D model for ", file = "File not found: ";
             if (l.rfind(part, 0) == 0) {
                 std::string ref = l.substr(part.size());

@@ -195,6 +195,9 @@ def parse(text: str, path: Path) -> Inventory:
         rows.append(row)
         for k in row.keys:
             by_key.setdefault(k, row)
+    logs.log.debug("inventory %s: %d part(s), %d row(s) it can't use", path, len(rows), len(problems))
+    for p in problems[:20]:
+        logs.log.debug("inventory %s: %s", path.name, p)
     return Inventory(path, header, rows, problems, by_key)
 
 
@@ -268,6 +271,7 @@ def change(path: str | Path, deltas: list[tuple[dict, int]] | None = None, sets:
             cells.extend([""] * (len(inv.header) - len(cells)))
             now = _number(cells[qcol]) or 0
             cells[qcol] = str(max(0, n if exact else now + n))
+            logs.log.debug("inventory: line %d (%s): %d -> %s", row.line, row.keys[0] if row.keys else "?", now, cells[qcol])
             return
         keys = keys_of(ids)
         if not keys:

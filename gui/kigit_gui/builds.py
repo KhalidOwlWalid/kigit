@@ -25,6 +25,8 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
+from .logs import log
+
 FOLDER = "kigit-builds"
 EXTRA = ("tracking", "carts")  # what's bought for a build (bom.py)
 FILE = "build.json"
@@ -88,9 +90,13 @@ def _boards(n) -> int:
 def _read(path: Path) -> Build | None:
     try:
         d = json.loads((path / FILE).read_text(encoding="utf-8"))
-    except (OSError, ValueError):
+    except FileNotFoundError:
+        return None
+    except (OSError, ValueError) as e:
+        log.warning("builds: can't read %s (%s); the build is left out", path / FILE, e)
         return None
     if not isinstance(d, dict) or not isinstance(d.get("name"), str):
+        log.warning("builds: %s has no name; the build is left out", path / FILE)
         return None
     rev = d.get("revision") if isinstance(d.get("revision"), dict) else None
     try:
@@ -149,6 +155,8 @@ def new(board: str | Path, name: str, boards: int, rev: str = "LOCAL") -> Build:
     b = Build(_free_id(board, name), name, boards, time.strftime("%Y-%m-%d %H:%M"), revision,
               _git(cwd, "rev-parse", "HEAD"))
     _write(board, b)
+    log.info("builds: new build %s (%s), %d board(s) of %s", b.id, b.name, b.boards,
+             revision["hash"][:7] if revision else "the working tree")
     return b
 
 
@@ -162,14 +170,17 @@ def update(board: str | Path, build_id: str, name: str | None = None, boards: in
         new_id = _free_id(board, b.name, keep=b.id)
         if new_id != b.id:
             (folder(board) / b.id).rename(folder(board) / new_id)
+            log.info("builds: %s renamed to %s", b.id, new_id)
             b.id = new_id
     _write(board, b)
+    log.debug("builds: %s saved (%s, %d board(s))", b.id, b.name, b.boards)
     return b
 
 
 def delete(board: str | Path, build_id: str) -> None:
     b = get(board, build_id)
     shutil.rmtree(folder(board) / b.id)
+    log.info("builds: deleted build %s (%s)", b.id, b.name)
 
 
 def load_extra(board: str | Path, build_id: str) -> dict:
@@ -255,8 +266,10 @@ def start_board(board: str | Path, build_id: str, n: int | None = None) -> dict:
         raise BuildError(f"this build has boards #1 to #{b.boards}")
     if n in have:
         return get_board(board, build_id, n)
+    log.info("builds: %s board #%d started", build_id, n)
     return save_board(board, build_id, {"board": n, "started": time.strftime("%Y-%m-%d %H:%M"), "placed": []})
 
 
 def delete_board(board: str | Path, build_id: str, n: int) -> None:
     _board_path(board, build_id, n).unlink(missing_ok=True)
+    log.info("builds: %s board #%d deleted", build_id, n)

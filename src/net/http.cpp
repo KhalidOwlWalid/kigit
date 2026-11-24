@@ -2,6 +2,8 @@
 
 #include "utils/platform.hpp"
 
+#include <spdlog/spdlog.h>
+
 #include <cctype>
 #include <cstdlib>
 #include <optional>
@@ -92,6 +94,10 @@ HttpResponse curl_http(const HttpRequest& rq) {
         r.error = redact(why, rq.secrets);
         r.status = 0;
     }
+    // The address without its query: keys can be in it (Mouser's is).
+    std::string where = rq.url.substr(0, rq.url.find('?'));
+    if (r.error.empty()) spdlog::debug("http: {} {} -> {} ({} bytes)", rq.method, where, r.status, r.body.size());
+    else spdlog::debug("http: {} {} -> no answer: {}", rq.method, where, r.error);
     return r;
 }
 

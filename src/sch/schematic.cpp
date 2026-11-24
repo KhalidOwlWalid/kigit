@@ -3,6 +3,7 @@
 #include "utils/sexpr.hpp"
 
 #include <nlohmann/json.hpp>
+#include <spdlog/spdlog.h>
 
 #include <algorithm>
 #include <cmath>
@@ -967,6 +968,9 @@ Schematic load_schematic(const std::string& root_file, const FileReader& read) {
         loader.load_root(file, name);
     }
     connect(sch, loader.local_power_);
+    spdlog::debug("schematic {}: {} sheets, {} symbols, {} nets, {} bus groups, {} warnings", root_file,
+                  sch.sheets.size(), sch.symbols.size(), sch.nets.size(), sch.bus_groups.size(), sch.warnings.size());
+    for (const auto& w : sch.warnings) spdlog::debug("schematic {}: {}", root_file, w);
     return sch;
 }
 

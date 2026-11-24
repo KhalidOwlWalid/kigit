@@ -6,6 +6,13 @@ the kigit command line's logs. Every kigit call the GUI makes appends to the
 same file (kigit --log-file), so one file tells the whole story of a session.
 Lines also go to the console the GUI was started from. Old logs are kept.
 
+Levels, for the file and the console each (like kigit's; see
+include/utils/log.hpp for what goes at which level):
+  --log-level LEVEL      the file's: debug by default ($KIGIT_LOG_LEVEL)
+  --console-level LEVEL  the console's: info by default ($KIGIT_CONSOLE_LEVEL)
+  -V                     = --console-level debug
+LEVEL: debug, info, warning, error or off. kigit calls get the same levels.
+
 Also captured: messages shown to the user (see app.notify), unhandled
 exceptions in the GUI, and NiceGUI's own warnings and errors.
 """
@@ -23,6 +30,13 @@ log = logging.getLogger("kigit-gui")
 
 # The file kigit calls should append to (set while a session log is open).
 SESSION_FILE_ENV = "KIGIT_GUI_LOG_FILE"
+
+LEVELS = {"debug": logging.DEBUG, "info": logging.INFO, "warning": logging.WARNING, "warn": logging.WARNING,
+          "error": logging.ERROR, "off": logging.CRITICAL + 10}
+
+# This session's levels, by name (passed on to kigit calls).
+file_level = "debug"
+console_level = "info"
 
 # NiceGUI and the web server it runs on: their warnings and errors go to the session log too.
 _LIBRARY_LOGGERS = ("nicegui", "uvicorn.error")
@@ -57,17 +71,31 @@ def default_dir() -> Path:
     return base / "kigit" / "log"
 
 
-def start(log_dir: str | None, enabled: bool = True, debug: bool = False, console: bool = True) -> Path | None:
+def level_name(name: str | None, default: str) -> str:
+    """A level's name, checked (ValueError if it isn't one)."""
+    name = (name or default).strip().lower()
+    if name not in LEVELS:
+        raise ValueError(f"unknown log level '{name}' (debug, info, warning, error or off)")
+    return "warning" if name == "warn" else name
+
+
+def start(log_dir: str | None, enabled: bool = True, file: str | None = None,
+          console: str | None = None) -> Path | None:
     """Starts this session's logging: the console and (if enabled) a new
-    session file. Calling it again starts over. Returns the file, if any."""
-    global session_file
+    session file, each at its own level (None: $KIGIT_LOG_LEVEL /
+    $KIGIT_CONSOLE_LEVEL, else debug for the file and info for the console).
+    Calling it again starts over. Returns the file, if any."""
+    global session_file, file_level, console_level
     stop()
-    log.setLevel(logging.DEBUG if debug else logging.INFO)
+    file_level = level_name(file or os.environ.get("KIGIT_LOG_LEVEL"), "debug")
+    console_level = level_name(console or os.environ.get("KIGIT_CONSOLE_LEVEL"), "info")
+    log.setLevel(logging.DEBUG)  # each handler keeps its own level
     log.propagate = False
     formatter = _Formatter()
-    if console:
+    if console_level != "off":
         h = logging.StreamHandler(sys.stderr)
         h.setFormatter(formatter)
+        h.setLevel(LEVELS[console_level])
         _attach(h)
     if not enabled:
         return None
@@ -80,6 +108,7 @@ def start(log_dir: str | None, enabled: bool = True, debug: bool = False, consol
         log.warning("can't write a log file in %s (%s); logging to the console only", folder, e)
         return None
     h.setFormatter(formatter)
+    h.setLevel(LEVELS[file_level])
     _attach(h, libraries=True)
     session_file = path
     os.environ[SESSION_FILE_ENV] = str(path)
@@ -106,15 +135,25 @@ def _attach(handler: logging.Handler, libraries: bool = False) -> None:
         # Library messages: warnings and up only (their info lines are chatty).
         lib = logging.FileHandler(handler.baseFilename, encoding="utf-8")  # type: ignore[attr-defined]
         lib.setFormatter(handler.formatter)
-        lib.setLevel(logging.WARNING)
+        lib.setLevel(max(logging.WARNING, LEVELS[file_level]))
         for name in _LIBRARY_LOGGERS:
             logging.getLogger(name).addHandler(lib)
         _handlers.append(lib)
 
 
+def kigit_flags() -> list[str]:
+    """Logging flags for a kigit call: append to this session's file at its
+    level, and print to stderr (echoed on the console) at the console's."""
+    if not session_file:
+        return ["--no-log", *(["--console-level", console_level] if console_level != "off" else [])]
+    return ["--log-file", str(session_file), "--log-level", file_level,
+            *(["--console-level", console_level] if console_level != "off" else [])]
+
+
 def echo_kigit_lines(lines: list[str]) -> None:
-    """Shows kigit's own log lines on the console (they're already in the file)."""
-    if not any(isinstance(h, logging.StreamHandler) and not isinstance(h, logging.FileHandler) for h in _handlers):
+    """Shows kigit's own log lines on the console (they're already in the
+    file; kigit printed only those at the console's level)."""
+    if console_level == "off":
         return
     for line in lines:
         print(line, file=sys.stderr)

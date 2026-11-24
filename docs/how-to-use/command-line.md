@@ -34,6 +34,8 @@ kigit -C path/to/board.kicad_pro HEAD~1      # a .kicad_pro or .kicad_pcb works 
 | `--3d [REV] -o FILE.glb` | The board at REV (default: working tree) as a 3D model, made by KiCad ([3D View](3d-view.md#from-the-command-line)) |
 | `--render -o FILE.png` | A picture of the board on disk, made by KiCad |
 | `-V` | Print the log to the console, with debug lines |
+| `--console-level LEVEL` | What the console shows of the log: `debug`, `info`, `warning`, `error` or `off` (the default) |
+| `--log-level LEVEL` | What the log file keeps (default `debug`: everything) |
 | `--log-dir DIR`, `--no-log` | Where the log goes, or no log |
 
 Run `kigit --help` for the full list.
@@ -98,4 +100,25 @@ Every run keeps a log named after when it started, in the `log/` folder of kigit
 | Linux | `~/.local/state/kigit/log/` |
 | Windows | `%LOCALAPPDATA%\kigit\log\` |
 
-`--log-dir DIR` (or the `KIGIT_LOG_DIR` environment variable) puts them elsewhere; `--no-log` writes none; `-V` also prints the log to the console.
+`--log-dir DIR` (or the `KIGIT_LOG_DIR` environment variable) puts them elsewhere; `--no-log` writes none.
+
+### Levels
+
+The log file and the console each have their own level. Each level shows itself and everything above it:
+
+| Level | What it has |
+| --- | --- |
+| `debug` | Each step: the programs run (git, curl, kicad-cli) and how they ended, files read, what each board and schematic holds, lookups, cache hits |
+| `info` | What a run did: what it compared, how many changes, files written |
+| `warning` | Something to look at (also printed for you) |
+| `error` | Why a run failed |
+| `off` | Nothing |
+
+- **The file keeps everything (`debug`) by default**, so a log you send in with a problem has the whole story. `--log-level` or the `KIGIT_LOG_LEVEL` environment variable keeps less.
+- **The console shows nothing by default.** `--console-level info` (or `--log-stderr`) shows what a run did, `-V` (`--console-level debug`) shows every step. `KIGIT_CONSOLE_LEVEL` sets it for every run.
+
+Logs never hold your API keys: only whether one is set, and where it's kept.
+
+### Sending a log
+
+When something goes wrong, the latest log in the folder above has everything about it. Send it along with what you did; anything in it that you'd rather not share (folder names, part numbers) can be removed first.

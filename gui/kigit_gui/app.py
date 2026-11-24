@@ -1445,6 +1445,8 @@ body.kigit-dragging iframe { pointer-events: none; }  /* else the frames swallow
         last build)."""
         board = state["board"] or ""
         todo = [r for r, n in names.items() if not (CACHE / n).exists()]
+        for r in set(names) - set(todo):
+            logs.log.debug("3d %s: made before (%s)", short_rev(r), names[r])
         if todo and todo[0].startswith(kigit.DISK):
             board = todo[0][len(kigit.DISK):]  # Compare folders: time it against that board
         if not todo:
@@ -1477,6 +1479,7 @@ body.kigit-dragging iframe { pointer-events: none; }  /* else the frames swallow
         for r, result in zip(todo, results):
             if isinstance(result, BaseException):
                 failed.append((r, result))
+                logs.log.warning("3d %s failed: %s", short_rev(r), result)
                 notices.add("error", f"Couldn't make the 3D board of {short_rev(r)}", str(result))
                 continue
             warnings, missing = (result.warnings, result.missing) if isinstance(result, kigit.Made3d) else (
@@ -1992,6 +1995,20 @@ body.kigit-dragging iframe { pointer-events: none; }  /* else the frames swallow
 app.on_exception(lambda e: logs.log.error("unhandled error in the GUI", exc_info=e))
 
 
+@app.middleware("http")
+async def _log_requests(request, call_next):
+    """Requests from kigit's pages (debug): every change (POST, ...) and
+    any GET that fails. Not GETs that work: the pages poll every few
+    seconds. Never the body: keys go through here."""
+    started = time.monotonic()
+    response = await call_next(request)
+    path = request.url.path
+    if not path.startswith("/_nicegui") and (request.method != "GET" or response.status_code >= 400):
+        logs.log.debug("page: %s %s -> %d in %.0f ms", request.method, path, response.status_code,
+                       (time.monotonic() - started) * 1000)
+    return response
+
+
 @ui.page("/notebook/{key}")
 def _notebook(key: str) -> None:
     """The Notebook in a tab of its own (its button, in the Notebook)."""
@@ -2115,12 +2132,25 @@ def main() -> None:
                         help="don't open anything; just serve at http://127.0.0.1:PORT")
     parser.add_argument("--log-dir", help="folder for the session log (default: $KIGIT_LOG_DIR, else the app data folder)")
     parser.add_argument("--no-log", action="store_true", help="don't write a session log file")
-    parser.add_argument("-V", "--verbose", action="store_true", help="include debug lines in the log")
+    parser.add_argument("--log-level", help="lowest level written to the log file: debug (the default: "
+                        "everything, for a log sent in with a problem), info, warning, error or off ($KIGIT_LOG_LEVEL)")
+    parser.add_argument("--console-level", help="lowest level printed to the console: debug, info (the default), "
+                        "warning, error or off ($KIGIT_CONSOLE_LEVEL)")
+    parser.add_argument("-V", "--verbose", action="store_true", help="print debug lines on the console too "
+                        "(= --console-level debug)")
     args = parser.parse_args()
     port = pick_port(args.port)
     os.environ["KIGIT_PROJECT"] = str(Path(args.project).expanduser().resolve())
-    log_file = logs.start(args.log_dir, enabled=not args.no_log, debug=args.verbose)
+    try:
+        log_file = logs.start(args.log_dir, enabled=not args.no_log, file=args.log_level,
+                              console="debug" if args.verbose else args.console_level)
+    except ValueError as e:
+        parser.error(str(e))
     logs.log.info("session start: kigit gui | project %s | log %s", os.environ["KIGIT_PROJECT"], log_file or "(none)")
+    import platform as _platform
+    from importlib.metadata import version as _version
+    logs.log.info("system: %s | Python %s | NiceGUI %s | log levels: file %s, console %s", _platform.platform(),
+                  _platform.python_version(), _version("nicegui"), logs.file_level, logs.console_level)
     # Say where it is, especially when the default port was taken.
     taken = f" ({DEFAULT_PORT} is in use)" if args.port is None and port != DEFAULT_PORT else ""
     print(f"kigit gui: http://127.0.0.1:{port}{taken}", file=sys.stderr, flush=True)

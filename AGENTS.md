@@ -393,6 +393,25 @@ at once. localStorage settings are per origin, so per port.
   its kigit calls share one file, and kigit then logs `run:`/`done:` instead
   of session start/end), `--log-stderr`, `--no-log`. Pattern:
   `[%Y-%m-%d %H:%M:%S.%e] [%n] [%l] %v`.
+  Levels, file and console each (`logging::from_args`, a sink level
+  each): `--log-level` (file, default debug: logs are for bug reports;
+  `$KIGIT_LOG_LEVEL`), `--console-level` (stderr, default off;
+  `$KIGIT_CONSOLE_LEVEL`; `--log-stderr` = info, `-V` = debug); unknown
+  level: exit 2. Every option parser skips log flags via
+  `logging::flag_arity` (options, bom, example): add new log flags there
+  only. The GUI has the same flags (`logs.start(file=, console=)`, console
+  default info) and passes its levels to each kigit call
+  (`logs.kigit_flags()`). What goes where (also in `log.hpp`): debug =
+  steps (every program run, in `platform::run`, as `$ <command>  [exit N,
+  ms, size out]` with `platform::command_line` (quoted only where needed,
+  pasteable; stdin as its size only); the GUI's kigit calls the same via
+  `kigit.command_line`; HTTP method, URL without query, status; board/schematic counts;
+  lookup searches and line results; page POSTs via the GUI's
+  middleware; bell notices), info = what a run did, warning = something
+  for the user (also shown to them), error = failed. Never log a key or a
+  request body (keys travel in them); URLs lose their query (Mouser's
+  key is in it). Session start logs the OS (`platform::system_name`), the
+  GUI's also Python and NiceGUI versions.
 - Pages go to `<board folder>/.kigit/` (with its own `.gitignore`), not
   `~/.cache`: snap browsers can't read hidden folders in `$HOME`.
 
