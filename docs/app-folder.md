@@ -39,6 +39,7 @@ In the GUI, the :material-receipt-text: log button shows the log's full path and
 | `parts-cache.json` | Mouser's, Digi-Key's and LCSC's answers to part lookups, used for a day (dropped after a week) | `kigit bom --lookup` |
 | `parts-lcsc/` | The LCSC parts data from [jlcparts](how-to-use/bom.md#lcsc-with-no-key): `search-index.tsv.gz` (about 10 MB, downloaded once a day) and `shards/` (the details of parts you looked up). Safe to delete | `kigit bom --lookup`, `--lcsc-refresh` |
 | `inventory.json` | Where your [inventory](how-to-use/bom.md#inventory) CSV is, and a copy of what was last read. The inventory itself is your CSV, wherever you keep it: not in here | the GUI |
+| `bom-columns.json` | Which columns the [BOM page](how-to-use/bom.md) shows in Buy and in Assemble, if you changed them (**Columns** → **Reset to default** goes back) | the GUI |
 | `gui-env/` | The GUI's Python and packages, set up the first time you run `kigit gui` | the installed kigit |
 | `example/` | The [example project](example.md), if you tried it from the GUI | the GUI |
 

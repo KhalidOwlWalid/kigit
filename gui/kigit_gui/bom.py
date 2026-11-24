@@ -925,6 +925,72 @@ async def _edit_builds(key: str, request: Request) -> Response:
                          "builds": [x.to_dict() for x in builds.all_builds(job.board)]})
 
 
+# ------------------------------------------------------- column layouts
+# Which columns each view shows, kept for every project and session in
+# <app data>/kigit/bom-columns.json: {"buy": {"hidden": [ids]},
+# "assemble": {"shown": [ids]}}. Buy shows everything but what you hide;
+# Assemble only what you show (new columns stay out of the way there).
+# Ids are the page's column ids; "kind:mpn" is the MPN column, whatever the
+# project calls it. A view not in the file has the page's defaults.
+COLUMN_VIEWS = {"buy": "hidden", "assemble": "shown"}
+
+
+def columns_file() -> Path:
+    return logs.default_dir().parent / "bom-columns.json"
+
+
+def load_columns() -> dict:
+    """The saved layouts, cleaned; {} if none (or the file can't be read: said in the log)."""
+    path = columns_file()
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return {}
+    except (OSError, ValueError) as e:
+        logs.log.warning("bom: can't read %s (%s); columns are at their defaults", path, e)
+        return {}
+    out = {}
+    for view, kind in COLUMN_VIEWS.items():
+        ids = (raw.get(view) or {}).get(kind) if isinstance(raw, dict) and isinstance(raw.get(view), dict) else None
+        if isinstance(ids, list):
+            out[view] = {kind: [str(i) for i in ids if isinstance(i, str)][:500]}
+    return out
+
+
+def save_columns(cfg: dict) -> None:
+    path = columns_file()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(cfg, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    os.replace(tmp, path)
+
+
+@app.post("/bom/{key}/columns")
+async def _set_columns(key: str, request: Request) -> Response:
+    """{view, shown | hidden: [ids]} saves that view's layout; {view, reset:
+    true} drops it (back to the defaults). Answers every saved layout."""
+    body = await request.json()
+    view = body.get("view")
+    if view not in COLUMN_VIEWS:
+        return _err(f"no such view: {view}", 400, go="bom:columns")
+    cfg = load_columns()
+    if body.get("reset"):
+        cfg.pop(view, None)
+        what = "back to the defaults"
+    else:
+        ids = body.get(COLUMN_VIEWS[view])
+        if not isinstance(ids, list) or not all(isinstance(i, str) for i in ids):
+            return _err(f"{view} columns need a list of column ids", 400, go="bom:columns")
+        cfg[view] = {COLUMN_VIEWS[view]: ids[:500]}
+        what = f"{len(ids)} {COLUMN_VIEWS[view]}"
+    try:
+        save_columns(cfg)
+    except OSError as e:
+        return _err(f"couldn't save the column layout: {e}", 500, go="bom:columns")
+    logs.log.info("bom: %s columns: %s (%s)", view, what, columns_file())
+    return JSONResponse(cfg)
+
+
 @app.get("/bom/{key}/stock")
 async def _stock(key: str) -> Response:
     job = _job(key)
@@ -1339,6 +1405,7 @@ def page(key: str, job: Job) -> str:
             .replace("%%NAME%%", json.dumps(name))
             .replace("%%EDITABLE%%", "true" if job.rev == "LOCAL" else "false")
             .replace("%%DRAFTS_FILE%%", html.escape(str(drafts_path(job.board))))
+            .replace("%%COLUMNS%%", json.dumps(load_columns()).replace("<", "\\u003c"))
             .replace("%%DATA%%", data))
 
 

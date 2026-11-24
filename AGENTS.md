@@ -872,8 +872,14 @@ at once. localStorage settings are per origin, so per port.
   on pane bars; the last shown one can't be hidden), `kigit.bomPanes`
   {list, two, three}. Columns: `tableCols()` is every column ({id, th,
   td}; ids `qty`, `refs` (fixed), `value`, `f:<field name>`,
-  `site:<s>` and `price:<s>` per looked-up site, `search`), `visibleCols()` drops `hiddenCols`
-  (`kigit.bomHiddenCols`); the Columns button opens `#colmenu`. Code
+  `site:<s>` and `price:<s>` per looked-up site, `search`), `visibleCols()` keeps `colShown(c)`:
+  a layout per view (`colView()`: buy | assemble) in `COLCFG`, saved by
+  POST `/bom/{key}/columns` to `<app data>/kigit/bom-columns.json`
+  (`bom.load_columns`, passed in as `%%COLUMNS%%`): buy {hidden}, assemble
+  {shown} (default qty, refs, value, placed, `kind:mpn`), so new columns
+  stay out of Assemble; Reset to default (`#colsdefault`) drops the view's;
+  `kigit.bomHiddenCols` is read once as Buy's; a failed save is a toast and
+  a "!" on Columns; the Columns button opens `#colmenu`. Code
   finds cells by class (`td.refs`, `td.links`), never by position.
   Widths: `#bom` is `table-layout: fixed` with a `<colgroup>` from
   `applyWidths` (`widthOf(id)`: dragged `colWidths`, kept in

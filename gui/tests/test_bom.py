@@ -587,3 +587,44 @@ def test_look_up_asks_only_the_ticked_sites(monkeypatch) -> None:
         assert job.lookup.sites == "Digi-Key and LCSC"  # only the ticked ones are named
     finally:
         bom.jobs.pop("look", None)
+
+
+def test_column_layouts_per_view_are_saved_for_next_time(monkeypatch, tmp_path: Path) -> None:
+    """Assemble shows Qty, References, Value, Placed and MPN unless you show
+    more; each view's layout is saved in the app folder (for every session)
+    and Reset to default drops it."""
+    from starlette.requests import Request
+
+    monkeypatch.setenv("KIGIT_LOG_DIR", str(tmp_path / "state" / "log"))
+    page = _page()
+    assert 'assemble: { shown: ["qty", "refs", "value", "placed", "kind:mpn"] }' in page
+    assert "let COLCFG = {};" in page  # nothing saved yet: the defaults
+    assert 'id="colsdefault"' in page and '"kigit.bomHiddenCols"' in page  # reset; old layouts carried over
+
+    job = bom.Job("/p/owl.kicad_pcb", "owl", DATA)
+    bom.jobs["cols"] = job
+
+    async def post(body: dict):
+        data = json.dumps(body).encode()
+
+        async def receive():
+            return {"type": "http.request", "body": data, "more_body": False}
+        scope = {"type": "http", "method": "POST", "path": "/", "headers": [], "query_string": b""}
+        return await bom._set_columns("cols", Request(scope, receive))  # noqa: SLF001
+
+    try:
+        r = asyncio.run(post({"view": "assemble", "shown": ["qty", "refs", "value", "placed", "kind:mpn", "search"]}))
+        assert r.status_code == 200
+        asyncio.run(post({"view": "buy", "hidden": ["search"]}))
+        saved = json.loads(bom.columns_file().read_text(encoding="utf-8"))
+        assert saved == {"assemble": {"shown": ["qty", "refs", "value", "placed", "kind:mpn", "search"]},
+                         "buy": {"hidden": ["search"]}}
+        assert '"search"]}' in _page()  # the next page starts with them
+        assert asyncio.run(post({"view": "assemble", "reset": True})).status_code == 200
+        assert bom.load_columns() == {"buy": {"hidden": ["search"]}}
+        assert asyncio.run(post({"view": "sideways", "shown": []})).status_code == 400
+        assert asyncio.run(post({"view": "buy", "hidden": "search"})).status_code == 400
+        bom.columns_file().write_text("{not json", encoding="utf-8")
+        assert bom.load_columns() == {}  # a damaged file: the defaults (and a warning in the log)
+    finally:
+        bom.jobs.pop("cols", None)

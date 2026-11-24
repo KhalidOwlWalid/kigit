@@ -18,7 +18,9 @@ On the right, the board twice: **PCB** (drawn from the board file itself: outlin
 - PCB: scroll to zoom, drag to pan, **Top** / **Bottom** show or hide each side, **Fit**. 3D: drag to turn, as in the 3D view.
 - **Resize** the panels by dragging the line between the list and the board (or between two of PCB, 3D and Notes); double-click a line to put it back. Sizes are remembered in your browser.
 - **List**, **PCB** and **3D** in the header show or hide each panel, and **Hide** on a pane's own bar hides it too. One always stays shown (the list alone, the board alone, any mix). Remembered in your browser.
-- **Columns** picks which columns the list shows: Qty, Value, each part number field, Mouser and Price (after Look up) and the search links. References always stays. The button is lit while some are hidden; **Show all** brings them back. Remembered too.
+- **Columns** picks which columns the list shows: Qty, Value, each part number field, Mouser and Price (after Look up) and the search links. References always stays. The button is lit while some are hidden; **Show all** brings them back.
+    - **Buy** and **Assemble** each have their own columns. Buy shows every column unless you hide it. Assemble shows only **Qty**, **References**, **Value**, **Placed on #n** and **MPN**, what you need while placing parts; tick any other column to show it there.
+    - Your choice is saved for next time, for every project (in `bom-columns.json` in kigit's [app folder](../app-folder.md)). **Reset to default** in **Columns** puts the view on screen back to kigit's own.
 
 The PCB shows straight away. KiCad makes the 3D model after the page opens (seconds on a small board, a minute or more on a big one; a board already made is reused), with its progress in the pane. Without KiCad, the 3D pane says so and the rest works.
 
